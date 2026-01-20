@@ -80,6 +80,11 @@ export default function HomeScreen() {
   // Get next fixture (first scheduled or in_progress fixture)
   const nextFixture = fixtures.find(f => f.status === 'scheduled' || f.status === 'in_progress');
   
+  // Get most recent completed fixture
+  const recentCompletedFixture = fixtures
+    .filter(f => f.status === 'completed')
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+  
   // Calculate stats
   const totalMatches = fixtures.filter(f => f.status === 'completed').length;
   const totalPlayers = teams.reduce((sum, team) => sum + (team as any).playerCount || 0, 0);
@@ -138,33 +143,39 @@ export default function HomeScreen() {
             <TouchableOpacity
               style={[styles.actionCard, styles.secondaryAction]}
               onPress={() => {
-                console.log('User tapped Build Team button');
-                // TODO: Navigate to team builder
+                console.log('User tapped View Reports button');
+                if (recentCompletedFixture) {
+                  router.push(`/match-report/${recentCompletedFixture.id}` as any);
+                } else if (teams.length > 0) {
+                  router.push(`/season-dashboard/${teams[0].id}` as any);
+                }
               }}
             >
               <IconSymbol
-                ios_icon_name="person.3.fill"
-                android_material_icon_name="group"
+                ios_icon_name="chart.bar.fill"
+                android_material_icon_name="bar-chart"
                 size={32}
                 color={colors.primary}
               />
-              <Text style={styles.secondaryActionText}>Build Team</Text>
+              <Text style={styles.secondaryActionText}>View Reports</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.actionCard, styles.secondaryAction]}
               onPress={() => {
-                console.log('User tapped Add Training button');
-                // TODO: Navigate to training planner
+                console.log('User tapped Season Dashboard button');
+                if (teams.length > 0) {
+                  router.push(`/season-dashboard/${teams[0].id}` as any);
+                }
               }}
             >
               <IconSymbol
-                ios_icon_name="figure.run"
-                android_material_icon_name="directions-run"
+                ios_icon_name="chart.line.uptrend.xyaxis"
+                android_material_icon_name="trending-up"
                 size={32}
                 color={colors.primary}
               />
-              <Text style={styles.secondaryActionText}>Add Training</Text>
+              <Text style={styles.secondaryActionText}>Season Stats</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -220,6 +231,67 @@ export default function HomeScreen() {
             </View>
           )}
         </View>
+
+        {/* Recent Match Report */}
+        {recentCompletedFixture && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Latest Match Report</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  console.log('User tapped View Full Report');
+                  router.push(`/match-report/${recentCompletedFixture.id}` as any);
+                }}
+              >
+                <Text style={styles.viewAllText}>View Full Report</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={styles.reportCard}
+              onPress={() => {
+                console.log('User tapped recent match report');
+                router.push(`/match-report/${recentCompletedFixture.id}` as any);
+              }}
+            >
+              <View style={styles.reportHeader}>
+                <Text style={styles.reportOpponent}>{recentCompletedFixture.opponent}</Text>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="chevron-right"
+                  size={24}
+                  color={colors.textSecondary}
+                />
+              </View>
+              <Text style={styles.reportDate}>
+                {new Date(recentCompletedFixture.date).toLocaleDateString('en-IE', {
+                  weekday: 'long',
+                  month: 'long',
+                  day: 'numeric',
+                })}
+              </Text>
+              <View style={styles.reportActions}>
+                <View style={styles.reportAction}>
+                  <IconSymbol
+                    ios_icon_name="chart.bar.fill"
+                    android_material_icon_name="bar-chart"
+                    size={20}
+                    color={colors.primary}
+                  />
+                  <Text style={styles.reportActionText}>View Stats</Text>
+                </View>
+                <View style={styles.reportAction}>
+                  <IconSymbol
+                    ios_icon_name="square.and.arrow.up"
+                    android_material_icon_name="share"
+                    size={20}
+                    color={colors.primary}
+                  />
+                  <Text style={styles.reportActionText}>Export</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Stats Overview */}
         <View style={styles.section}>
@@ -463,5 +535,53 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 4,
     textAlign: 'center',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  viewAllText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  reportCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 20,
+    boxShadow: '0px 2px 8px rgba(0,0,0,0.1)',
+    elevation: 3,
+  },
+  reportHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  reportOpponent: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  reportDate: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 16,
+  },
+  reportActions: {
+    flexDirection: 'row',
+    gap: 24,
+  },
+  reportAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reportActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
   },
 });

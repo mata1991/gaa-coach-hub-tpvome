@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -13,24 +13,79 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
+import { authenticatedGet } from '@/utils/api';
+import { Fixture, Team } from '@/types';
 
 export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { user, loading } = useAuth();
+  const [fixtures, setFixtures] = useState<Fixture[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
+
+  // Fetch user's teams and fixtures
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!user) return;
+      
+      try {
+        setLoadingData(true);
+        console.log('[Home iOS] Fetching teams and fixtures for user:', user.id);
+        
+        // Fetch user's clubs first
+        const clubsResponse = await authenticatedGet<any[]>('/api/clubs');
+        console.log('[Home iOS] Fetched clubs:', clubsResponse);
+        
+        if (clubsResponse && clubsResponse.length > 0) {
+          const firstClub = clubsResponse[0];
+          
+          // Fetch teams for the first club
+          const teamsResponse = await authenticatedGet<Team[]>(`/api/teams?clubId=${firstClub.id}`);
+          console.log('[Home iOS] Fetched teams:', teamsResponse);
+          setTeams(teamsResponse || []);
+          
+          // Fetch fixtures for the first team
+          if (teamsResponse && teamsResponse.length > 0) {
+            const firstTeam = teamsResponse[0];
+            const fixturesResponse = await authenticatedGet<Fixture[]>(`/api/fixtures?teamId=${firstTeam.id}`);
+            console.log('[Home iOS] Fetched fixtures:', fixturesResponse);
+            setFixtures(fixturesResponse || []);
+          }
+        }
+      } catch (error) {
+        console.error('[Home iOS] Error fetching data:', error);
+      } finally {
+        setLoadingData(false);
+      }
+    };
+    
+    fetchData();
+  }, [user]);
 
   // Redirect to auth if not logged in
   if (!loading && !user) {
     return <Redirect href="/auth" />;
   }
 
-  if (loading) {
+  if (loading || loadingData) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <Text style={[styles.loadingText, { color: colors.text }]}>Loading...</Text>
       </View>
     );
   }
+
+  // Get next fixture (first scheduled or in_progress fixture)
+  const nextFixture = fixtures.find(f => f.status === 'scheduled' || f.status === 'in_progress');
+  
+  // Get most recent completed fixture
+  const recentCompletedFixture = fixtures
+    .filter(f => f.status === 'completed')
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+  
+  // Calculate stats
+  const totalMatches = fixtures.filter(f => f.status === 'completed').length;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -54,7 +109,12 @@ export default function HomeScreen() {
             style={[styles.actionCard, styles.primaryAction]}
             onPress={() => {
               console.log('User tapped Start Match button');
-              router.push('/match-tracker');
+              // If there's a next fixture, pass its ID
+              if (nextFixture) {
+                router.push(`/match-tracker?fixtureId=${nextFixture.id}`);
+              } else {
+                router.push('/match-tracker');
+              }
             }}
           >
             <View style={styles.actionIcon}>
@@ -81,33 +141,39 @@ export default function HomeScreen() {
             <TouchableOpacity
               style={[styles.actionCard, styles.secondaryAction]}
               onPress={() => {
-                console.log('User tapped Build Team button');
-                // TODO: Navigate to team builder
+                console.log('User tapped View Reports button');
+                if (recentCompletedFixture) {
+                  router.push(`/match-report/${recentCompletedFixture.id}` as any);
+                } else if (teams.length > 0) {
+                  router.push(`/season-dashboard/${teams[0].id}` as any);
+                }
               }}
             >
               <IconSymbol
-                ios_icon_name="person.3.fill"
-                android_material_icon_name="group"
+                ios_icon_name="chart.bar.fill"
+                android_material_icon_name="bar-chart"
                 size={32}
                 color={colors.primary}
               />
-              <Text style={styles.secondaryActionText}>Build Team</Text>
+              <Text style={styles.secondaryActionText}>View Reports</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.actionCard, styles.secondaryAction]}
               onPress={() => {
-                console.log('User tapped Add Training button');
-                // TODO: Navigate to training planner
+                console.log('User tapped Season Dashboard button');
+                if (teams.length > 0) {
+                  router.push(`/season-dashboard/${teams[0].id}` as any);
+                }
               }}
             >
               <IconSymbol
-                ios_icon_name="figure.run"
-                android_material_icon_name="directions-run"
+                ios_icon_name="chart.line.uptrend.xyaxis"
+                android_material_icon_name="trending-up"
                 size={32}
                 color={colors.primary}
               />
-              <Text style={styles.secondaryActionText}>Add Training</Text>
+              <Text style={styles.secondaryActionText}>Season Stats</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -115,43 +181,130 @@ export default function HomeScreen() {
         {/* Next Fixture */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Next Fixture</Text>
-          <View style={styles.fixtureCard}>
-            <View style={styles.fixtureHeader}>
-              <Text style={styles.fixtureCompetition}>County Championship</Text>
-              <Text style={styles.fixtureDate}>Tomorrow, 2:00 PM</Text>
+          {nextFixture ? (
+            <View style={styles.fixtureCard}>
+              <View style={styles.fixtureHeader}>
+                <Text style={styles.fixtureCompetition}>
+                  {(nextFixture as any).competition?.name || 'Match'}
+                </Text>
+                <Text style={styles.fixtureDate}>
+                  {new Date(nextFixture.date).toLocaleDateString('en-IE', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </Text>
+              </View>
+              <View style={styles.fixtureMatch}>
+                <Text style={styles.fixtureTeam}>
+                  {teams.find(t => t.id === nextFixture.teamId)?.name || 'Your Team'}
+                </Text>
+                <Text style={styles.fixtureVs}>vs</Text>
+                <Text style={styles.fixtureTeam}>{nextFixture.opponent}</Text>
+              </View>
+              {nextFixture.venue && (
+                <View style={styles.fixtureFooter}>
+                  <IconSymbol
+                    ios_icon_name="location.fill"
+                    android_material_icon_name="location-on"
+                    size={16}
+                    color={colors.textSecondary}
+                  />
+                  <Text style={styles.fixtureVenue}>{nextFixture.venue}</Text>
+                </View>
+              )}
             </View>
-            <View style={styles.fixtureMatch}>
-              <Text style={styles.fixtureTeam}>Your Team</Text>
-              <Text style={styles.fixtureVs}>vs</Text>
-              <Text style={styles.fixtureTeam}>St. Patrick&apos;s</Text>
-            </View>
-            <View style={styles.fixtureFooter}>
+          ) : (
+            <View style={styles.emptyCard}>
               <IconSymbol
-                ios_icon_name="location.fill"
-                android_material_icon_name="location-on"
-                size={16}
+                ios_icon_name="calendar"
+                android_material_icon_name="event"
+                size={32}
                 color={colors.textSecondary}
               />
-              <Text style={styles.fixtureVenue}>Home Ground</Text>
+              <Text style={styles.emptyText}>No upcoming fixtures</Text>
             </View>
-          </View>
+          )}
         </View>
+
+        {/* Recent Match Report */}
+        {recentCompletedFixture && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Latest Match Report</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  console.log('User tapped View Full Report');
+                  router.push(`/match-report/${recentCompletedFixture.id}` as any);
+                }}
+              >
+                <Text style={styles.viewAllText}>View Full</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={styles.reportCard}
+              onPress={() => {
+                console.log('User tapped recent match report');
+                router.push(`/match-report/${recentCompletedFixture.id}` as any);
+              }}
+            >
+              <View style={styles.reportHeader}>
+                <Text style={styles.reportOpponent}>{recentCompletedFixture.opponent}</Text>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="chevron-right"
+                  size={24}
+                  color={colors.textSecondary}
+                />
+              </View>
+              <Text style={styles.reportDate}>
+                {new Date(recentCompletedFixture.date).toLocaleDateString('en-IE', {
+                  weekday: 'long',
+                  month: 'long',
+                  day: 'numeric',
+                })}
+              </Text>
+              <View style={styles.reportActions}>
+                <View style={styles.reportAction}>
+                  <IconSymbol
+                    ios_icon_name="chart.bar.fill"
+                    android_material_icon_name="bar-chart"
+                    size={20}
+                    color={colors.primary}
+                  />
+                  <Text style={styles.reportActionText}>View Stats</Text>
+                </View>
+                <View style={styles.reportAction}>
+                  <IconSymbol
+                    ios_icon_name="square.and.arrow.up"
+                    android_material_icon_name="share"
+                    size={20}
+                    color={colors.primary}
+                  />
+                  <Text style={styles.reportActionText}>Export</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Stats Overview */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Season Stats</Text>
           <View style={styles.statsGrid}>
             <View style={styles.statCard}>
-              <Text style={styles.statValue}>8</Text>
+              <Text style={styles.statValue}>{totalMatches}</Text>
               <Text style={styles.statLabel}>Matches</Text>
             </View>
             <View style={styles.statCard}>
-              <Text style={styles.statValue}>6</Text>
-              <Text style={styles.statLabel}>Wins</Text>
+              <Text style={styles.statValue}>{fixtures.length}</Text>
+              <Text style={styles.statLabel}>Fixtures</Text>
             </View>
             <View style={styles.statCard}>
-              <Text style={styles.statValue}>25</Text>
-              <Text style={styles.statLabel}>Players</Text>
+              <Text style={styles.statValue}>{teams.length}</Text>
+              <Text style={styles.statLabel}>Teams</Text>
             </View>
           </View>
         </View>
@@ -364,5 +517,71 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.text,
     lineHeight: 20,
+  },
+  emptyCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 12,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  viewAllText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  reportCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  reportHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  reportOpponent: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  reportDate: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 16,
+  },
+  reportActions: {
+    flexDirection: 'row',
+    gap: 24,
+  },
+  reportAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reportActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
   },
 });
