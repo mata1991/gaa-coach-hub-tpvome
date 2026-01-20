@@ -17,12 +17,18 @@ import { registerMatchEventRoutes } from './routes/match-events.js';
 import { registerDevelopmentNoteRoutes } from './routes/development-notes.js';
 import { registerFitnessTestRoutes } from './routes/fitness-tests.js';
 import { registerUserRoleRoutes } from './routes/user-roles.js';
+import { registerReportRoutes } from './routes/reports.js';
+import { registerAnalyticsRoutes } from './routes/analytics.js';
+import { registerExportRoutes } from './routes/exports.js';
 
 // Combine schemas for full database type support
 const schema = { ...appSchema, ...authSchema };
 
 // Create application with combined schema
 export const app = await createApplication(schema);
+
+// Export database instance for use in seed script
+export const db = app.db;
 
 // Export App type for use in route files
 export type App = typeof app;
@@ -45,6 +51,9 @@ registerMatchEventRoutes(app);
 registerDevelopmentNoteRoutes(app);
 registerFitnessTestRoutes(app);
 registerUserRoleRoutes(app);
+registerReportRoutes(app);
+registerAnalyticsRoutes(app);
+registerExportRoutes(app);
 
 await app.run();
 app.logger.info('GAA Coach Hub API running');
