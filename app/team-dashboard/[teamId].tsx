@@ -259,10 +259,24 @@ export default function TeamDashboardScreen() {
 
   const handleEditTeam = () => {
     console.log('[TeamDashboard] User tapped Edit Team button');
-    router.push({
-      pathname: '/edit-team/[teamId]',
-      params: { teamId },
-    });
+    console.log('[TeamDashboard] Navigating to edit-team with teamId:', teamId);
+    
+    if (!teamId) {
+      console.error('[TeamDashboard] ERROR: teamId is missing!');
+      Alert.alert('Error', 'Team ID is missing. Please go back and select a team.');
+      return;
+    }
+    
+    try {
+      router.push({
+        pathname: '/edit-team/[teamId]',
+        params: { teamId },
+      });
+      console.log('[TeamDashboard] Navigation initiated successfully');
+    } catch (error) {
+      console.error('[TeamDashboard] Navigation failed:', error);
+      Alert.alert('Error', 'Failed to open Edit Team screen. Please try again.');
+    }
   };
 
   const canEdit = data?.userRole === 'CLUB_ADMIN' || data?.userRole === 'COACH';

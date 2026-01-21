@@ -261,26 +261,29 @@ export default function TrainingAttendanceScreen() {
           </View>
         </View>
 
-        {/* Filters */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersContainer}>
-          <View style={styles.filters}>
-            {(['ALL', 'TRAINED', 'INJURED', 'EXCUSED', 'NO_CONTACT'] as FilterType[]).map((f) => {
-              const isActive = filter === f;
-              const label = f === 'ALL' ? 'All' : f === 'TRAINED' ? 'Training' : f === 'INJURED' ? 'Injured' : f === 'EXCUSED' ? 'Excused' : 'No Contact';
-              
-              return (
-                <TouchableOpacity
-                  key={f}
-                  style={[styles.filterButton, isActive && styles.filterButtonActive]}
-                  onPress={() => setFilter(f)}
-                >
-                  <Text style={[styles.filterButtonText, isActive && styles.filterButtonTextActive]}>
-                    {label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+        {/* Filters - Scrollable Pill Tabs */}
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          style={styles.filtersContainer}
+          contentContainerStyle={styles.filtersContent}
+        >
+          {(['ALL', 'TRAINED', 'INJURED', 'EXCUSED', 'NO_CONTACT'] as FilterType[]).map((f) => {
+            const isActive = filter === f;
+            const label = f === 'ALL' ? 'All' : f === 'TRAINED' ? 'Training' : f === 'INJURED' ? 'Injured' : f === 'EXCUSED' ? 'Excused' : 'No Contact';
+            
+            return (
+              <TouchableOpacity
+                key={f}
+                style={[styles.filterButton, isActive && styles.filterButtonActive]}
+                onPress={() => setFilter(f)}
+              >
+                <Text style={[styles.filterButtonText, isActive && styles.filterButtonTextActive]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
         {/* Bulk Actions */}
@@ -480,32 +483,38 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   filtersContainer: {
-    maxHeight: 60,
+    backgroundColor: colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  filters: {
-    flexDirection: 'row',
-    padding: 16,
-    gap: 8,
+  filtersContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 12,
   },
   filterButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
     backgroundColor: colors.card,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
+    minWidth: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   filterButtonActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
   filterButtonText: {
-    fontSize: 14,
+    fontSize: 16,
+    fontWeight: '600',
     color: colors.text,
   },
   filterButtonTextActive: {
     color: '#fff',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   bulkActions: {
     flexDirection: 'row',

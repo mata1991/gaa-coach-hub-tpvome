@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -24,6 +25,8 @@ export default function CreateFixtureScreen() {
   const [opponent, setOpponent] = useState('');
   const [venue, setVenue] = useState('');
   const [date, setDate] = useState(new Date());
+  const [tempDate, setTempDate] = useState(new Date());
+  const [tempTime, setTempTime] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [competitions, setCompetitions] = useState<any[]>([]);
@@ -57,26 +60,58 @@ export default function CreateFixtureScreen() {
   }, [fetchCompetitions]);
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false);
+    if (Platform.OS === 'android' && event.type === 'dismissed') {
+      setShowDatePicker(false);
+      return;
+    }
+    
     if (selectedDate) {
-      const newDate = new Date(date);
-      newDate.setFullYear(selectedDate.getFullYear());
-      newDate.setMonth(selectedDate.getMonth());
-      newDate.setDate(selectedDate.getDate());
-      setDate(newDate);
-      console.log('Date changed:', newDate);
+      setTempDate(selectedDate);
+      console.log('Temp date changed:', selectedDate);
     }
   };
 
   const handleTimeChange = (event: any, selectedTime?: Date) => {
-    setShowTimePicker(false);
-    if (selectedTime) {
-      const newDate = new Date(date);
-      newDate.setHours(selectedTime.getHours());
-      newDate.setMinutes(selectedTime.getMinutes());
-      setDate(newDate);
-      console.log('Time changed:', newDate);
+    if (Platform.OS === 'android' && event.type === 'dismissed') {
+      setShowTimePicker(false);
+      return;
     }
+    
+    if (selectedTime) {
+      setTempTime(selectedTime);
+      console.log('Temp time changed:', selectedTime);
+    }
+  };
+
+  const confirmDateSelection = () => {
+    const newDate = new Date(date);
+    newDate.setFullYear(tempDate.getFullYear());
+    newDate.setMonth(tempDate.getMonth());
+    newDate.setDate(tempDate.getDate());
+    setDate(newDate);
+    setShowDatePicker(false);
+    console.log('Date confirmed:', newDate);
+  };
+
+  const confirmTimeSelection = () => {
+    const newDate = new Date(date);
+    newDate.setHours(tempTime.getHours());
+    newDate.setMinutes(tempTime.getMinutes());
+    setDate(newDate);
+    setShowTimePicker(false);
+    console.log('Time confirmed:', newDate);
+  };
+
+  const cancelDateSelection = () => {
+    setTempDate(date);
+    setShowDatePicker(false);
+    console.log('Date selection cancelled');
+  };
+
+  const cancelTimeSelection = () => {
+    setTempTime(date);
+    setShowTimePicker(false);
+    console.log('Time selection cancelled');
   };
 
   const validateForm = () => {
@@ -209,7 +244,10 @@ export default function CreateFixtureScreen() {
             </Text>
             <TouchableOpacity
               style={styles.dateButton}
-              onPress={() => setShowDatePicker(true)}
+              onPress={() => {
+                setTempDate(date);
+                setShowDatePicker(true);
+              }}
             >
               <IconSymbol
                 ios_icon_name="calendar"
@@ -227,7 +265,10 @@ export default function CreateFixtureScreen() {
             </Text>
             <TouchableOpacity
               style={styles.dateButton}
-              onPress={() => setShowTimePicker(true)}
+              onPress={() => {
+                setTempTime(date);
+                setShowTimePicker(true);
+              }}
             >
               <IconSymbol
                 ios_icon_name="clock"
@@ -292,23 +333,95 @@ export default function CreateFixtureScreen() {
           </View>
         </ScrollView>
 
-        {showDatePicker && (
-          <DateTimePicker
-            value={date}
-            mode="date"
-            display="default"
-            onChange={handleDateChange}
-          />
-        )}
+        {/* Date Picker Modal */}
+        <Modal
+          visible={showDatePicker}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={cancelDateSelection}
+        >
+          <TouchableOpacity 
+            style={styles.modalOverlay} 
+            activeOpacity={1}
+            onPress={cancelDateSelection}
+          >
+            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Date</Text>
+              </View>
+              
+              <View style={styles.pickerContainer}>
+                <DateTimePicker
+                  value={tempDate}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={handleDateChange}
+                  style={styles.picker}
+                />
+              </View>
+              
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonCancel]}
+                  onPress={cancelDateSelection}
+                >
+                  <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonConfirm]}
+                  onPress={confirmDateSelection}
+                >
+                  <Text style={styles.modalButtonTextConfirm}>Confirm</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
-        {showTimePicker && (
-          <DateTimePicker
-            value={date}
-            mode="time"
-            display="default"
-            onChange={handleTimeChange}
-          />
-        )}
+        {/* Time Picker Modal */}
+        <Modal
+          visible={showTimePicker}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={cancelTimeSelection}
+        >
+          <TouchableOpacity 
+            style={styles.modalOverlay} 
+            activeOpacity={1}
+            onPress={cancelTimeSelection}
+          >
+            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Time</Text>
+              </View>
+              
+              <View style={styles.pickerContainer}>
+                <DateTimePicker
+                  value={tempTime}
+                  mode="time"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={handleTimeChange}
+                  style={styles.picker}
+                />
+              </View>
+              
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonCancel]}
+                  onPress={cancelTimeSelection}
+                >
+                  <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonConfirm]}
+                  onPress={confirmTimeSelection}
+                >
+                  <Text style={styles.modalButtonTextConfirm}>Confirm</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </Modal>
       </SafeAreaView>
     </>
   );
@@ -420,5 +533,67 @@ const styles = StyleSheet.create({
     color: '#000',
     fontSize: 16,
     fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 34,
+    minHeight: 300,
+  },
+  modalHeader: {
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000',
+  },
+  pickerContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 200,
+  },
+  picker: {
+    width: '100%',
+    height: 200,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalButtonCancel: {
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  modalButtonConfirm: {
+    backgroundColor: '#000',
+  },
+  modalButtonTextCancel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
+  },
+  modalButtonTextConfirm: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
