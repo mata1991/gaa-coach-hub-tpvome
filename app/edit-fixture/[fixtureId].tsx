@@ -33,6 +33,16 @@ export default function EditFixtureScreen() {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [competitions, setCompetitions] = useState<any[]>([]);
   const [selectedCompetition, setSelectedCompetition] = useState<string>('');
+  
+  // Home team customization
+  const [homeTeamName, setHomeTeamName] = useState('');
+  const [homeCrestUrl, setHomeCrestUrl] = useState('');
+  const [homeColours, setHomeColours] = useState('');
+  
+  // Away team customization
+  const [awayTeamName, setAwayTeamName] = useState('');
+  const [awayCrestUrl, setAwayCrestUrl] = useState('');
+  const [awayColours, setAwayColours] = useState('');
 
   console.log('[EditFixture] Rendering edit fixture screen', { fixtureId, teamId });
 
@@ -50,6 +60,14 @@ export default function EditFixtureScreen() {
       setVenue(fixtureData.venue || '');
       setDate(new Date(fixtureData.date));
       setSelectedCompetition(fixtureData.competitionId || '');
+      
+      // Set home/away team customization
+      setHomeTeamName(fixtureData.homeTeamName || '');
+      setHomeCrestUrl(fixtureData.homeCrestUrl || '');
+      setHomeColours(fixtureData.homeColours || '');
+      setAwayTeamName(fixtureData.awayTeamName || '');
+      setAwayCrestUrl(fixtureData.awayCrestUrl || '');
+      setAwayColours(fixtureData.awayColours || '');
 
       // Fetch competitions
       try {
@@ -120,6 +138,12 @@ export default function EditFixtureScreen() {
         venue: venue.trim() || undefined,
         date: date.toISOString(),
         competitionId: selectedCompetition || undefined,
+        homeTeamName: homeTeamName.trim() || undefined,
+        homeCrestUrl: homeCrestUrl.trim() || undefined,
+        homeColours: homeColours.trim() || undefined,
+        awayTeamName: awayTeamName.trim() || undefined,
+        awayCrestUrl: awayCrestUrl.trim() || undefined,
+        awayColours: awayColours.trim() || undefined,
       };
 
       console.log('[EditFixture] Updating fixture:', payload);
@@ -307,6 +331,90 @@ export default function EditFixtureScreen() {
             </View>
           )}
 
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Home Team Customization (Optional)</Text>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Home Team Name</Text>
+            <TextInput
+              style={styles.input}
+              value={homeTeamName}
+              onChangeText={setHomeTeamName}
+              placeholder="e.g., Your Club Name"
+              placeholderTextColor="#999"
+              editable={!saving}
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Home Team Crest URL</Text>
+            <TextInput
+              style={styles.input}
+              value={homeCrestUrl}
+              onChangeText={setHomeCrestUrl}
+              placeholder="https://example.com/home-crest.png"
+              placeholderTextColor="#999"
+              autoCapitalize="none"
+              keyboardType="url"
+              editable={!saving}
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Home Team Colours</Text>
+            <TextInput
+              style={styles.input}
+              value={homeColours}
+              onChangeText={setHomeColours}
+              placeholder="e.g., Blue and Gold"
+              placeholderTextColor="#999"
+              editable={!saving}
+            />
+          </View>
+
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Away Team Customization (Optional)</Text>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Away Team Name</Text>
+            <TextInput
+              style={styles.input}
+              value={awayTeamName}
+              onChangeText={setAwayTeamName}
+              placeholder="e.g., Opponent Club Name"
+              placeholderTextColor="#999"
+              editable={!saving}
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Away Team Crest URL</Text>
+            <TextInput
+              style={styles.input}
+              value={awayCrestUrl}
+              onChangeText={setAwayCrestUrl}
+              placeholder="https://example.com/away-crest.png"
+              placeholderTextColor="#999"
+              autoCapitalize="none"
+              keyboardType="url"
+              editable={!saving}
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Away Team Colours</Text>
+            <TextInput
+              style={styles.input}
+              value={awayColours}
+              onChangeText={setAwayColours}
+              placeholder="e.g., Red and White"
+              placeholderTextColor="#999"
+              editable={!saving}
+            />
+          </View>
+
           <View style={styles.buttonGroup}>
             <TouchableOpacity
               style={styles.primaryButton}
@@ -435,6 +543,15 @@ const styles = StyleSheet.create({
   competitionChipTextActive: {
     color: '#fff',
     fontWeight: '600',
+  },
+  sectionHeader: {
+    marginTop: 24,
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
   },
   buttonGroup: {
     gap: 12,

@@ -79,6 +79,12 @@ export interface Fixture {
   venue?: string;
   date: string;
   status: 'scheduled' | 'in_progress' | 'completed';
+  homeTeamName?: string;
+  homeCrestUrl?: string;
+  homeColours?: string;
+  awayTeamName?: string;
+  awayCrestUrl?: string;
+  awayColours?: string;
   createdAt: string;
 }
 

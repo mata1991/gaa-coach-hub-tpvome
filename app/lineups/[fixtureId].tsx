@@ -10,6 +10,8 @@ import {
   Alert,
   TextInput,
   Modal,
+  Image,
+  ImageSourcePropType,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,6 +20,13 @@ import { colors } from '@/styles/commonStyles';
 import { authenticatedGet, authenticatedPost, authenticatedPut } from '@/utils/api';
 import { LineupSlot, MatchSquad, Player, TeamSide, Fixture } from '@/types';
 import { GAA_POSITIONS } from '@/constants/EventPresets';
+
+// Helper to resolve image sources (handles both local require() and remote URLs)
+function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
+  if (!source) return { uri: '' };
+  if (typeof source === 'string') return { uri: source };
+  return source as ImageSourcePropType;
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -274,6 +283,56 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  teamHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  teamInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  teamCrest: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.background,
+  },
+  teamCrestPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  teamDetails: {
+    flex: 1,
+  },
+  teamName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  teamColours: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  vsText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    marginHorizontal: 8,
   },
 });
 
@@ -781,6 +840,14 @@ export default function LineupsScreen() {
 
   const isLocked = currentSquad?.locked || false;
   const opponentName = fixture?.opponent || 'Opponent';
+  
+  // Get team names and details
+  const homeTeamName = fixture?.homeTeamName || 'Home Team';
+  const awayTeamName = fixture?.awayTeamName || fixture?.opponent || 'Away Team';
+  const homeCrestUrl = fixture?.homeCrestUrl;
+  const awayCrestUrl = fixture?.awayCrestUrl;
+  const homeColours = fixture?.homeColours;
+  const awayColours = fixture?.awayColours;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -791,6 +858,61 @@ export default function LineupsScreen() {
           <Text style={styles.lockedText}>Lineups Locked - Match Started</Text>
         </View>
       )}
+
+      {/* Team Header with Crests and Colors */}
+      <View style={styles.teamHeader}>
+        <View style={styles.teamInfo}>
+          {homeCrestUrl ? (
+            <Image 
+              source={resolveImageSource(homeCrestUrl)} 
+              style={styles.teamCrest}
+              resizeMode="contain"
+            />
+          ) : (
+            <View style={styles.teamCrestPlaceholder}>
+              <IconSymbol
+                ios_icon_name="shield"
+                android_material_icon_name="shield"
+                size={32}
+                color={colors.textSecondary}
+              />
+            </View>
+          )}
+          <View style={styles.teamDetails}>
+            <Text style={styles.teamName}>{homeTeamName}</Text>
+            {homeColours && (
+              <Text style={styles.teamColours}>{homeColours}</Text>
+            )}
+          </View>
+        </View>
+
+        <Text style={styles.vsText}>vs</Text>
+
+        <View style={styles.teamInfo}>
+          {awayCrestUrl ? (
+            <Image 
+              source={resolveImageSource(awayCrestUrl)} 
+              style={styles.teamCrest}
+              resizeMode="contain"
+            />
+          ) : (
+            <View style={styles.teamCrestPlaceholder}>
+              <IconSymbol
+                ios_icon_name="shield"
+                android_material_icon_name="shield"
+                size={32}
+                color={colors.textSecondary}
+              />
+            </View>
+          )}
+          <View style={styles.teamDetails}>
+            <Text style={styles.teamName}>{awayTeamName}</Text>
+            {awayColours && (
+              <Text style={styles.teamColours}>{awayColours}</Text>
+            )}
+          </View>
+        </View>
+      </View>
 
       <View style={styles.tabContainer}>
         <TouchableOpacity

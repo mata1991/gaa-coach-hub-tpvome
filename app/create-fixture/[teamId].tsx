@@ -33,6 +33,16 @@ export default function CreateFixtureScreen() {
   const [selectedCompetition, setSelectedCompetition] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  
+  // Home team customization
+  const [homeTeamName, setHomeTeamName] = useState('');
+  const [homeCrestUrl, setHomeCrestUrl] = useState('');
+  const [homeColours, setHomeColours] = useState('');
+  
+  // Away team customization
+  const [awayTeamName, setAwayTeamName] = useState('');
+  const [awayCrestUrl, setAwayCrestUrl] = useState('');
+  const [awayColours, setAwayColours] = useState('');
 
   console.log('CreateFixtureScreen: Rendering create fixture', { teamId });
 
@@ -160,6 +170,12 @@ export default function CreateFixtureScreen() {
         date: date.toISOString(),
         competitionId: selectedCompetition || undefined,
         status,
+        homeTeamName: homeTeamName.trim() || undefined,
+        homeCrestUrl: homeCrestUrl.trim() || undefined,
+        homeColours: homeColours.trim() || undefined,
+        awayTeamName: awayTeamName.trim() || undefined,
+        awayCrestUrl: awayCrestUrl.trim() || undefined,
+        awayColours: awayColours.trim() || undefined,
       };
 
       console.log('Creating fixture:', payload);
@@ -309,6 +325,84 @@ export default function CreateFixtureScreen() {
               </View>
             </View>
           )}
+
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Home Team Customization (Optional)</Text>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Home Team Name</Text>
+            <TextInput
+              style={styles.input}
+              value={homeTeamName}
+              onChangeText={setHomeTeamName}
+              placeholder="e.g., Your Club Name"
+              placeholderTextColor="#999"
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Home Team Crest URL</Text>
+            <TextInput
+              style={styles.input}
+              value={homeCrestUrl}
+              onChangeText={setHomeCrestUrl}
+              placeholder="https://example.com/home-crest.png"
+              placeholderTextColor="#999"
+              autoCapitalize="none"
+              keyboardType="url"
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Home Team Colours</Text>
+            <TextInput
+              style={styles.input}
+              value={homeColours}
+              onChangeText={setHomeColours}
+              placeholder="e.g., Blue and Gold"
+              placeholderTextColor="#999"
+            />
+          </View>
+
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Away Team Customization (Optional)</Text>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Away Team Name</Text>
+            <TextInput
+              style={styles.input}
+              value={awayTeamName}
+              onChangeText={setAwayTeamName}
+              placeholder="e.g., Opponent Club Name"
+              placeholderTextColor="#999"
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Away Team Crest URL</Text>
+            <TextInput
+              style={styles.input}
+              value={awayCrestUrl}
+              onChangeText={setAwayCrestUrl}
+              placeholder="https://example.com/away-crest.png"
+              placeholderTextColor="#999"
+              autoCapitalize="none"
+              keyboardType="url"
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Away Team Colours</Text>
+            <TextInput
+              style={styles.input}
+              value={awayColours}
+              onChangeText={setAwayColours}
+              placeholder="e.g., Red and White"
+              placeholderTextColor="#999"
+            />
+          </View>
 
           <View style={styles.buttonGroup}>
             <TouchableOpacity
@@ -505,6 +599,15 @@ const styles = StyleSheet.create({
   competitionChipTextActive: {
     color: '#fff',
     fontWeight: '600',
+  },
+  sectionHeader: {
+    marginTop: 24,
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
   },
   buttonGroup: {
     gap: 12,
