@@ -57,18 +57,41 @@ export default function HomeScreen() {
       
       // Fetch teams for the first club
       console.log('[Home] Fetching teams for club:', firstClub.id);
-      const teamsResponse = await authenticatedGet<Team[]>(`/api/teams?clubId=${firstClub.id}`);
-      console.log('[Home] Fetched teams:', teamsResponse);
-      setTeams(teamsResponse || []);
+      const teamsUrl = `/api/teams?clubId=${firstClub.id}`;
+      console.log('[Home] Request URL:', BACKEND_URL + teamsUrl);
       
-      if (!teamsResponse || teamsResponse.length === 0) {
+      try {
+        const teamsResponse = await authenticatedGet<Team[]>(teamsUrl);
+        console.log('[Home] Teams API response status: 200');
+        console.log('[Home] Fetched teams:', teamsResponse);
+        console.log('[Home] Number of teams:', teamsResponse?.length || 0);
+        setTeams(teamsResponse || []);
+      } catch (teamsError: any) {
+        console.error('[Home] Failed to fetch teams:', teamsError);
+        console.error('[Home] Teams error message:', teamsError?.message);
+        
+        // Check if it's a 404 route not found error
+        if (teamsError?.message?.includes('404') || teamsError?.message?.includes('not found')) {
+          console.error('[Home] 404 ERROR: GET /api/teams endpoint not found on backend');
+          setError('App configuration error. The teams endpoint is not available. Please contact support.');
+          return;
+        }
+        
+        // For other errors, continue but show empty teams
+        console.warn('[Home] Continuing with empty teams list due to error');
+        setTeams([]);
+      }
+      
+      // Check if we have teams after the try-catch
+      if (!teams || teams.length === 0) {
         console.warn('[Home] No teams found for club');
-        setError('No teams found. Please create a team first.');
+        // Don't set error for empty teams - show empty state instead
+        setFixtures([]);
         return;
       }
       
       // Fetch fixtures for the first team
-      const firstTeam = teamsResponse[0];
+      const firstTeam = teams[0];
       console.log('[Home] Fetching fixtures for team:', firstTeam.id, firstTeam.name);
       const fixturesResponse = await authenticatedGet<Fixture[]>(`/api/fixtures?teamId=${firstTeam.id}`);
       console.log('[Home] Fetched fixtures:', fixturesResponse);
@@ -179,32 +202,43 @@ export default function HomeScreen() {
 
   // Error state with retry
   if (error) {
+    const isConfigError = error.includes('configuration error') || error.includes('not available');
+    const errorIcon = isConfigError ? 'error' : 'error';
+    const errorTitle = isConfigError ? 'Configuration Error' : 'Failed to Load Data';
+    
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
         <View style={styles.errorContainer}>
           <IconSymbol
             ios_icon_name="exclamationmark.triangle.fill"
-            android_material_icon_name="error"
+            android_material_icon_name={errorIcon}
             size={64}
             color={colors.danger}
           />
-          <Text style={styles.errorTitle}>Failed to Load Data</Text>
+          <Text style={styles.errorTitle}>{errorTitle}</Text>
           <Text style={styles.errorMessage}>{error}</Text>
-          <TouchableOpacity
-            style={styles.retryButton}
-            onPress={() => {
-              console.log('[Home] User tapped Retry button');
-              fetchData();
-            }}
-          >
-            <IconSymbol
-              ios_icon_name="arrow.clockwise"
-              android_material_icon_name="refresh"
-              size={20}
-              color="#fff"
-            />
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
+          {!isConfigError && (
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => {
+                console.log('[Home] User tapped Retry button');
+                fetchData();
+              }}
+            >
+              <IconSymbol
+                ios_icon_name="arrow.clockwise"
+                android_material_icon_name="refresh"
+                size={20}
+                color="#fff"
+              />
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          )}
+          {isConfigError && (
+            <Text style={styles.supportText}>
+              Please contact support or try again later.
+            </Text>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -316,10 +350,37 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {/* Empty state if no teams */}
+        {teams.length === 0 && (
+          <View style={styles.section}>
+            <View style={styles.emptyCard}>
+              <IconSymbol
+                ios_icon_name="sportscourt"
+                android_material_icon_name="sports"
+                size={64}
+                color={colors.textSecondary}
+              />
+              <Text style={styles.emptyText}>No teams yet</Text>
+              <Text style={styles.emptySubtext}>Create a team to get started with fixtures and match tracking</Text>
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => {
+                  console.log('[Home] User tapped Create Team from empty state');
+                  // Navigate to club dashboard or create team
+                  router.push('/get-started');
+                }}
+              >
+                <Text style={styles.retryButtonText}>Create Team</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* Next Fixture */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Next Fixture</Text>
-          {nextFixture ? (
+        {teams.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Next Fixture</Text>
+            {nextFixture ? (
             <View style={styles.fixtureCard}>
               <View style={styles.fixtureHeader}>
                 <Text style={styles.fixtureCompetition}>
@@ -366,10 +427,11 @@ export default function HomeScreen() {
               <Text style={styles.emptySubtext}>Create a team and add fixtures to get started</Text>
             </View>
           )}
-        </View>
+          </View>
+        )}
 
         {/* Recent Match Report */}
-        {recentCompletedFixture && (
+        {teams.length > 0 && recentCompletedFixture && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Latest Match Report</Text>
@@ -430,23 +492,25 @@ export default function HomeScreen() {
         )}
 
         {/* Stats Overview */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Season Stats</Text>
-          <View style={styles.statsGrid}>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{totalMatches}</Text>
-              <Text style={styles.statLabel}>Matches</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{fixtures.length}</Text>
-              <Text style={styles.statLabel}>Fixtures</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{totalPlayers || teams.length}</Text>
-              <Text style={styles.statLabel}>{totalPlayers ? 'Players' : 'Teams'}</Text>
+        {teams.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Season Stats</Text>
+            <View style={styles.statsGrid}>
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>{totalMatches}</Text>
+                <Text style={styles.statLabel}>Matches</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>{fixtures.length}</Text>
+                <Text style={styles.statLabel}>Fixtures</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>{totalPlayers || teams.length}</Text>
+                <Text style={styles.statLabel}>{totalPlayers ? 'Players' : 'Teams'}</Text>
+              </View>
             </View>
           </View>
-        </View>
+        )}
 
         {/* Info Banner */}
         <View style={styles.infoBanner}>
@@ -753,5 +817,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
+  },
+  supportText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 16,
   },
 });
