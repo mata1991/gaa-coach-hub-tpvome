@@ -26,6 +26,7 @@ export const fixtureStatusEnum = pgEnum('fixture_status', ['scheduled', 'in_prog
 export const competitionTypeEnum = pgEnum('competition_type', ['League', 'Championship', 'Shield']);
 export const playerAvailabilityEnum = pgEnum('player_availability', ['available', 'unavailable', 'maybe']);
 export const attendanceStatusEnum = pgEnum('attendance_status', ['present', 'late', 'absent']);
+export const trainingAttendanceStatusEnum = pgEnum('training_attendance_status', ['TRAINED', 'INJURED', 'EXCUSED', 'NO_CONTACT']);
 export const dominantSideEnum = pgEnum('dominant_side', ['left', 'right']);
 export const eventCategoryEnum = pgEnum('event_category', [
   'Scoring',
@@ -77,6 +78,8 @@ export const teams = pgTable('teams', {
   grade: text('grade'),
   ageGroup: text('age_group'),
   homeVenue: text('home_venue'),
+  crestUrl: text('crest_url'),
+  colours: text('colours'),
   ageGrade: text('age_grade'),
   level: text('level'),
   isArchived: boolean('is_archived').default(false).notNull(),
@@ -195,34 +198,39 @@ export const trainingSessions = pgTable('training_sessions', {
     .notNull()
     .references(() => teams.id, { onDelete: 'cascade' }),
   date: timestamp('date').notNull(),
+  location: text('location'),
   focus: text('focus'),
   drills: text('drills'),
   notes: text('notes'),
+  createdBy: text('created_by')
+    .notNull()
+    .references(() => user.id, { onDelete: 'restrict' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   index('training_sessions_team_id_idx').on(table.teamId),
   index('training_sessions_date_idx').on(table.date),
+  index('training_sessions_created_by_idx').on(table.createdBy),
 ]);
 
 // ============================================================================
-// ATTENDANCE
+// TRAINING ATTENDANCE
 // ============================================================================
 
-export const attendance = pgTable('attendance', {
+export const trainingAttendance = pgTable('training_attendance', {
   id: uuid('id').primaryKey().defaultRandom(),
-  playerId: uuid('player_id')
-    .notNull()
-    .references(() => players.id, { onDelete: 'cascade' }),
   sessionId: uuid('session_id')
     .notNull()
     .references(() => trainingSessions.id, { onDelete: 'cascade' }),
-  status: attendanceStatusEnum('status').notNull(),
-  notes: text('notes'),
+  playerId: uuid('player_id')
+    .notNull()
+    .references(() => players.id, { onDelete: 'cascade' }),
+  status: trainingAttendanceStatusEnum('status').default('NO_CONTACT').notNull(),
+  note: text('note'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
-  index('attendance_player_id_idx').on(table.playerId),
-  index('attendance_session_id_idx').on(table.sessionId),
-  uniqueIndex('attendance_player_session_unique_idx').on(table.playerId, table.sessionId),
+  index('training_attendance_session_id_idx').on(table.sessionId),
+  index('training_attendance_player_id_idx').on(table.playerId),
+  uniqueIndex('training_attendance_session_player_unique_idx').on(table.sessionId, table.playerId),
 ]);
 
 // ============================================================================
@@ -484,7 +492,7 @@ export const playersRelations = relations(players, ({ one, many }) => ({
     references: [teams.id],
   }),
   availability: many(availability),
-  attendance: many(attendance),
+  trainingAttendance: many(trainingAttendance),
   developmentNotes: many(developmentNotes),
   fitnessTests: many(fitnessTests),
   matchEvents: many(matchEvents),
@@ -510,17 +518,17 @@ export const trainingSessionsRelations = relations(trainingSessions, ({ one, man
     fields: [trainingSessions.teamId],
     references: [teams.id],
   }),
-  attendance: many(attendance),
+  trainingAttendance: many(trainingAttendance),
   availability: many(availability),
 }));
 
-export const attendanceRelations = relations(attendance, ({ one }) => ({
+export const trainingAttendanceRelations = relations(trainingAttendance, ({ one }) => ({
   player: one(players, {
-    fields: [attendance.playerId],
+    fields: [trainingAttendance.playerId],
     references: [players.id],
   }),
   session: one(trainingSessions, {
-    fields: [attendance.sessionId],
+    fields: [trainingAttendance.sessionId],
     references: [trainingSessions.id],
   }),
 }));

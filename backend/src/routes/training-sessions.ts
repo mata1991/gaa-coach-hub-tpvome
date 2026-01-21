@@ -23,10 +23,25 @@ export function registerTrainingSessionRoutes(app: App) {
         const sessions = await app.db.query.trainingSessions.findMany({
           where: eq(schema.trainingSessions.teamId, teamId),
           orderBy: (sessions, { desc }) => [desc(sessions.date)],
+          with: {
+            trainingAttendance: true,
+          },
+        });
+
+        // Add attendance counts to each session
+        const sessionsWithCounts = sessions.map((s) => {
+          const counts = {
+            trained: s.trainingAttendance.filter((a) => a.status === 'TRAINED').length,
+            injured: s.trainingAttendance.filter((a) => a.status === 'INJURED').length,
+            excused: s.trainingAttendance.filter((a) => a.status === 'EXCUSED').length,
+            noContact: s.trainingAttendance.filter((a) => a.status === 'NO_CONTACT').length,
+          };
+          const { trainingAttendance, ...rest } = s;
+          return { ...rest, attendanceCounts: counts };
         });
 
         app.logger.info({ teamId, sessionCount: sessions.length }, 'Training sessions fetched');
-        return sessions;
+        return sessionsWithCounts;
       } catch (error) {
         app.logger.error({ err: error, teamId }, 'Failed to fetch training sessions');
         throw error;
@@ -41,9 +56,9 @@ export function registerTrainingSessionRoutes(app: App) {
       request: FastifyRequest<{
         Body: {
           teamId: string;
-          date: string;
+          dateTime: string;
+          location?: string;
           focus?: string;
-          drills?: string;
           notes?: string;
         };
       }>,
@@ -52,34 +67,44 @@ export function registerTrainingSessionRoutes(app: App) {
       const session = await requireAuth(request, reply);
       if (!session) return;
 
-      const { teamId, date, focus, drills, notes } = request.body;
-      app.logger.info({ userId: session.user.id, teamId, date }, 'Creating training session');
+      const { teamId, dateTime, location, focus, notes } = request.body;
+      app.logger.info({ userId: session.user.id, teamId, dateTime }, 'Creating training session');
 
       try {
         const [trainSession] = await app.db
           .insert(schema.trainingSessions)
           .values({
             teamId,
-            date: new Date(date),
+            date: new Date(dateTime),
+            location,
             focus,
-            drills,
             notes,
+            createdBy: session.user.id,
           })
           .returning();
 
         app.logger.info(
-          { trainingSessionId: trainSession.id, date },
+          { trainingSessionId: trainSession.id, dateTime, createdBy: session.user.id },
           'Training session created successfully'
         );
-        return trainSession;
+        return {
+          id: trainSession.id,
+          teamId: trainSession.teamId,
+          dateTime: trainSession.date,
+          location: trainSession.location,
+          focus: trainSession.focus,
+          notes: trainSession.notes,
+          createdBy: trainSession.createdBy,
+          createdAt: trainSession.createdAt,
+        };
       } catch (error) {
-        app.logger.error({ err: error, teamId, date }, 'Failed to create training session');
+        app.logger.error({ err: error, teamId, dateTime }, 'Failed to create training session');
         throw error;
       }
     }
   );
 
-  // GET /api/training-sessions/:id - Get session details
+  // GET /api/training-sessions/:id - Get session details with full attendance
   app.fastify.get(
     '/api/training-sessions/:id',
     async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
@@ -93,7 +118,11 @@ export function registerTrainingSessionRoutes(app: App) {
         const trainSession = await app.db.query.trainingSessions.findFirst({
           where: eq(schema.trainingSessions.id, id),
           with: {
-            attendance: true,
+            trainingAttendance: {
+              with: {
+                player: true,
+              },
+            },
           },
         });
 
@@ -102,8 +131,26 @@ export function registerTrainingSessionRoutes(app: App) {
           return reply.status(404).send({ error: 'Training session not found' });
         }
 
+        const attendance = trainSession.trainingAttendance.map((a) => ({
+          id: a.id,
+          playerId: a.playerId,
+          playerName: a.player?.name,
+          status: a.status,
+          note: a.note,
+        }));
+
         app.logger.info({ trainingSessionId: id }, 'Session details fetched');
-        return trainSession;
+        return {
+          id: trainSession.id,
+          teamId: trainSession.teamId,
+          dateTime: trainSession.date,
+          location: trainSession.location,
+          focus: trainSession.focus,
+          notes: trainSession.notes,
+          createdBy: trainSession.createdBy,
+          createdAt: trainSession.createdAt,
+          attendance,
+        };
       } catch (error) {
         app.logger.error({ err: error, trainingSessionId: id }, 'Failed to fetch session');
         throw error;
@@ -118,8 +165,9 @@ export function registerTrainingSessionRoutes(app: App) {
       request: FastifyRequest<{
         Params: { id: string };
         Body: {
+          dateTime?: string;
+          location?: string;
           focus?: string;
-          drills?: string;
           notes?: string;
         };
       }>,
@@ -129,14 +177,15 @@ export function registerTrainingSessionRoutes(app: App) {
       if (!session) return;
 
       const { id } = request.params;
-      const { focus, drills, notes } = request.body;
+      const { dateTime, location, focus, notes } = request.body;
 
       app.logger.info({ userId: session.user.id, trainingSessionId: id }, 'Updating session');
 
       try {
         const updateData: any = {};
+        if (dateTime !== undefined) updateData.date = new Date(dateTime);
+        if (location !== undefined) updateData.location = location;
         if (focus !== undefined) updateData.focus = focus;
-        if (drills !== undefined) updateData.drills = drills;
         if (notes !== undefined) updateData.notes = notes;
 
         const [updated] = await app.db
@@ -146,9 +195,52 @@ export function registerTrainingSessionRoutes(app: App) {
           .returning();
 
         app.logger.info({ trainingSessionId: id }, 'Session updated successfully');
-        return updated;
+        return {
+          id: updated.id,
+          teamId: updated.teamId,
+          dateTime: updated.date,
+          location: updated.location,
+          focus: updated.focus,
+          notes: updated.notes,
+          createdBy: updated.createdBy,
+          createdAt: updated.createdAt,
+        };
       } catch (error) {
         app.logger.error({ err: error, trainingSessionId: id }, 'Failed to update session');
+        throw error;
+      }
+    }
+  );
+
+  // DELETE /api/training-sessions/:id - Delete training session
+  app.fastify.delete(
+    '/api/training-sessions/:id',
+    async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { id } = request.params;
+      app.logger.info({ userId: session.user.id, trainingSessionId: id }, 'Deleting training session');
+
+      try {
+        const trainSession = await app.db.query.trainingSessions.findFirst({
+          where: eq(schema.trainingSessions.id, id),
+        });
+
+        if (!trainSession) {
+          app.logger.warn({ trainingSessionId: id }, 'Training session not found');
+          return reply.status(404).send({ error: 'Training session not found' });
+        }
+
+        // Delete associated training attendance records (cascade is handled by DB)
+        await app.db
+          .delete(schema.trainingSessions)
+          .where(eq(schema.trainingSessions.id, id));
+
+        app.logger.info({ trainingSessionId: id }, 'Training session deleted successfully');
+        return { success: true };
+      } catch (error) {
+        app.logger.error({ err: error, trainingSessionId: id }, 'Failed to delete training session');
         throw error;
       }
     }

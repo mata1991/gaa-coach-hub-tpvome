@@ -23,7 +23,7 @@ export function registerPlayerRoutes(app: App) {
         const players = await app.db.query.players.findMany({
           where: eq(schema.players.teamId, teamId),
           with: {
-            attendance: true,
+            trainingAttendance: true,
             developmentNotes: true,
             fitnessTests: true,
           },
@@ -101,7 +101,7 @@ export function registerPlayerRoutes(app: App) {
         const player = await app.db.query.players.findFirst({
           where: eq(schema.players.id, id),
           with: {
-            attendance: true,
+            trainingAttendance: true,
             developmentNotes: true,
             fitnessTests: true,
             matchEvents: true,
@@ -113,16 +113,16 @@ export function registerPlayerRoutes(app: App) {
           return reply.status(404).send({ error: 'Player not found' });
         }
 
-        // Calculate attendance percentage
-        const attendanceRecords = player.attendance;
-        const presentCount = attendanceRecords.filter((a) => a.status === 'present').length;
-        const attendancePercentage =
-          attendanceRecords.length > 0 ? (presentCount / attendanceRecords.length) * 100 : 0;
+        // Calculate training attendance percentage
+        const trainingRecords = player.trainingAttendance;
+        const trainedCount = trainingRecords.filter((a) => a.status === 'TRAINED').length;
+        const trainingAttendancePercentage =
+          trainingRecords.length > 0 ? (trainedCount / trainingRecords.length) * 100 : 0;
 
         app.logger.info({ playerId: id }, 'Player details fetched');
         return {
           ...player,
-          attendancePercentage,
+          trainingAttendancePercentage,
         };
       } catch (error) {
         app.logger.error({ err: error, playerId: id }, 'Failed to fetch player');

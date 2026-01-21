@@ -159,9 +159,10 @@ async function seed() {
     const trainingValues = trainingDates.map((date) => ({
       teamId: hurlingTeam.id,
       date,
+      location: 'Main Pitch',
       focus: 'Ball handling and passing drills',
-      drills: 'Solo runs, Ground catches, Passing accuracy',
       notes: 'General fitness training',
+      createdBy: ADMIN_USER_ID,
     }));
 
     const trainingSessions = await db
@@ -170,25 +171,33 @@ async function seed() {
       .returning();
     console.log(`✅ Created ${trainingSessions.length} training sessions`);
 
-    // Create attendance records
-    const attendanceValues = [];
+    // Create training attendance records
+    const trainingAttendanceValues = [];
     for (const session of trainingSessions) {
       for (let i = 0; i < createdPlayers.length; i++) {
-        if (Math.random() > 0.2) {
-          // 80% attendance
-          attendanceValues.push({
-            playerId: createdPlayers[i].id,
+        const rand = Math.random();
+        if (rand > 0.1) {
+          // 90% have some status
+          let status = 'TRAINED';
+          if (rand > 0.95) {
+            status = 'INJURED';
+          } else if (rand > 0.88) {
+            status = 'EXCUSED';
+          }
+
+          trainingAttendanceValues.push({
             sessionId: session.id,
-            status: Math.random() > 0.95 ? 'late' : 'present',
-            notes: Math.random() > 0.9 ? 'Left early' : null,
+            playerId: createdPlayers[i].id,
+            status,
+            note: status !== 'TRAINED' ? `Player not available - ${status.toLowerCase()}` : null,
           });
         }
       }
     }
 
-    if (attendanceValues.length > 0) {
-      await db.insert(schema.attendance).values(attendanceValues);
-      console.log(`✅ Created ${attendanceValues.length} attendance records`);
+    if (trainingAttendanceValues.length > 0) {
+      await db.insert(schema.trainingAttendance).values(trainingAttendanceValues);
+      console.log(`✅ Created ${trainingAttendanceValues.length} training attendance records`);
     }
 
     // Create match events for the completed fixtures

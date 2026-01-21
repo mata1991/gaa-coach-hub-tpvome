@@ -226,6 +226,8 @@ export function registerTeamsV2Routes(app: App) {
           grade?: string;
           ageGroup?: string;
           homeVenue?: string;
+          crestUrl?: string;
+          colours?: string;
           isArchived?: boolean;
         };
       }>,
@@ -235,7 +237,7 @@ export function registerTeamsV2Routes(app: App) {
       if (!session) return;
 
       const { id } = request.params;
-      const { name, shortName, sport, grade, ageGroup, homeVenue, isArchived } = request.body;
+      const { name, shortName, sport, grade, ageGroup, homeVenue, crestUrl, colours, isArchived } = request.body;
 
       app.logger.info({ userId: session.user.id, teamId: id }, 'Updating team');
 
@@ -271,6 +273,8 @@ export function registerTeamsV2Routes(app: App) {
         if (grade !== undefined) updateData.grade = grade;
         if (ageGroup !== undefined) updateData.ageGroup = ageGroup;
         if (homeVenue !== undefined) updateData.homeVenue = homeVenue;
+        if (crestUrl !== undefined) updateData.crestUrl = crestUrl;
+        if (colours !== undefined) updateData.colours = colours;
         if (isArchived !== undefined) updateData.isArchived = isArchived;
 
         const [updated] = await app.db
@@ -493,6 +497,56 @@ export function registerTeamsV2Routes(app: App) {
         };
       } catch (error) {
         app.logger.error({ err: error, teamId, userId }, 'Failed to add user to team');
+        throw error;
+      }
+    }
+  );
+
+  // DELETE /api/teams/:id - Soft delete team (archive)
+  app.fastify.delete(
+    '/api/teams/:id',
+    async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { id } = request.params;
+      app.logger.info({ userId: session.user.id, teamId: id }, 'Deleting team');
+
+      try {
+        const team = await app.db.query.teams.findFirst({
+          where: eq(schema.teams.id, id),
+        });
+
+        if (!team) {
+          app.logger.warn({ teamId: id }, 'Team not found');
+          return reply.status(404).send({ error: 'Team not found' });
+        }
+
+        // Check if user is CLUB_ADMIN
+        const membership = await app.db.query.memberships.findFirst({
+          where: and(
+            eq(schema.memberships.clubId, team.clubId),
+            eq(schema.memberships.userId, session.user.id)
+          ),
+        });
+
+        if (!membership || membership.role !== 'CLUB_ADMIN') {
+          app.logger.warn({ teamId: id, userId: session.user.id }, 'Unauthorized team deletion');
+          return reply
+            .status(403)
+            .send({ error: 'Only CLUB_ADMIN can delete teams' });
+        }
+
+        // Soft delete: archive the team
+        await app.db
+          .update(schema.teams)
+          .set({ isArchived: true })
+          .where(eq(schema.teams.id, id));
+
+        app.logger.info({ teamId: id }, 'Team archived successfully');
+        return { success: true };
+      } catch (error) {
+        app.logger.error({ err: error, teamId: id }, 'Failed to delete team');
         throw error;
       }
     }
