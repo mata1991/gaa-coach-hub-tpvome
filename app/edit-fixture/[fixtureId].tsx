@@ -141,25 +141,44 @@ export default function EditFixtureScreen() {
   };
 
   const handleDeleteFixture = () => {
+    console.log('[EditFixture] User tapped Delete Fixture button');
     Alert.alert(
       'Delete Fixture',
-      'Are you sure you want to delete this fixture?',
+      `Are you sure you want to delete the fixture against ${opponent}? This action cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            console.log('[EditFixture] Deleting fixture:', fixtureId);
+            setSaving(true);
+            
             try {
-              console.log('[EditFixture] Deleting fixture:', fixtureId);
               await authenticatedDelete(`/api/fixtures/${fixtureId}`);
               console.log('[EditFixture] Fixture deleted successfully');
-              Alert.alert('Success', 'Fixture deleted', [
-                { text: 'OK', onPress: () => router.back() },
+              
+              // Navigate back to team dashboard with success message
+              Alert.alert('Success', 'Fixture deleted successfully', [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    // Navigate back to team dashboard
+                    if (router.canGoBack()) {
+                      router.back();
+                    } else {
+                      router.replace({
+                        pathname: '/team-dashboard/[teamId]',
+                        params: { teamId },
+                      });
+                    }
+                  },
+                },
               ]);
             } catch (error) {
               console.error('[EditFixture] Failed to delete fixture:', error);
-              Alert.alert('Error', 'Failed to delete fixture');
+              Alert.alert('Error', 'Failed to delete fixture. Please try again.');
+              setSaving(false);
             }
           },
         },

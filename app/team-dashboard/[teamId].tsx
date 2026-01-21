@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FixturePicker } from '@/components/FixturePicker';
-import { authenticatedGet } from '@/utils/api';
+import { authenticatedGet, authenticatedDelete } from '@/utils/api';
 import { Team, Fixture, Club } from '@/types';
 import { getSportDisplayName } from '@/constants/EventPresets';
 
@@ -219,6 +219,52 @@ export default function TeamDashboardScreen() {
     }
   };
 
+  const handleDeleteFixture = (fixture: Fixture) => {
+    console.log('[TeamDashboard] User tapped Delete Fixture:', fixture.id);
+    Alert.alert(
+      'Delete Fixture',
+      `Are you sure you want to delete the fixture against ${fixture.opponent}? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            console.log('[TeamDashboard] Deleting fixture:', fixture.id);
+            
+            try {
+              await authenticatedDelete(`/api/fixtures/${fixture.id}`);
+              console.log('[TeamDashboard] Fixture deleted successfully');
+              
+              // Optimistically update the UI by removing the fixture from the list
+              if (data) {
+                setData({
+                  ...data,
+                  upcomingFixtures: data.upcomingFixtures.filter(f => f.id !== fixture.id),
+                });
+              }
+              
+              Alert.alert('Success', 'Fixture deleted successfully');
+            } catch (error) {
+              console.error('[TeamDashboard] Failed to delete fixture:', error);
+              Alert.alert('Error', 'Failed to delete fixture. Please try again.');
+              // Refetch to restore the correct state
+              fetchDashboard();
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleEditTeam = () => {
+    console.log('[TeamDashboard] User tapped Edit Team button');
+    router.push({
+      pathname: '/edit-team/[teamId]',
+      params: { teamId },
+    });
+  };
+
   const canEdit = data?.userRole === 'CLUB_ADMIN' || data?.userRole === 'COACH';
 
   if (loading) {
@@ -263,17 +309,26 @@ export default function TeamDashboardScreen() {
           title: data.team.name,
           headerBackTitle: 'Back',
           headerRight: () => (
-            <TouchableOpacity
-              onPress={handleSwitchTeam}
-              style={{ marginRight: 8 }}
-            >
-              <IconSymbol
-                ios_icon_name="arrow.triangle.2.circlepath"
-                android_material_icon_name="swap-horiz"
-                size={24}
-                color="#000"
-              />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 12, marginRight: 8 }}>
+              {canEdit && (
+                <TouchableOpacity onPress={handleEditTeam}>
+                  <IconSymbol
+                    ios_icon_name="pencil"
+                    android_material_icon_name="edit"
+                    size={24}
+                    color="#000"
+                  />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={handleSwitchTeam}>
+                <IconSymbol
+                  ios_icon_name="arrow.triangle.2.circlepath"
+                  android_material_icon_name="swap-horiz"
+                  size={24}
+                  color="#000"
+                />
+              </TouchableOpacity>
+            </View>
           ),
         }}
       />
@@ -421,32 +476,49 @@ export default function TeamDashboardScreen() {
                   });
 
                   return (
-                    <TouchableOpacity
-                      key={fixture.id}
-                      style={styles.fixtureCard}
-                      onPress={() => {
-                        console.log('[TeamDashboard] User tapped fixture:', fixture.id);
-                        router.push({
-                          pathname: '/edit-fixture/[fixtureId]',
-                          params: { fixtureId: fixture.id, teamId },
-                        });
-                      }}
-                    >
-                      <View style={styles.fixtureInfo}>
-                        <Text style={styles.fixtureOpponent}>{fixture.opponent}</Text>
-                        <Text style={styles.fixtureDate}>{dateStr}</Text>
-                        <Text style={styles.fixtureDate}>{timeStr}</Text>
-                        {fixture.venue && (
-                          <Text style={styles.fixtureVenue}>{fixture.venue}</Text>
-                        )}
-                      </View>
-                      <IconSymbol
-                        ios_icon_name="chevron.right"
-                        android_material_icon_name="chevron-right"
-                        size={20}
-                        color="#666"
-                      />
-                    </TouchableOpacity>
+                    <View key={fixture.id} style={styles.fixtureCard}>
+                      <TouchableOpacity
+                        style={styles.fixtureCardContent}
+                        onPress={() => {
+                          console.log('[TeamDashboard] User tapped fixture:', fixture.id);
+                          router.push({
+                            pathname: '/edit-fixture/[fixtureId]',
+                            params: { fixtureId: fixture.id, teamId },
+                          });
+                        }}
+                      >
+                        <View style={styles.fixtureInfo}>
+                          <Text style={styles.fixtureOpponent}>{fixture.opponent}</Text>
+                          <Text style={styles.fixtureDate}>{dateStr}</Text>
+                          <Text style={styles.fixtureDate}>{timeStr}</Text>
+                          {fixture.venue && (
+                            <Text style={styles.fixtureVenue}>{fixture.venue}</Text>
+                          )}
+                        </View>
+                        <IconSymbol
+                          ios_icon_name="chevron.right"
+                          android_material_icon_name="chevron-right"
+                          size={20}
+                          color="#666"
+                        />
+                      </TouchableOpacity>
+                      {canEdit && (
+                        <TouchableOpacity
+                          style={styles.deleteFixtureButton}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleDeleteFixture(fixture);
+                          }}
+                        >
+                          <IconSymbol
+                            ios_icon_name="trash"
+                            android_material_icon_name="delete"
+                            size={20}
+                            color="#dc3545"
+                          />
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   );
                 })}
               </View>
@@ -631,14 +703,24 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   fixtureCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#e0e0e0',
-    padding: 16,
     borderRadius: 12,
+    overflow: 'hidden',
+  },
+  fixtureCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
     gap: 12,
+  },
+  deleteFixtureButton: {
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    alignItems: 'center',
+    backgroundColor: '#fff',
   },
   fixtureInfo: {
     flex: 1,

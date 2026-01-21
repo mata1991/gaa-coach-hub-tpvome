@@ -570,8 +570,7 @@ export default function LineupsScreen() {
     if (!currentSquad) return null;
 
     const rows = [
-      [14],
-      [13, 15],
+      [13, 14, 15],
       [10, 11, 12],
       [8, 9],
       [5, 6, 7],

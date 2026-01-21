@@ -133,7 +133,18 @@ export default function EditTeamScreen() {
       Alert.alert('Success', 'Team updated successfully', [
         {
           text: 'OK',
-          onPress: () => router.back(),
+          onPress: () => {
+            console.log('[EditTeam] Navigating back to team dashboard');
+            // Navigate back - the dashboard will refetch data when it comes into focus
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace({
+                pathname: '/team-dashboard/[teamId]',
+                params: { teamId },
+              });
+            }
+          },
         },
       ]);
     } catch (error: any) {
