@@ -4,6 +4,33 @@ import * as schema from '../db/schema.js';
 import { user } from '../db/auth-schema.js';
 import type { App } from '../index.js';
 
+// Sport normalization mapping
+const SPORT_MAP: Record<string, string> = {
+  hurling: 'HURLING',
+  'hurling ': 'HURLING',
+  camogie: 'CAMOGIE',
+  'camogie ': 'CAMOGIE',
+  'gaelic football': 'GAELIC_FOOTBALL',
+  'gaelic football ': 'GAELIC_FOOTBALL',
+  'ladies gaelic football': 'LADIES_GAELIC_FOOTBALL',
+  'ladies gaelic football ': 'LADIES_GAELIC_FOOTBALL',
+};
+
+function normalizeSport(sport: string | undefined): string | undefined {
+  if (!sport) return undefined;
+
+  const trimmed = sport.trim();
+  const lower = trimmed.toLowerCase();
+
+  // Check if already normalized
+  if (['HURLING', 'CAMOGIE', 'GAELIC_FOOTBALL', 'LADIES_GAELIC_FOOTBALL'].includes(trimmed)) {
+    return trimmed;
+  }
+
+  // Check mapping
+  return SPORT_MAP[lower] || undefined;
+}
+
 export function registerTeamsV2Routes(app: App) {
   const requireAuth = app.requireAuth();
 
@@ -114,6 +141,27 @@ export function registerTeamsV2Routes(app: App) {
       app.logger.info({ userId: session.user.id, clubId, name }, 'Creating team');
 
       try {
+        // Validate required fields
+        if (!name || name.trim() === '') {
+          app.logger.warn({ clubId, userId: session.user.id }, 'Team name is required');
+          return reply.status(400).send({ error: 'Team name is required' });
+        }
+
+        if (!clubId) {
+          app.logger.warn({ userId: session.user.id }, 'Club ID is required');
+          return reply.status(400).send({ error: 'Club ID is required' });
+        }
+
+        // Verify club exists
+        const club = await app.db.query.clubs.findFirst({
+          where: eq(schema.clubs.id, clubId),
+        });
+
+        if (!club) {
+          app.logger.warn({ clubId }, 'Club not found');
+          return reply.status(404).send({ error: 'Club not found' });
+        }
+
         // Check if user is CLUB_ADMIN or COACH
         const membership = await app.db.query.memberships.findFirst({
           where: and(
@@ -129,13 +177,16 @@ export function registerTeamsV2Routes(app: App) {
             .send({ error: 'Only CLUB_ADMIN or COACH can create teams' });
         }
 
+        // Normalize sport
+        const normalizedSport = normalizeSport(sport);
+
         const [team] = await app.db
           .insert(schema.teams)
           .values({
             clubId,
-            name,
+            name: name.trim(),
             shortName,
-            sport,
+            sport: normalizedSport,
             grade,
             ageGroup,
             homeVenue,
@@ -214,9 +265,9 @@ export function registerTeamsV2Routes(app: App) {
         }
 
         const updateData: any = {};
-        if (name) updateData.name = name;
+        if (name) updateData.name = name.trim();
         if (shortName !== undefined) updateData.shortName = shortName;
-        if (sport !== undefined) updateData.sport = sport;
+        if (sport !== undefined) updateData.sport = normalizeSport(sport);
         if (grade !== undefined) updateData.grade = grade;
         if (ageGroup !== undefined) updateData.ageGroup = ageGroup;
         if (homeVenue !== undefined) updateData.homeVenue = homeVenue;
