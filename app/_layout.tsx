@@ -16,6 +16,7 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ThemeProvider as CustomThemeProvider } from "@/contexts/ThemeContext";
 import { BACKEND_URL } from "@/utils/api";
 // Note: Error logging is auto-initialized via index.ts import
 
@@ -88,30 +89,32 @@ export default function RootLayout() {
         <ThemeProvider
           value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
         >
-          <AuthProvider>
-            <WidgetProvider>
-              <GestureHandlerRootView>
-              <Stack>
-                {/* Auth screens */}
-                <Stack.Screen name="auth" options={{ headerShown: false }} />
-                <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
-                <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
-                {/* Main app with tabs */}
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                {/* Match tracker screen (no tabs - needs full screen) */}
-                <Stack.Screen 
-                  name="match-tracker" 
-                  options={{ 
-                    headerShown: true,
-                    title: 'Match Tracker',
-                    headerBackTitle: 'Back'
-                  }} 
-                />
-              </Stack>
-              <SystemBars style={"auto"} />
-              </GestureHandlerRootView>
-            </WidgetProvider>
-          </AuthProvider>
+          <CustomThemeProvider>
+            <AuthProvider>
+              <WidgetProvider>
+                <GestureHandlerRootView>
+                <Stack>
+                  {/* Auth screens */}
+                  <Stack.Screen name="auth" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+                  {/* Main app with tabs */}
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  {/* Match tracker screen (no tabs - needs full screen) */}
+                  <Stack.Screen 
+                    name="match-tracker" 
+                    options={{ 
+                      headerShown: true,
+                      title: 'Match Tracker',
+                      headerBackTitle: 'Back'
+                    }} 
+                  />
+                </Stack>
+                <SystemBars style={"auto"} />
+                </GestureHandlerRootView>
+              </WidgetProvider>
+            </AuthProvider>
+          </CustomThemeProvider>
         </ThemeProvider>
     </>
   );

@@ -11,6 +11,8 @@ export interface Club {
   name: string;
   county?: string;
   colours?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
   crestUrl?: string;
   createdAt: string;
   createdBy: string;

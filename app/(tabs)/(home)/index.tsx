@@ -16,13 +16,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
+import { useThemeColors } from '@/contexts/ThemeContext';
 import { authenticatedGet, BACKEND_URL } from '@/utils/api';
-import { Fixture, Team } from '@/types';
+import { Fixture, Team, Club } from '@/types';
 
 export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { user, loading } = useAuth();
+  const { updateTheme } = useThemeColors();
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loadingData, setLoadingData] = useState(true);
@@ -43,7 +45,7 @@ export default function HomeScreen() {
       
       // Fetch user's clubs (returns clubs where user has membership)
       console.log('[Home] Fetching clubs...');
-      const clubsResponse = await authenticatedGet<any[]>('/api/clubs');
+      const clubsResponse = await authenticatedGet<Club[]>('/api/clubs');
       console.log('[Home] Fetched clubs:', clubsResponse);
       
       if (!clubsResponse || clubsResponse.length === 0) {
@@ -54,6 +56,11 @@ export default function HomeScreen() {
       
       const firstClub = clubsResponse[0];
       console.log('[Home] Using club:', firstClub.id, firstClub.name);
+      
+      if (firstClub.primaryColor && firstClub.secondaryColor) {
+        console.log('[Home] Loading club theme:', { primaryColor: firstClub.primaryColor, secondaryColor: firstClub.secondaryColor });
+        await updateTheme(firstClub.primaryColor, firstClub.secondaryColor);
+      }
       
       // Fetch teams for the first club
       console.log('[Home] Fetching teams for club:', firstClub.id);

@@ -8,23 +8,29 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Alert,
   Image,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { authenticatedPost } from '@/utils/api';
+import { parseClubColors } from '@/utils/colorParser';
+import { useThemeColors } from '@/contexts/ThemeContext';
 import * as ImagePicker from 'expo-image-picker';
 
 export default function CreateClubScreen() {
   const router = useRouter();
+  const { updateTheme } = useThemeColors();
+  
   const [name, setName] = useState('');
   const [county, setCounty] = useState('');
   const [colours, setColours] = useState('');
   const [crestUri, setCrestUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [nameError, setNameError] = useState('');
 
   console.log('CreateClubScreen: Rendering create club form');
 
@@ -34,7 +40,7 @@ export default function CreateClubScreen() {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     
     if (!permissionResult.granted) {
-      Alert.alert('Permission Required', 'Please allow access to your photo library to upload a crest.');
+      setErrorMessage('Please allow access to your photo library to upload a crest.');
       return;
     }
 
@@ -51,61 +57,86 @@ export default function CreateClubScreen() {
     }
   };
 
-  const handleCreateClub = async () => {
-    console.log('User tapped Create Club button', { name, county, colours });
-
+  const validateForm = (): boolean => {
+    console.log('[CreateClub] Validating form');
+    let isValid = true;
+    
     if (!name.trim()) {
-      Alert.alert('Validation Error', 'Please enter a club name');
+      const errorMsg = 'Club name is required';
+      setNameError(errorMsg);
+      console.log('[CreateClub] Validation failed:', errorMsg);
+      isValid = false;
+    } else {
+      setNameError('');
+    }
+    
+    return isValid;
+  };
+
+  const handleCreateClub = async () => {
+    console.log('[CreateClub] User tapped Create Club button', { name, county, colours });
+    
+    setErrorMessage('');
+    
+    const isValid = validateForm();
+    console.log('[CreateClub] Validation result:', isValid);
+    
+    if (!isValid) {
       return;
     }
 
     setLoading(true);
+    console.log('[CreateClub] Starting club creation...');
 
     try {
       let crestUrl = undefined;
 
-      // Upload crest if selected
       if (crestUri) {
-        console.log('Uploading crest image...');
-        // Note: Crest upload to object storage not yet implemented
-        // For now, we'll skip the upload and use the local URI
-        // In production, this would upload to object storage and return a URL
+        console.log('[CreateClub] Crest upload skipped - will be implemented later');
       }
 
-      console.log('Creating club with data:', { name, county, colours, crestUrl });
+      const parsedColors = parseClubColors(colours);
+      console.log('[CreateClub] Parsed colors:', parsedColors);
 
-      // Create club via API
-      const club = await authenticatedPost('/api/clubs', {
+      const requestPayload = {
         name: name.trim(),
         county: county.trim() || undefined,
         colours: colours.trim() || undefined,
+        primaryColor: parsedColors.primaryColor,
+        secondaryColor: parsedColors.secondaryColor,
         crestUrl,
+      };
+      
+      console.log('[CreateClub] Request payload:', requestPayload);
+      console.log('[CreateClub] Calling POST /api/clubs');
+
+      const club = await authenticatedPost('/api/clubs', requestPayload);
+
+      console.log('[CreateClub] Club created successfully:', club);
+
+      await updateTheme(parsedColors.primaryColor, parsedColors.secondaryColor);
+      console.log('[CreateClub] Theme updated successfully');
+
+      console.log('[CreateClub] Navigating to Create Team with clubId:', club.id);
+      
+      router.replace({
+        pathname: '/create-team',
+        params: { clubId: club.id },
       });
-
-      console.log('Club created successfully:', club);
-
-      Alert.alert(
-        'Success',
-        'Club created successfully! Now let\'s add your first team.',
-        [
-          {
-            text: 'Continue',
-            onPress: () => {
-              router.replace({
-                pathname: '/create-team',
-                params: { clubId: club.id },
-              });
-            },
-          },
-        ]
-      );
-    } catch (error) {
-      console.error('Failed to create club:', error);
-      Alert.alert('Error', 'Failed to create club. Please try again.');
+    } catch (error: any) {
+      console.error('[CreateClub] Failed to create club:', error);
+      console.error('[CreateClub] Error message:', error?.message);
+      console.error('[CreateClub] Error details:', error);
+      
+      const errorMsg = error?.message || 'Failed to create club. Please try again.';
+      setErrorMessage(errorMsg);
     } finally {
       setLoading(false);
+      console.log('[CreateClub] Loading state set to false');
     }
   };
+
+  const isFormValid = name.trim().length > 0;
 
   return (
     <>
@@ -122,19 +153,40 @@ export default function CreateClubScreen() {
             Set up your club profile. You can update these details later.
           </Text>
 
+          {errorMessage ? (
+            <View style={styles.errorBanner}>
+              <IconSymbol
+                ios_icon_name="exclamationmark.triangle.fill"
+                android_material_icon_name="warning"
+                size={20}
+                color={colors.error}
+              />
+              <Text style={styles.errorBannerText}>{errorMessage}</Text>
+            </View>
+          ) : null}
+
           <View style={styles.form}>
             <View style={styles.field}>
               <Text style={styles.label}>
                 Club Name <Text style={styles.required}>*</Text>
               </Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, nameError ? styles.inputError : null]}
                 value={name}
-                onChangeText={setName}
+                onChangeText={(text) => {
+                  setName(text);
+                  if (nameError && text.trim()) {
+                    setNameError('');
+                  }
+                }}
                 placeholder="e.g., St. Patrick's GAA Club"
                 placeholderTextColor={colors.textSecondary}
                 autoCapitalize="words"
+                editable={!loading}
               />
+              {nameError ? (
+                <Text style={styles.fieldError}>{nameError}</Text>
+              ) : null}
             </View>
 
             <View style={styles.field}>
@@ -146,6 +198,7 @@ export default function CreateClubScreen() {
                 placeholder="e.g., Cork"
                 placeholderTextColor={colors.textSecondary}
                 autoCapitalize="words"
+                editable={!loading}
               />
             </View>
 
@@ -158,7 +211,11 @@ export default function CreateClubScreen() {
                 placeholder="e.g., Green and Gold"
                 placeholderTextColor={colors.textSecondary}
                 autoCapitalize="words"
+                editable={!loading}
               />
+              <Text style={styles.hint}>
+                Examples: &quot;Green and Gold&quot;, &quot;Blue/White&quot;, &quot;#0F8A3B,#F4C542&quot;
+              </Text>
             </View>
 
             <View style={styles.field}>
@@ -166,6 +223,7 @@ export default function CreateClubScreen() {
               <TouchableOpacity
                 style={styles.uploadButton}
                 onPress={handlePickCrest}
+                disabled={loading}
               >
                 {crestUri ? (
                   <Image source={{ uri: crestUri }} style={styles.crestPreview} />
@@ -185,9 +243,12 @@ export default function CreateClubScreen() {
           </View>
 
           <TouchableOpacity
-            style={[styles.createButton, loading && styles.createButtonDisabled]}
+            style={[
+              styles.createButton,
+              (!isFormValid || loading) && styles.createButtonDisabled
+            ]}
             onPress={handleCreateClub}
-            disabled={loading}
+            disabled={!isFormValid || loading}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
@@ -222,6 +283,23 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 24,
   },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.errorBackground,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.error,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    gap: 8,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.error,
+    fontWeight: '600',
+  },
   form: {
     gap: 20,
     marginBottom: 32,
@@ -246,6 +324,20 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
     color: colors.text,
+  },
+  inputError: {
+    borderColor: colors.error,
+    borderWidth: 2,
+  },
+  fieldError: {
+    fontSize: 14,
+    color: colors.error,
+    marginTop: 4,
+  },
+  hint: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
   },
   uploadButton: {
     backgroundColor: colors.card,
@@ -277,7 +369,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   createButtonDisabled: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
   createButtonText: {
     fontSize: 18,
