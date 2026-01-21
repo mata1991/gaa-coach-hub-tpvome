@@ -67,3 +67,22 @@ export const PITCH_ZONES = [
   'Attack Centre',
   'Attack Right',
 ];
+
+// GAA Starting 15 Positions (fixed numbering)
+export const GAA_POSITIONS = [
+  { positionNo: 1, positionName: 'GK' },
+  { positionNo: 2, positionName: 'R Corner Back' },
+  { positionNo: 3, positionName: 'Full Back' },
+  { positionNo: 4, positionName: 'L Corner Back' },
+  { positionNo: 5, positionName: 'R Half Back' },
+  { positionNo: 6, positionName: 'Centre Back' },
+  { positionNo: 7, positionName: 'L Half Back' },
+  { positionNo: 8, positionName: 'Midfield' },
+  { positionNo: 9, positionName: 'Midfield' },
+  { positionNo: 10, positionName: 'R Half Forward' },
+  { positionNo: 11, positionName: 'Centre Forward' },
+  { positionNo: 12, positionName: 'L Half Forward' },
+  { positionNo: 13, positionName: 'R Corner Forward' },
+  { positionNo: 14, positionName: 'Full Forward' },
+  { positionNo: 15, positionName: 'L Corner Forward' },
+];

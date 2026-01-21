@@ -141,6 +141,26 @@ export default function HomeScreen() {
             <TouchableOpacity
               style={[styles.actionCard, styles.secondaryAction]}
               onPress={() => {
+                console.log('User tapped Build Lineups button');
+                if (nextFixture) {
+                  router.push(`/lineups/${nextFixture.id}` as any);
+                } else {
+                  console.log('No fixture available for lineups');
+                }
+              }}
+            >
+              <IconSymbol
+                ios_icon_name="person.3.fill"
+                android_material_icon_name="group"
+                size={32}
+                color={colors.primary}
+              />
+              <Text style={styles.secondaryActionText}>Build Lineups</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionCard, styles.secondaryAction]}
+              onPress={() => {
                 console.log('User tapped View Reports button');
                 if (recentCompletedFixture) {
                   router.push(`/match-report/${recentCompletedFixture.id}` as any);
@@ -157,7 +177,9 @@ export default function HomeScreen() {
               />
               <Text style={styles.secondaryActionText}>View Reports</Text>
             </TouchableOpacity>
+          </View>
 
+          <View style={styles.actionRow}>
             <TouchableOpacity
               style={[styles.actionCard, styles.secondaryAction]}
               onPress={() => {

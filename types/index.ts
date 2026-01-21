@@ -66,6 +66,7 @@ export interface MatchEvent {
   id?: string;
   fixtureId: string;
   playerId: string;
+  side?: 'HOME' | 'AWAY'; // Added for home vs away tracking
   timestamp: number; // seconds
   eventType: string;
   eventCategory: 'Scoring' | 'Puckouts' | 'Possession' | 'Discipline' | 'Substitutions';
@@ -84,4 +85,51 @@ export interface EventPreset {
     requiresOutcome?: boolean;
     outcomes?: string[];
   }[];
+}
+
+export type TeamSide = 'HOME' | 'AWAY';
+
+export interface LineupSlot {
+  positionNo: number; // 1-15
+  positionName: string;
+  playerId: string | null;
+  playerName: string | null;
+  jerseyNo: string | null;
+}
+
+export interface SubEvent {
+  time: string; // ISO timestamp
+  matchTime: number; // seconds
+  playerOffId: string;
+  playerOffName: string;
+  playerOnId: string;
+  playerOnName: string;
+}
+
+export interface MatchSquad {
+  id: string;
+  fixtureId: string;
+  side: TeamSide;
+  startingSlots: LineupSlot[];
+  bench: LineupSlot[];
+  subsLog: SubEvent[];
+  locked: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MatchState {
+  id: string;
+  fixtureId: string;
+  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'PAUSED' | 'COMPLETED';
+  homeGoals: number;
+  homePoints: number;
+  awayGoals: number;
+  awayPoints: number;
+  matchClock: number; // seconds
+  period: number;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
