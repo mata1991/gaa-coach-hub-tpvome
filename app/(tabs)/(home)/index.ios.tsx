@@ -29,7 +29,7 @@ export default function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
 
   // Fetch user's teams and fixtures
-  const fetchData = async () => {
+  const fetchData = React.useCallback(async () => {
     if (!user) {
       console.log('[Home iOS] No user found, skipping data fetch');
       return;
@@ -55,22 +55,21 @@ export default function HomeScreen() {
       const firstClub = clubsResponse[0];
       console.log('[Home iOS] Using club:', firstClub.id, firstClub.name);
       
-      if (firstClub.primaryColor && firstClub.secondaryColor) {
-        console.log('[Home iOS] Loading club theme:', { primaryColor: firstClub.primaryColor, secondaryColor: firstClub.secondaryColor });
-        await updateTheme(firstClub.primaryColor, firstClub.secondaryColor);
-      }
+      // Note: Club colors are ignored - monochrome theme is enforced
       
       // Fetch teams for the first club
       console.log('[Home iOS] Fetching teams for club:', firstClub.id);
       const teamsUrl = `/api/teams?clubId=${firstClub.id}`;
       console.log('[Home iOS] Request URL:', BACKEND_URL + teamsUrl);
       
+      let fetchedTeams: Team[] = [];
       try {
         const teamsResponse = await authenticatedGet<Team[]>(teamsUrl);
         console.log('[Home iOS] Teams API response status: 200');
         console.log('[Home iOS] Fetched teams:', teamsResponse);
         console.log('[Home iOS] Number of teams:', teamsResponse?.length || 0);
-        setTeams(teamsResponse || []);
+        fetchedTeams = teamsResponse || [];
+        setTeams(fetchedTeams);
       } catch (teamsError: any) {
         console.error('[Home iOS] Failed to fetch teams:', teamsError);
         console.error('[Home iOS] Teams error message:', teamsError?.message);
@@ -88,7 +87,7 @@ export default function HomeScreen() {
       }
       
       // Check if we have teams after the try-catch
-      if (!teams || teams.length === 0) {
+      if (!fetchedTeams || fetchedTeams.length === 0) {
         console.warn('[Home iOS] No teams found for club');
         // Don't set error for empty teams - show empty state instead
         setFixtures([]);
@@ -96,7 +95,7 @@ export default function HomeScreen() {
       }
       
       // Fetch fixtures for the first team
-      const firstTeam = teams[0];
+      const firstTeam = fetchedTeams[0];
       console.log('[Home iOS] Fetching fixtures for team:', firstTeam.id, firstTeam.name);
       const fixturesResponse = await authenticatedGet<Fixture[]>(`/api/fixtures?teamId=${firstTeam.id}`);
       console.log('[Home iOS] Fetched fixtures:', fixturesResponse);
@@ -121,11 +120,11 @@ export default function HomeScreen() {
     } finally {
       setLoadingData(false);
     }
-  };
+  }, [user, router]);
 
   useEffect(() => {
     fetchData();
-  }, [user]);
+  }, [fetchData]);
 
   // Redirect to auth if not logged in
   if (!loading && !user) {

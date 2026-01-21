@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -34,11 +34,7 @@ export default function ClubDashboardScreen() {
 
   console.log('ClubDashboardScreen: Rendering club dashboard', { clubId });
 
-  useEffect(() => {
-    fetchDashboard();
-  }, [clubId]);
-
-  const fetchDashboard = async () => {
+  const fetchDashboard = useCallback(async () => {
     console.log('Fetching club dashboard data...');
     setLoading(true);
 
@@ -53,7 +49,11 @@ export default function ClubDashboardScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [clubId]);
+
+  useEffect(() => {
+    fetchDashboard();
+  }, [fetchDashboard]);
 
   const handleAddTeam = () => {
     console.log('User tapped Add Team button');
@@ -114,7 +114,6 @@ export default function ClubDashboardScreen() {
   }
 
   const activeTeamsCount = data.teams.filter((t) => !t.isArchived).length;
-  const archivedTeamsCount = data.teams.filter((t) => t.isArchived).length;
 
   return (
     <>

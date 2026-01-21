@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -33,11 +33,7 @@ export default function CreateFixtureScreen() {
 
   console.log('CreateFixtureScreen: Rendering create fixture', { teamId });
 
-  useEffect(() => {
-    fetchCompetitions();
-  }, [teamId]);
-
-  const fetchCompetitions = async () => {
+  const fetchCompetitions = useCallback(async () => {
     console.log('Fetching competitions for team:', teamId);
     setLoading(true);
 
@@ -54,7 +50,11 @@ export default function CreateFixtureScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [teamId]);
+
+  useEffect(() => {
+    fetchCompetitions();
+  }, [fetchCompetitions]);
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
     setShowDatePicker(false);

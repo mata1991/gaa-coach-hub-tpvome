@@ -36,11 +36,7 @@ export default function TeamDashboardScreen() {
 
   console.log('TeamDashboardScreen: Rendering team dashboard', { teamId });
 
-  useEffect(() => {
-    fetchDashboard();
-  }, [teamId]);
-
-  const fetchDashboard = async () => {
+  const fetchDashboard = React.useCallback(async () => {
     console.log('Fetching team dashboard data...');
     setLoading(true);
 
@@ -54,7 +50,11 @@ export default function TeamDashboardScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [teamId]);
+
+  useEffect(() => {
+    fetchDashboard();
+  }, [fetchDashboard]);
 
   const handleAddPlayers = () => {
     console.log('User tapped Add Players button');

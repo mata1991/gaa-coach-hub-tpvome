@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -36,11 +36,7 @@ export default function PlayersListScreen() {
 
   console.log('PlayersListScreen: Rendering players list', { teamId });
 
-  useEffect(() => {
-    fetchPlayers();
-  }, [teamId]);
-
-  const fetchPlayers = async () => {
+  const fetchPlayers = useCallback(async () => {
     console.log('Fetching players for team:', teamId);
     setLoading(true);
 
@@ -54,7 +50,11 @@ export default function PlayersListScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [teamId]);
+
+  useEffect(() => {
+    fetchPlayers();
+  }, [fetchPlayers]);
 
   const handleAddPlayer = () => {
     console.log('User tapped Add Player button');

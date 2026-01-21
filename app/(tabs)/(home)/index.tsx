@@ -31,7 +31,7 @@ export default function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
 
   // Fetch user's teams and fixtures
-  const fetchData = async () => {
+  const fetchData = React.useCallback(async () => {
     if (!user) {
       console.log('[Home] No user found, skipping data fetch');
       return;
@@ -64,12 +64,14 @@ export default function HomeScreen() {
       const teamsUrl = `/api/teams?clubId=${firstClub.id}`;
       console.log('[Home] Request URL:', BACKEND_URL + teamsUrl);
       
+      let fetchedTeams: Team[] = [];
       try {
         const teamsResponse = await authenticatedGet<Team[]>(teamsUrl);
         console.log('[Home] Teams API response status: 200');
         console.log('[Home] Fetched teams:', teamsResponse);
         console.log('[Home] Number of teams:', teamsResponse?.length || 0);
-        setTeams(teamsResponse || []);
+        fetchedTeams = teamsResponse || [];
+        setTeams(fetchedTeams);
       } catch (teamsError: any) {
         console.error('[Home] Failed to fetch teams:', teamsError);
         console.error('[Home] Teams error message:', teamsError?.message);
@@ -87,7 +89,7 @@ export default function HomeScreen() {
       }
       
       // Check if we have teams after the try-catch
-      if (!teams || teams.length === 0) {
+      if (!fetchedTeams || fetchedTeams.length === 0) {
         console.warn('[Home] No teams found for club');
         // Don't set error for empty teams - show empty state instead
         setFixtures([]);
@@ -95,7 +97,7 @@ export default function HomeScreen() {
       }
       
       // Fetch fixtures for the first team
-      const firstTeam = teams[0];
+      const firstTeam = fetchedTeams[0];
       console.log('[Home] Fetching fixtures for team:', firstTeam.id, firstTeam.name);
       const fixturesResponse = await authenticatedGet<Fixture[]>(`/api/fixtures?teamId=${firstTeam.id}`);
       console.log('[Home] Fetched fixtures:', fixturesResponse);
@@ -120,11 +122,11 @@ export default function HomeScreen() {
     } finally {
       setLoadingData(false);
     }
-  };
+  }, [user, router]);
 
   useEffect(() => {
     fetchData();
-  }, [user]);
+  }, [fetchData]);
 
   // Redirect to auth if not logged in
   if (!loading && !user) {

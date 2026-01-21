@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -33,11 +33,7 @@ export default function EditClubScreen() {
 
   console.log('EditClubScreen: Rendering edit club form', { clubId });
 
-  useEffect(() => {
-    fetchClub();
-  }, [clubId]);
-
-  const fetchClub = async () => {
+  const fetchClub = useCallback(async () => {
     console.log('Fetching club details...');
     setLoading(true);
 
@@ -56,7 +52,11 @@ export default function EditClubScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [clubId]);
+
+  useEffect(() => {
+    fetchClub();
+  }, [fetchClub]);
 
   const handlePickCrest = async () => {
     console.log('User tapped Pick Crest button');

@@ -24,11 +24,7 @@ export default function ReportsScreen() {
 
   console.log('ReportsScreen: Rendering reports', { teamId });
 
-  useEffect(() => {
-    fetchCompletedFixtures();
-  }, [teamId]);
-
-  const fetchCompletedFixtures = async () => {
+  const fetchCompletedFixtures = React.useCallback(async () => {
     console.log('Fetching completed fixtures for team:', teamId);
     setLoading(true);
 
@@ -42,7 +38,11 @@ export default function ReportsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [teamId]);
+
+  useEffect(() => {
+    fetchCompletedFixtures();
+  }, [fetchCompletedFixtures]);
 
   const handleViewReport = (fixtureId: string) => {
     console.log('User tapped View Report for fixture:', fixtureId);
@@ -203,6 +203,13 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     paddingHorizontal: 40,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    paddingHorizontal: 40,
+    marginTop: 8,
   },
   seasonButton: {
     backgroundColor: '#000',
