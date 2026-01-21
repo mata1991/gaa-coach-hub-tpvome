@@ -294,6 +294,9 @@ export default function LineupsScreen() {
   const [selectedSlotType, setSelectedSlotType] = useState<'starting' | 'bench'>('starting');
   const [quickAddName, setQuickAddName] = useState('');
   const [quickAddJersey, setQuickAddJersey] = useState('');
+  const [showJerseyEditor, setShowJerseyEditor] = useState(false);
+  const [editingJerseySlot, setEditingJerseySlot] = useState<{ index: number; type: 'starting' | 'bench' } | null>(null);
+  const [editJerseyNumber, setEditJerseyNumber] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -359,9 +362,87 @@ export default function LineupsScreen() {
       return;
     }
     console.log('Slot pressed:', type, index);
-    setSelectedSlotIndex(index);
-    setSelectedSlotType(type);
-    setShowPlayerPicker(true);
+    
+    const slots = type === 'starting' ? currentSquad?.startingSlots : currentSquad?.bench;
+    const slot = slots?.[index];
+    
+    // If slot has a player, show options to change player or edit jersey number
+    if (slot?.playerId) {
+      Alert.alert(
+        'Edit Slot',
+        `${slot.playerName} - Jersey #${slot.jerseyNo || 'None'}`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Change Player',
+            onPress: () => {
+              setSelectedSlotIndex(index);
+              setSelectedSlotType(type);
+              setShowPlayerPicker(true);
+            },
+          },
+          {
+            text: 'Edit Jersey Number',
+            onPress: () => {
+              setEditingJerseySlot({ index, type });
+              setEditJerseyNumber(slot.jerseyNo || '');
+              setShowJerseyEditor(true);
+            },
+          },
+          {
+            text: 'Remove Player',
+            style: 'destructive',
+            onPress: () => handleRemovePlayer(index, type),
+          },
+        ]
+      );
+    } else {
+      // Empty slot, just show player picker
+      setSelectedSlotIndex(index);
+      setSelectedSlotType(type);
+      setShowPlayerPicker(true);
+    }
+  };
+
+  const handleRemovePlayer = async (index: number, type: 'starting' | 'bench') => {
+    if (!currentSquad) return;
+    
+    const slots = type === 'starting' ? currentSquad.startingSlots : currentSquad.bench;
+    const updatedSlots = [...slots];
+    
+    updatedSlots[index] = {
+      ...updatedSlots[index],
+      playerId: null,
+      playerName: null,
+      jerseyNo: null,
+    };
+
+    await saveSquad(
+      type === 'starting' ? updatedSlots : currentSquad.startingSlots,
+      type === 'bench' ? updatedSlots : currentSquad.bench
+    );
+  };
+
+  const handleSaveJerseyNumber = async () => {
+    if (!currentSquad || !editingJerseySlot) return;
+    
+    const { index, type } = editingJerseySlot;
+    const slots = type === 'starting' ? currentSquad.startingSlots : currentSquad.bench;
+    const updatedSlots = [...slots];
+    
+    updatedSlots[index] = {
+      ...updatedSlots[index],
+      jerseyNo: editJerseyNumber.trim() || null,
+    };
+
+    await saveSquad(
+      type === 'starting' ? updatedSlots : currentSquad.startingSlots,
+      type === 'bench' ? updatedSlots : currentSquad.bench
+    );
+
+    setShowJerseyEditor(false);
+    setEditingJerseySlot(null);
+    setEditJerseyNumber('');
   };
 
   const handlePlayerSelect = async (player: Player) => {
@@ -385,11 +466,18 @@ export default function LineupsScreen() {
     }
 
     const updatedSlots = [...slots];
+    
+    // Auto-assign jersey number for starting lineup (1-15 based on position)
+    // For bench, leave jersey number null or allow manual assignment
+    const autoJerseyNo = selectedSlotType === 'starting' 
+      ? (selectedSlotIndex + 1).toString() 
+      : null;
+    
     updatedSlots[selectedSlotIndex] = {
       ...updatedSlots[selectedSlotIndex],
       playerId: player.id,
       playerName: player.name,
-      jerseyNo: player.jerseyNo?.toString() || null,
+      jerseyNo: autoJerseyNo,
     };
 
     await saveSquad(
@@ -409,14 +497,13 @@ export default function LineupsScreen() {
 
     console.log('Quick adding player:', quickAddName);
     try {
-      const newPlayer = await authenticatedPost(`/api/teams/${fixture.teamId}/players/quick-add`, {
+      const newPlayer = await authenticatedPost(`/api/players`, {
+        teamId: fixture.teamId,
         name: quickAddName.trim(),
-        jerseyNo: quickAddJersey.trim() || undefined,
       });
 
       setPlayers([...players, newPlayer]);
       setQuickAddName('');
-      setQuickAddJersey('');
       
       await handlePlayerSelect(newPlayer);
     } catch (error) {
@@ -644,14 +731,6 @@ export default function LineupsScreen() {
                 value={quickAddName}
                 onChangeText={setQuickAddName}
               />
-              <TextInput
-                style={styles.input}
-                placeholder="Jersey Number (optional)"
-                placeholderTextColor={colors.textSecondary}
-                value={quickAddJersey}
-                onChangeText={setQuickAddJersey}
-                keyboardType="number-pad"
-              />
               <TouchableOpacity style={styles.quickAddButton} onPress={handleQuickAdd}>
                 <Text style={styles.buttonText}>Add Player</Text>
               </TouchableOpacity>
@@ -660,7 +739,7 @@ export default function LineupsScreen() {
             <ScrollView style={styles.modalScroll}>
               {availablePlayers.map(player => {
                 const playerName = player.name;
-                const jerseyText = player.jerseyNo ? `#${player.jerseyNo}` : 'No jersey';
+                const positionsText = player.positions || '';
 
                 return (
                   <TouchableOpacity
@@ -670,7 +749,9 @@ export default function LineupsScreen() {
                   >
                     <View style={styles.playerInfo}>
                       <Text style={styles.playerItemName}>{playerName}</Text>
-                      <Text style={styles.playerItemJersey}>{jerseyText}</Text>
+                      {positionsText && (
+                        <Text style={styles.playerItemJersey}>{positionsText}</Text>
+                      )}
                     </View>
                     <IconSymbol
                       ios_icon_name="chevron.right"
@@ -764,6 +845,47 @@ export default function LineupsScreen() {
       </View>
 
       {renderPlayerPicker()}
+
+      {/* Jersey Number Editor Modal */}
+      <Modal
+        visible={showJerseyEditor}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowJerseyEditor(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: 300 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Jersey Number</Text>
+              <TouchableOpacity onPress={() => setShowJerseyEditor(false)}>
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={24}
+                  color={colors.text}
+                />
+              </TouchableOpacity>
+            </View>
+            <View style={{ padding: 16 }}>
+              <TextInput
+                style={styles.input}
+                placeholder="Jersey Number"
+                placeholderTextColor={colors.textSecondary}
+                value={editJerseyNumber}
+                onChangeText={setEditJerseyNumber}
+                keyboardType="number-pad"
+                autoFocus
+              />
+              <TouchableOpacity
+                style={[styles.quickAddButton, { marginTop: 16 }]}
+                onPress={handleSaveJerseyNumber}
+              >
+                <Text style={styles.buttonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

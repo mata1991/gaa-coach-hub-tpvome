@@ -75,7 +75,10 @@ export default function TeamDashboardScreen() {
   const handleBuildTeam = () => {
     console.log('User tapped Build Team button');
     
-    if (!data?.upcomingFixtures || data.upcomingFixtures.length === 0) {
+    // Include both upcoming and draft fixtures for building team
+    const availableFixtures = data?.upcomingFixtures || [];
+    
+    if (availableFixtures.length === 0) {
       Alert.alert(
         'No Fixtures',
         'You need to create a fixture before building a team.',
@@ -90,8 +93,8 @@ export default function TeamDashboardScreen() {
       return;
     }
 
-    if (data.upcomingFixtures.length === 1) {
-      const fixture = data.upcomingFixtures[0];
+    if (availableFixtures.length === 1) {
+      const fixture = availableFixtures[0];
       console.log('Navigating to lineups for fixture:', fixture.id);
       router.push({
         pathname: '/lineups/[fixtureId]',

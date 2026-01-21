@@ -66,7 +66,14 @@ export function FixturePicker({
                 }}
               >
                 <View style={styles.fixtureInfo}>
-                  <Text style={styles.opponent}>{fixture.opponent}</Text>
+                  <View style={styles.opponentRow}>
+                    <Text style={styles.opponent}>{fixture.opponent}</Text>
+                    {fixture.status === 'draft' && (
+                      <View style={styles.draftBadge}>
+                        <Text style={styles.draftBadgeText}>DRAFT</Text>
+                      </View>
+                    )}
+                  </View>
                   <View style={styles.fixtureDetails}>
                     <View style={styles.detailRow}>
                       <IconSymbol
@@ -153,10 +160,26 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 8,
   },
+  opponentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   opponent: {
     fontSize: 18,
     fontWeight: '600',
     color: '#000',
+  },
+  draftBadge: {
+    backgroundColor: '#FF9500',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  draftBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   fixtureDetails: {
     gap: 4,

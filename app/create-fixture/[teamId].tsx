@@ -85,19 +85,6 @@ export default function CreateFixtureScreen() {
       return false;
     }
 
-    const now = new Date();
-    if (date < now) {
-      Alert.alert(
-        'Date Warning',
-        'The selected date is in the past. Do you want to continue?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Continue', onPress: () => handleCreateFixture() },
-        ]
-      );
-      return false;
-    }
-
     return true;
   };
 
@@ -108,6 +95,26 @@ export default function CreateFixtureScreen() {
       return;
     }
 
+    // Check if date is in the past and warn user
+    const now = new Date();
+    if (date < now) {
+      Alert.alert(
+        'Date Warning',
+        'The selected date is in the past. Do you want to continue?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Continue', onPress: () => submitFixture('scheduled') },
+        ]
+      );
+      return;
+    }
+
+    await submitFixture('scheduled');
+  };
+
+  const submitFixture = async (status: 'scheduled' | 'draft') => {
+
+    console.log(`Submitting fixture with status: ${status}`);
     setSaving(true);
 
     try {
@@ -117,14 +124,15 @@ export default function CreateFixtureScreen() {
         venue: venue.trim() || undefined,
         date: date.toISOString(),
         competitionId: selectedCompetition || undefined,
-        status: 'scheduled',
+        status,
       };
 
       console.log('Creating fixture:', payload);
       const result = await authenticatedPost('/api/fixtures', payload);
       console.log('Fixture created:', result);
 
-      Alert.alert('Success', 'Fixture created successfully', [
+      const successMessage = status === 'draft' ? 'Fixture saved as draft' : 'Fixture created successfully';
+      Alert.alert('Success', successMessage, [
         {
           text: 'OK',
           onPress: () => router.back(),
@@ -141,39 +149,11 @@ export default function CreateFixtureScreen() {
   const handleSaveDraft = async () => {
     console.log('User tapped Save as Draft button');
 
-    if (!opponent.trim()) {
-      Alert.alert('Validation Error', 'Opponent name is required');
+    if (!validateForm()) {
       return;
     }
 
-    setSaving(true);
-
-    try {
-      const payload = {
-        teamId,
-        opponent: opponent.trim(),
-        venue: venue.trim() || undefined,
-        date: date.toISOString(),
-        competitionId: selectedCompetition || undefined,
-        status: 'draft',
-      };
-
-      console.log('Saving fixture as draft:', payload);
-      const result = await authenticatedPost('/api/fixtures', payload);
-      console.log('Draft fixture saved:', result);
-
-      Alert.alert('Success', 'Fixture saved as draft', [
-        {
-          text: 'OK',
-          onPress: () => router.back(),
-        },
-      ]);
-    } catch (error) {
-      console.error('Failed to save draft:', error);
-      Alert.alert('Error', 'Failed to save draft. Please try again.');
-    } finally {
-      setSaving(false);
-    }
+    await submitFixture('draft');
   };
 
   const dateStr = date.toLocaleDateString();

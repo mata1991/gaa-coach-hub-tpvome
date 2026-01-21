@@ -185,20 +185,12 @@ export default function PlayersListScreen() {
             <>
               <View style={styles.playersList}>
                 {players.map((player) => {
-                  const jerseyText = player.jerseyNo ? `#${player.jerseyNo}` : '';
                   const positionsText = player.positions || 'No position';
                   
                   return (
                     <View key={player.id} style={styles.playerCard}>
                       <View style={styles.playerInfo}>
-                        <View style={styles.playerHeader}>
-                          <Text style={styles.playerName}>{player.name}</Text>
-                          {player.jerseyNo && (
-                            <View style={styles.jerseyBadge}>
-                              <Text style={styles.jerseyText}>{jerseyText}</Text>
-                            </View>
-                          )}
-                        </View>
+                        <Text style={styles.playerName}>{player.name}</Text>
                         <Text style={styles.playerPosition}>{positionsText}</Text>
                         {player.dominantSide && (
                           <Text style={styles.playerDetail}>
@@ -280,18 +272,6 @@ export default function PlayersListScreen() {
                   onChangeText={setName}
                   placeholder="Enter player name"
                   placeholderTextColor="#999"
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Jersey Number</Text>
-                <TextInput
-                  style={styles.input}
-                  value={jerseyNo}
-                  onChangeText={setJerseyNo}
-                  placeholder="e.g., 10"
-                  placeholderTextColor="#999"
-                  keyboardType="number-pad"
                 />
               </View>
 
