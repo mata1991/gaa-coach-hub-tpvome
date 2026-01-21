@@ -18,8 +18,8 @@ export function registerClubRoutes(app: App) {
         club: schema.clubs,
       })
       .from(schema.userRoles)
-      .innerJoin(schema.clubs, eq(schema.userRoles.teamId, schema.teams.id))
-      .innerJoin(schema.teams, eq(schema.teams.clubId, schema.clubs.id))
+      .innerJoin(schema.teams, eq(schema.userRoles.teamId, schema.teams.id))
+      .innerJoin(schema.clubs, eq(schema.teams.clubId, schema.clubs.id))
       .where(eq(schema.userRoles.userId, session.user.id));
 
     // Get unique clubs
