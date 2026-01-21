@@ -130,8 +130,7 @@ export const fixtures = pgTable('fixtures', {
     .notNull()
     .references(() => teams.id, { onDelete: 'cascade' }),
   competitionId: uuid('competition_id')
-    .notNull()
-    .references(() => competitions.id, { onDelete: 'cascade' }),
+    .references(() => competitions.id, { onDelete: 'set null' }),
   opponent: text('opponent').notNull(),
   venue: text('venue'),
   date: timestamp('date').notNull(),

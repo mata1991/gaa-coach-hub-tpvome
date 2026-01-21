@@ -41,7 +41,7 @@ export function registerFixtureRoutes(app: App) {
       request: FastifyRequest<{
         Body: {
           teamId: string;
-          competitionId: string;
+          competitionId?: string;
           opponent: string;
           venue?: string;
           date: string;
@@ -60,20 +60,26 @@ export function registerFixtureRoutes(app: App) {
       );
 
       try {
+        const insertData: any = {
+          teamId,
+          opponent,
+          venue,
+          date: new Date(date),
+          status: status || 'scheduled',
+        };
+
+        // Only include competitionId if provided
+        if (competitionId) {
+          insertData.competitionId = competitionId;
+        }
+
         const [fixture] = await app.db
           .insert(schema.fixtures)
-          .values({
-            teamId,
-            competitionId,
-            opponent,
-            venue,
-            date: new Date(date),
-            status: status || 'scheduled',
-          })
+          .values(insertData)
           .returning();
 
         app.logger.info(
-          { fixtureId: fixture.id, opponent, date },
+          { fixtureId: fixture.id, opponent, date, competitionId: fixture.competitionId },
           'Fixture created successfully'
         );
         return fixture;
