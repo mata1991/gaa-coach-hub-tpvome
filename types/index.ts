@@ -27,6 +27,8 @@ export interface Team {
   grade?: string;
   ageGroup?: string;
   homeVenue?: string;
+  crestUrl?: string;
+  colours?: string;
   isArchived?: boolean;
   ageGrade?: string; // Keep for backward compatibility
   level?: string; // Keep for backward compatibility
@@ -163,4 +165,33 @@ export interface MatchState {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type TrainingStatus = 'TRAINED' | 'INJURED' | 'EXCUSED' | 'NO_CONTACT';
+
+export interface TrainingSession {
+  id: string;
+  teamId: string;
+  dateTime: string;
+  location?: string;
+  focus?: string;
+  notes?: string;
+  createdBy: string;
+  createdAt: string;
+  attendanceCounts?: {
+    trained: number;
+    injured: number;
+    excused: number;
+    noContact: number;
+  };
+}
+
+export interface TrainingAttendance {
+  id: string;
+  sessionId: string;
+  playerId: string;
+  playerName?: string;
+  status: TrainingStatus;
+  note?: string;
+  createdAt: string;
 }

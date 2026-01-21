@@ -77,16 +77,16 @@ export default function TeamDashboardScreen() {
     });
   };
 
-  const handleBuildTeam = () => {
-    console.log('User tapped Build Team button');
+  const handleTeamLineOut = () => {
+    console.log('User tapped Team Line Out button');
     
-    // Include both upcoming and draft fixtures for building team
+    // Include both upcoming and draft fixtures for team line out
     const availableFixtures = data?.upcomingFixtures || [];
     
     if (availableFixtures.length === 0) {
       Alert.alert(
         'No Fixtures',
-        'You need to create a fixture before building a team.',
+        'You need to create a fixture before setting up your team line out.',
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -110,6 +110,14 @@ export default function TeamDashboardScreen() {
       setFixturePickerMode('build');
       setShowFixturePicker(true);
     }
+  };
+
+  const handleTrainingSessions = () => {
+    console.log('User tapped Training Sessions button');
+    router.push({
+      pathname: '/training-sessions/[teamId]',
+      params: { teamId },
+    });
   };
 
   const handleStartMatch = async () => {
@@ -321,15 +329,27 @@ export default function TeamDashboardScreen() {
                 </TouchableOpacity>
               )}
 
-              <TouchableOpacity style={styles.actionCard} onPress={handleBuildTeam}>
+              <TouchableOpacity style={styles.actionCard} onPress={handleTeamLineOut}>
                 <IconSymbol
                   ios_icon_name="person.3.fill"
                   android_material_icon_name="group"
                   size={32}
                   color="#000"
                 />
-                <Text style={styles.actionText}>Build Team</Text>
+                <Text style={styles.actionText}>Team Line Out</Text>
               </TouchableOpacity>
+
+              {canEdit && (
+                <TouchableOpacity style={styles.actionCard} onPress={handleTrainingSessions}>
+                  <IconSymbol
+                    ios_icon_name="figure.run"
+                    android_material_icon_name="directions-run"
+                    size={32}
+                    color="#000"
+                  />
+                  <Text style={styles.actionText}>Training Sessions</Text>
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity style={styles.actionCard} onPress={handleStartMatch}>
                 <IconSymbol
@@ -408,7 +428,7 @@ export default function TeamDashboardScreen() {
           fixtures={data.upcomingFixtures}
           onSelect={handleFixtureSelected}
           onClose={() => setShowFixturePicker(false)}
-          title={fixturePickerMode === 'build' ? 'Select Fixture to Build Team' : 'Select Fixture to Start Match'}
+          title={fixturePickerMode === 'build' ? 'Select Fixture for Team Line Out' : 'Select Fixture to Start Match'}
         />
       </SafeAreaView>
     </>

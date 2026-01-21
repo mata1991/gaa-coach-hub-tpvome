@@ -785,7 +785,7 @@ export default function LineupsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Stack.Screen options={{ title: `Lineups vs ${opponentName}`, headerShown: true }} />
+      <Stack.Screen options={{ title: `Team Line Out vs ${opponentName}`, headerShown: true }} />
       
       {isLocked && (
         <View style={styles.lockedBanner}>
