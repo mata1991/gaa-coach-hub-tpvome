@@ -64,17 +64,26 @@ export const apiCall = async <T = any>(
       },
     });
 
+    console.log("[API] Response status:", response.status, response.statusText);
+
     if (!response.ok) {
-      const text = await response.text();
-      console.error("[API] Error response:", response.status, text);
-      throw new Error(`API error: ${response.status} - ${text}`);
+      let errorText = '';
+      try {
+        errorText = await response.text();
+      } catch (e) {
+        errorText = 'Unable to read error response';
+      }
+      console.error("[API] Error response:", response.status, errorText);
+      throw new Error(`API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
     console.log("[API] Success:", data);
     return data;
-  } catch (error) {
+  } catch (error: any) {
     console.error("[API] Request failed:", error);
+    console.error("[API] Error message:", error?.message);
+    console.error("[API] Error name:", error?.name);
     throw error;
   }
 };

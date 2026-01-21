@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
-import { authenticatedGet } from '@/utils/api';
+import { authenticatedGet, BACKEND_URL } from '@/utils/api';
 import { Fixture, Team } from '@/types';
 
 export default function HomeScreen() {
@@ -30,36 +30,66 @@ export default function HomeScreen() {
 
   // Fetch user's teams and fixtures
   const fetchData = async () => {
-    if (!user) return;
+    if (!user) {
+      console.log('[Home] No user found, skipping data fetch');
+      return;
+    }
     
     try {
       setLoadingData(true);
       setError(null);
       console.log('[Home] Fetching teams and fixtures for user:', user.id);
+      console.log('[Home] Backend URL:', BACKEND_URL);
       
       // Fetch user's clubs first
+      console.log('[Home] Fetching clubs...');
       const clubsResponse = await authenticatedGet<any[]>('/api/clubs');
       console.log('[Home] Fetched clubs:', clubsResponse);
       
-      if (clubsResponse && clubsResponse.length > 0) {
-        const firstClub = clubsResponse[0];
-        
-        // Fetch teams for the first club
-        const teamsResponse = await authenticatedGet<Team[]>(`/api/teams?clubId=${firstClub.id}`);
-        console.log('[Home] Fetched teams:', teamsResponse);
-        setTeams(teamsResponse || []);
-        
-        // Fetch fixtures for the first team
-        if (teamsResponse && teamsResponse.length > 0) {
-          const firstTeam = teamsResponse[0];
-          const fixturesResponse = await authenticatedGet<Fixture[]>(`/api/fixtures?teamId=${firstTeam.id}`);
-          console.log('[Home] Fetched fixtures:', fixturesResponse);
-          setFixtures(fixturesResponse || []);
-        }
+      if (!clubsResponse || clubsResponse.length === 0) {
+        console.warn('[Home] No clubs found for user');
+        setError('No clubs found. Please create a club first.');
+        return;
       }
-    } catch (error) {
+      
+      const firstClub = clubsResponse[0];
+      console.log('[Home] Using club:', firstClub.id, firstClub.name);
+      
+      // Fetch teams for the first club
+      console.log('[Home] Fetching teams for club:', firstClub.id);
+      const teamsResponse = await authenticatedGet<Team[]>(`/api/teams?clubId=${firstClub.id}`);
+      console.log('[Home] Fetched teams:', teamsResponse);
+      setTeams(teamsResponse || []);
+      
+      if (!teamsResponse || teamsResponse.length === 0) {
+        console.warn('[Home] No teams found for club');
+        setError('No teams found. Please create a team first.');
+        return;
+      }
+      
+      // Fetch fixtures for the first team
+      const firstTeam = teamsResponse[0];
+      console.log('[Home] Fetching fixtures for team:', firstTeam.id, firstTeam.name);
+      const fixturesResponse = await authenticatedGet<Fixture[]>(`/api/fixtures?teamId=${firstTeam.id}`);
+      console.log('[Home] Fetched fixtures:', fixturesResponse);
+      setFixtures(fixturesResponse || []);
+      
+      console.log('[Home] Data fetch completed successfully');
+    } catch (error: any) {
       console.error('[Home] Error fetching data:', error);
-      setError('Failed to load data. Please try again.');
+      console.error('[Home] Error type:', typeof error);
+      console.error('[Home] Error message:', error?.message);
+      console.error('[Home] Error name:', error?.name);
+      console.error('[Home] Error stack:', error?.stack);
+      
+      let errorMessage = 'Failed to load data. Please try again.';
+      if (error?.message) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoadingData(false);
     }
