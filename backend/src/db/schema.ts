@@ -138,6 +138,12 @@ export const fixtures = pgTable('fixtures', {
   venue: text('venue'),
   date: timestamp('date').notNull(),
   status: fixtureStatusEnum('status').default('scheduled').notNull(),
+  homeTeamName: text('home_team_name'),
+  homeCrestUrl: text('home_crest_url'),
+  homeColours: text('home_colours'),
+  awayTeamName: text('away_team_name'),
+  awayCrestUrl: text('away_crest_url'),
+  awayColours: text('away_colours'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   index('fixtures_team_id_idx').on(table.teamId),

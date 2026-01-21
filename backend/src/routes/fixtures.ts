@@ -46,6 +46,12 @@ export function registerFixtureRoutes(app: App) {
           venue?: string;
           date: string;
           status?: 'scheduled' | 'in_progress' | 'completed';
+          homeTeamName?: string;
+          homeCrestUrl?: string;
+          homeColours?: string;
+          awayTeamName?: string;
+          awayCrestUrl?: string;
+          awayColours?: string;
         };
       }>,
       reply: FastifyReply
@@ -53,7 +59,20 @@ export function registerFixtureRoutes(app: App) {
       const session = await requireAuth(request, reply);
       if (!session) return;
 
-      const { teamId, competitionId, opponent, venue, date, status } = request.body;
+      const {
+        teamId,
+        competitionId,
+        opponent,
+        venue,
+        date,
+        status,
+        homeTeamName,
+        homeCrestUrl,
+        homeColours,
+        awayTeamName,
+        awayCrestUrl,
+        awayColours,
+      } = request.body;
       app.logger.info(
         { userId: session.user.id, teamId, competitionId, opponent, date },
         'Creating fixture'
@@ -68,10 +87,16 @@ export function registerFixtureRoutes(app: App) {
           status: status || 'scheduled',
         };
 
-        // Only include competitionId if provided
+        // Only include optional fields if provided
         if (competitionId) {
           insertData.competitionId = competitionId;
         }
+        if (homeTeamName !== undefined) insertData.homeTeamName = homeTeamName;
+        if (homeCrestUrl !== undefined) insertData.homeCrestUrl = homeCrestUrl;
+        if (homeColours !== undefined) insertData.homeColours = homeColours;
+        if (awayTeamName !== undefined) insertData.awayTeamName = awayTeamName;
+        if (awayCrestUrl !== undefined) insertData.awayCrestUrl = awayCrestUrl;
+        if (awayColours !== undefined) insertData.awayColours = awayColours;
 
         const [fixture] = await app.db
           .insert(schema.fixtures)
@@ -140,6 +165,12 @@ export function registerFixtureRoutes(app: App) {
           date: string;
           competitionId?: string;
           status?: 'scheduled' | 'in_progress' | 'completed';
+          homeTeamName?: string;
+          homeCrestUrl?: string;
+          homeColours?: string;
+          awayTeamName?: string;
+          awayCrestUrl?: string;
+          awayColours?: string;
         };
       }>,
       reply: FastifyReply
@@ -148,7 +179,19 @@ export function registerFixtureRoutes(app: App) {
       if (!session) return;
 
       const { id } = request.params;
-      const { opponent, venue, date, competitionId, status } = request.body;
+      const {
+        opponent,
+        venue,
+        date,
+        competitionId,
+        status,
+        homeTeamName,
+        homeCrestUrl,
+        homeColours,
+        awayTeamName,
+        awayCrestUrl,
+        awayColours,
+      } = request.body;
 
       app.logger.info({ userId: session.user.id, fixtureId: id }, 'Updating fixture');
 
@@ -212,6 +255,12 @@ export function registerFixtureRoutes(app: App) {
         if (venue !== undefined) updateData.venue = venue;
         if (competitionId !== undefined) updateData.competitionId = competitionId;
         if (status !== undefined) updateData.status = status;
+        if (homeTeamName !== undefined) updateData.homeTeamName = homeTeamName;
+        if (homeCrestUrl !== undefined) updateData.homeCrestUrl = homeCrestUrl;
+        if (homeColours !== undefined) updateData.homeColours = homeColours;
+        if (awayTeamName !== undefined) updateData.awayTeamName = awayTeamName;
+        if (awayCrestUrl !== undefined) updateData.awayCrestUrl = awayCrestUrl;
+        if (awayColours !== undefined) updateData.awayColours = awayColours;
 
         const [updated] = await app.db
           .update(schema.fixtures)
