@@ -8,17 +8,27 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Image,
+  ImageSourcePropType,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FixturePicker } from '@/components/FixturePicker';
 import { authenticatedGet } from '@/utils/api';
-import { Team, Fixture } from '@/types';
+import { Team, Fixture, Club } from '@/types';
 import { getSportDisplayName } from '@/constants/EventPresets';
+
+// Helper to resolve image sources (handles both local and remote)
+function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
+  if (!source) return { uri: '' };
+  if (typeof source === 'string') return { uri: source };
+  return source as ImageSourcePropType;
+}
 
 interface TeamDashboardData {
   team: Team;
+  club?: Club;
   playerCount: number;
   upcomingFixtures: Fixture[];
   recentFixtures: Fixture[];
@@ -239,6 +249,10 @@ export default function TeamDashboardScreen() {
   const upcomingCount = data.upcomingFixtures.length.toString();
   const completedCount = data.recentFixtures.length.toString();
   const playerCountStr = data.playerCount.toString();
+  
+  // Determine crest URL (club crest has priority, then team crest)
+  const crestUrl = data.club?.crestUrl || data.team.crestUrl;
+  const hasCrest = !!crestUrl;
 
   return (
     <>
@@ -266,7 +280,26 @@ export default function TeamDashboardScreen() {
         <ScrollView contentContainerStyle={styles.content}>
           {/* Team Info */}
           <View style={styles.teamInfo}>
-            <Text style={styles.teamName}>{data.team.name}</Text>
+            <View style={styles.teamHeader}>
+              <View style={styles.teamCrestContainer}>
+                {hasCrest ? (
+                  <Image
+                    source={resolveImageSource(crestUrl)}
+                    style={styles.teamCrest}
+                    resizeMode="contain"
+                    onError={() => console.log('[TeamDashboard] Failed to load crest image')}
+                  />
+                ) : (
+                  <IconSymbol
+                    ios_icon_name="shield.fill"
+                    android_material_icon_name="shield"
+                    size={32}
+                    color="#000"
+                  />
+                )}
+              </View>
+              <Text style={styles.teamName}>{data.team.name}</Text>
+            </View>
             <View style={styles.teamMeta}>
               {data.team.sport && (
                 <View style={styles.badge}>
@@ -387,7 +420,17 @@ export default function TeamDashboardScreen() {
                   });
 
                   return (
-                    <View key={fixture.id} style={styles.fixtureCard}>
+                    <TouchableOpacity
+                      key={fixture.id}
+                      style={styles.fixtureCard}
+                      onPress={() => {
+                        console.log('[TeamDashboard] User tapped fixture:', fixture.id);
+                        router.push({
+                          pathname: '/edit-fixture/[fixtureId]',
+                          params: { fixtureId: fixture.id, teamId },
+                        });
+                      }}
+                    >
                       <View style={styles.fixtureInfo}>
                         <Text style={styles.fixtureOpponent}>{fixture.opponent}</Text>
                         <Text style={styles.fixtureDate}>{dateStr}</Text>
@@ -396,7 +439,13 @@ export default function TeamDashboardScreen() {
                           <Text style={styles.fixtureVenue}>{fixture.venue}</Text>
                         )}
                       </View>
-                    </View>
+                      <IconSymbol
+                        ios_icon_name="chevron.right"
+                        android_material_icon_name="chevron-right"
+                        size={20}
+                        color="#666"
+                      />
+                    </TouchableOpacity>
                   );
                 })}
               </View>
@@ -487,10 +536,29 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 16,
   },
+  teamHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  teamCrestContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  teamCrest: {
+    width: 40,
+    height: 40,
+  },
   teamName: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#000',
+    flex: 1,
   },
   teamMeta: {
     flexDirection: 'row',
@@ -562,13 +630,17 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   fixtureCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#e0e0e0',
     padding: 16,
     borderRadius: 12,
+    gap: 12,
   },
   fixtureInfo: {
+    flex: 1,
     gap: 4,
   },
   fixtureOpponent: {

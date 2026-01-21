@@ -245,7 +245,7 @@ export default function SelectTeamScreen() {
                             <Text style={styles.badgeText}>{team.grade}</Text>
                           </View>
                         )}
-                        {team.ageGroup && (
+                        {team.ageGroup && team.ageGroup !== team.grade && (
                           <View style={styles.badge}>
                             <Text style={styles.badgeText}>{team.ageGroup}</Text>
                           </View>

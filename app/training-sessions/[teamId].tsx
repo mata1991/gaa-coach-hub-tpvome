@@ -214,17 +214,39 @@ export default function TrainingSessionsScreen() {
                       />
                     </TouchableOpacity>
                     
-                    <TouchableOpacity
-                      style={styles.deleteButton}
-                      onPress={() => handleDeleteSession(session)}
-                    >
-                      <IconSymbol
-                        ios_icon_name="trash"
-                        android_material_icon_name="delete"
-                        size={20}
-                        color="#dc3545"
-                      />
-                    </TouchableOpacity>
+                    <View style={styles.sessionActions}>
+                      <TouchableOpacity
+                        style={styles.editButton}
+                        onPress={() => {
+                          console.log('[TrainingSessions] User tapped Edit session:', session.id);
+                          router.push({
+                            pathname: '/edit-training-session/[sessionId]',
+                            params: { sessionId: session.id, teamId },
+                          });
+                        }}
+                      >
+                        <IconSymbol
+                          ios_icon_name="pencil"
+                          android_material_icon_name="edit"
+                          size={20}
+                          color={colors.primary}
+                        />
+                        <Text style={styles.editButtonText}>Edit</Text>
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity
+                        style={styles.deleteButton}
+                        onPress={() => handleDeleteSession(session)}
+                      >
+                        <IconSymbol
+                          ios_icon_name="trash"
+                          android_material_icon_name="delete"
+                          size={20}
+                          color="#dc3545"
+                        />
+                        <Text style={styles.deleteButtonText}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 );
               })}
@@ -359,11 +381,38 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
   },
-  deleteButton: {
-    padding: 12,
+  sessionActions: {
+    flexDirection: 'row',
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  editButton: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    padding: 12,
+    borderRightWidth: 1,
+    borderRightColor: colors.border,
+  },
+  editButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  deleteButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    padding: 12,
+  },
+  deleteButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#dc3545',
   },
   footer: {
     position: 'absolute',
