@@ -1,6 +1,31 @@
 
 import { EventPreset } from '@/types';
 
+// Sports constants
+export const SPORTS = {
+  HURLING: 'Hurling',
+  CAMOGIE: 'Camogie',
+  GAELIC_FOOTBALL: 'Gaelic Football',
+  LADIES_GAELIC_FOOTBALL: 'Ladies Gaelic Football',
+} as const;
+
+export const SPORT_DISPLAY_NAMES: Record<string, string> = {
+  HURLING: 'Hurling',
+  CAMOGIE: 'Camogie',
+  GAELIC_FOOTBALL: 'Gaelic Football',
+  LADIES_GAELIC_FOOTBALL: 'Ladies Gaelic Football',
+  // Also handle display names as input
+  'Hurling': 'Hurling',
+  'Camogie': 'Camogie',
+  'Gaelic Football': 'Gaelic Football',
+  'Ladies Gaelic Football': 'Ladies Gaelic Football',
+};
+
+export function getSportDisplayName(sport: string | undefined): string {
+  if (!sport) return '';
+  return SPORT_DISPLAY_NAMES[sport] || sport;
+}
+
 export const EVENT_PRESETS: EventPreset[] = [
   {
     category: 'Scoring',

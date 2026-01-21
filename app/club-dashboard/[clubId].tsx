@@ -15,6 +15,7 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { authenticatedGet } from '@/utils/api';
 import { Club, Team, Season, Membership } from '@/types';
+import { getSportDisplayName } from '@/constants/EventPresets';
 
 interface ClubDashboardData {
   club: Club;
@@ -207,7 +208,7 @@ export default function ClubDashboardScreen() {
                       <Text style={styles.teamName}>{team.name}</Text>
                       <View style={styles.teamMeta}>
                         {team.sport && (
-                          <Text style={styles.teamMetaText}>{team.sport}</Text>
+                          <Text style={styles.teamMetaText}>{getSportDisplayName(team.sport)}</Text>
                         )}
                         {team.grade && (
                           <Text style={styles.teamMetaText}>{team.grade}</Text>

@@ -15,6 +15,7 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { authenticatedGet } from '@/utils/api';
 import { Team, Fixture } from '@/types';
+import { getSportDisplayName } from '@/constants/EventPresets';
 
 interface TeamDashboardData {
   team: Team;
@@ -149,7 +150,7 @@ export default function TeamDashboardScreen() {
             <View style={styles.teamMeta}>
               {data.team.sport && (
                 <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{data.team.sport}</Text>
+                  <Text style={styles.badgeText}>{getSportDisplayName(data.team.sport)}</Text>
                 </View>
               )}
               {data.team.grade && (
