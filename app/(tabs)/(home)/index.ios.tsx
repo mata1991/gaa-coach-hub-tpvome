@@ -6,6 +6,8 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useTheme } from '@react-navigation/native';
 import { useRouter, Redirect } from 'expo-router';
@@ -23,43 +25,46 @@ export default function HomeScreen() {
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch user's teams and fixtures
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!user) return;
-      
-      try {
-        setLoadingData(true);
-        console.log('[Home iOS] Fetching teams and fixtures for user:', user.id);
-        
-        // Fetch user's clubs first
-        const clubsResponse = await authenticatedGet<any[]>('/api/clubs');
-        console.log('[Home iOS] Fetched clubs:', clubsResponse);
-        
-        if (clubsResponse && clubsResponse.length > 0) {
-          const firstClub = clubsResponse[0];
-          
-          // Fetch teams for the first club
-          const teamsResponse = await authenticatedGet<Team[]>(`/api/teams?clubId=${firstClub.id}`);
-          console.log('[Home iOS] Fetched teams:', teamsResponse);
-          setTeams(teamsResponse || []);
-          
-          // Fetch fixtures for the first team
-          if (teamsResponse && teamsResponse.length > 0) {
-            const firstTeam = teamsResponse[0];
-            const fixturesResponse = await authenticatedGet<Fixture[]>(`/api/fixtures?teamId=${firstTeam.id}`);
-            console.log('[Home iOS] Fetched fixtures:', fixturesResponse);
-            setFixtures(fixturesResponse || []);
-          }
-        }
-      } catch (error) {
-        console.error('[Home iOS] Error fetching data:', error);
-      } finally {
-        setLoadingData(false);
-      }
-    };
+  const fetchData = async () => {
+    if (!user) return;
     
+    try {
+      setLoadingData(true);
+      setError(null);
+      console.log('[Home iOS] Fetching teams and fixtures for user:', user.id);
+      
+      // Fetch user's clubs first
+      const clubsResponse = await authenticatedGet<any[]>('/api/clubs');
+      console.log('[Home iOS] Fetched clubs:', clubsResponse);
+      
+      if (clubsResponse && clubsResponse.length > 0) {
+        const firstClub = clubsResponse[0];
+        
+        // Fetch teams for the first club
+        const teamsResponse = await authenticatedGet<Team[]>(`/api/teams?clubId=${firstClub.id}`);
+        console.log('[Home iOS] Fetched teams:', teamsResponse);
+        setTeams(teamsResponse || []);
+        
+        // Fetch fixtures for the first team
+        if (teamsResponse && teamsResponse.length > 0) {
+          const firstTeam = teamsResponse[0];
+          const fixturesResponse = await authenticatedGet<Fixture[]>(`/api/fixtures?teamId=${firstTeam.id}`);
+          console.log('[Home iOS] Fetched fixtures:', fixturesResponse);
+          setFixtures(fixturesResponse || []);
+        }
+      }
+    } catch (error) {
+      console.error('[Home iOS] Error fetching data:', error);
+      setError('Failed to load data. Please try again.');
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
+  useEffect(() => {
     fetchData();
   }, [user]);
 
@@ -71,6 +76,7 @@ export default function HomeScreen() {
   if (loading || loadingData) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text style={[styles.loadingText, { color: colors.text }]}>Loading...</Text>
       </View>
     );
@@ -86,6 +92,91 @@ export default function HomeScreen() {
   
   // Calculate stats
   const totalMatches = fixtures.filter(f => f.status === 'completed').length;
+
+  // Handler for Build Team button
+  const handleBuildTeamPress = () => {
+    console.log('[Home iOS] User tapped Build Team button');
+    
+    if (!nextFixture) {
+      console.warn('[Home iOS] No fixture selected for Build Team');
+      
+      // Show alert with options
+      Alert.alert(
+        'No Fixture Selected',
+        'You need to create or select a fixture before building a team lineup.',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => console.log('[Home iOS] User cancelled fixture creation'),
+          },
+          {
+            text: 'Create Fixture',
+            onPress: () => {
+              console.log('[Home iOS] User chose to create fixture');
+              // TODO: Navigate to fixture creation screen when available
+              Alert.alert('Coming Soon', 'Fixture creation screen will be available soon.');
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    try {
+      console.log(`[Home iOS] Navigating to Lineups screen for fixture ${nextFixture.id}`);
+      router.push(`/lineups/${nextFixture.id}` as any);
+    } catch (error) {
+      console.error('[Home iOS] Error navigating to Lineups screen:', error);
+      Alert.alert(
+        'Navigation Error',
+        'Failed to open the Team Builder. Please try again.',
+        [
+          {
+            text: 'Retry',
+            onPress: handleBuildTeamPress,
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+        ]
+      );
+    }
+  };
+
+  // Error state with retry
+  if (error) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+        <View style={styles.errorContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle.fill"
+            android_material_icon_name="error"
+            size={64}
+            color={colors.danger}
+          />
+          <Text style={styles.errorTitle}>Failed to Load Data</Text>
+          <Text style={styles.errorMessage}>{error}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => {
+              console.log('[Home iOS] User tapped Retry button');
+              fetchData();
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="arrow.clockwise"
+              android_material_icon_name="refresh"
+              size={20}
+              color="#fff"
+            />
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -108,7 +199,7 @@ export default function HomeScreen() {
           <TouchableOpacity
             style={[styles.actionCard, styles.primaryAction]}
             onPress={() => {
-              console.log('User tapped Start Match button');
+              console.log('[Home iOS] User tapped Start Match button');
               // If there's a next fixture, pass its ID
               if (nextFixture) {
                 router.push(`/match-tracker?fixtureId=${nextFixture.id}`);
@@ -140,14 +231,7 @@ export default function HomeScreen() {
           <View style={styles.actionRow}>
             <TouchableOpacity
               style={[styles.actionCard, styles.secondaryAction]}
-              onPress={() => {
-                console.log('User tapped Build Lineups button');
-                if (nextFixture) {
-                  router.push(`/lineups/${nextFixture.id}` as any);
-                } else {
-                  console.log('No fixture available for lineups');
-                }
-              }}
+              onPress={handleBuildTeamPress}
             >
               <IconSymbol
                 ios_icon_name="person.3.fill"
@@ -155,13 +239,13 @@ export default function HomeScreen() {
                 size={32}
                 color={colors.primary}
               />
-              <Text style={styles.secondaryActionText}>Build Lineups</Text>
+              <Text style={styles.secondaryActionText}>Build Team</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.actionCard, styles.secondaryAction]}
               onPress={() => {
-                console.log('User tapped View Reports button');
+                console.log('[Home iOS] User tapped View Reports button');
                 if (recentCompletedFixture) {
                   router.push(`/match-report/${recentCompletedFixture.id}` as any);
                 } else if (teams.length > 0) {
@@ -183,7 +267,7 @@ export default function HomeScreen() {
             <TouchableOpacity
               style={[styles.actionCard, styles.secondaryAction]}
               onPress={() => {
-                console.log('User tapped Season Dashboard button');
+                console.log('[Home iOS] User tapped Season Dashboard button');
                 if (teams.length > 0) {
                   router.push(`/season-dashboard/${teams[0].id}` as any);
                 }
@@ -258,7 +342,7 @@ export default function HomeScreen() {
               <Text style={styles.sectionTitle}>Latest Match Report</Text>
               <TouchableOpacity
                 onPress={() => {
-                  console.log('User tapped View Full Report');
+                  console.log('[Home iOS] User tapped View Full Report');
                   router.push(`/match-report/${recentCompletedFixture.id}` as any);
                 }}
               >
@@ -268,7 +352,7 @@ export default function HomeScreen() {
             <TouchableOpacity
               style={styles.reportCard}
               onPress={() => {
-                console.log('User tapped recent match report');
+                console.log('[Home iOS] User tapped recent match report');
                 router.push(`/match-report/${recentCompletedFixture.id}` as any);
               }}
             >
@@ -359,6 +443,40 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     textAlign: 'center',
+    marginTop: 16,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  errorTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 32,
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   header: {
     flexDirection: 'row',
