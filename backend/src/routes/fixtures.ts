@@ -135,10 +135,11 @@ export function registerFixtureRoutes(app: App) {
       request: FastifyRequest<{
         Params: { id: string };
         Body: {
-          status?: 'scheduled' | 'in_progress' | 'completed';
-          opponent?: string;
+          opponent: string;
           venue?: string;
-          date?: string;
+          date: string;
+          competitionId?: string;
+          status?: 'scheduled' | 'in_progress' | 'completed';
         };
       }>,
       reply: FastifyReply
@@ -147,16 +148,70 @@ export function registerFixtureRoutes(app: App) {
       if (!session) return;
 
       const { id } = request.params;
-      const { status, opponent, venue, date } = request.body;
+      const { opponent, venue, date, competitionId, status } = request.body;
 
       app.logger.info({ userId: session.user.id, fixtureId: id }, 'Updating fixture');
 
       try {
-        const updateData: any = {};
-        if (status) updateData.status = status;
-        if (opponent) updateData.opponent = opponent;
-        if (venue) updateData.venue = venue;
-        if (date) updateData.date = new Date(date);
+        // Fetch the fixture to verify it exists and get team info
+        const fixture = await app.db.query.fixtures.findFirst({
+          where: eq(schema.fixtures.id, id),
+          with: {
+            team: true,
+          },
+        });
+
+        if (!fixture) {
+          app.logger.warn({ fixtureId: id }, 'Fixture not found');
+          return reply.status(404).send({ error: 'Fixture not found' });
+        }
+
+        // Check permissions: user must be COACH or CLUB_ADMIN for the team's club
+        const membership = await app.db.query.memberships.findFirst({
+          where: and(
+            eq(schema.memberships.clubId, fixture.team.clubId),
+            eq(schema.memberships.userId, session.user.id)
+          ),
+        });
+
+        if (!membership || !['COACH', 'CLUB_ADMIN'].includes(membership.role)) {
+          app.logger.warn({ fixtureId: id, userId: session.user.id }, 'Unauthorized fixture update');
+          return reply
+            .status(403)
+            .send({ error: 'Only COACH or CLUB_ADMIN can update fixtures' });
+        }
+
+        // Validate required fields
+        if (!opponent || opponent.trim() === '') {
+          app.logger.warn({ fixtureId: id }, 'Opponent is required');
+          return reply.status(400).send({ error: 'Opponent is required' });
+        }
+
+        if (!date || date.trim() === '') {
+          app.logger.warn({ fixtureId: id }, 'Date is required');
+          return reply.status(400).send({ error: 'Date is required' });
+        }
+
+        // Validate date format
+        let parsedDate: Date;
+        try {
+          parsedDate = new Date(date);
+          if (isNaN(parsedDate.getTime())) {
+            throw new Error('Invalid date');
+          }
+        } catch {
+          app.logger.warn({ fixtureId: id, date }, 'Invalid date format');
+          return reply.status(400).send({ error: 'Invalid date format. Use ISO 8601 format' });
+        }
+
+        const updateData: any = {
+          opponent: opponent.trim(),
+          date: parsedDate,
+        };
+
+        if (venue !== undefined) updateData.venue = venue;
+        if (competitionId !== undefined) updateData.competitionId = competitionId;
+        if (status !== undefined) updateData.status = status;
 
         const [updated] = await app.db
           .update(schema.fixtures)
@@ -164,7 +219,10 @@ export function registerFixtureRoutes(app: App) {
           .where(eq(schema.fixtures.id, id))
           .returning();
 
-        app.logger.info({ fixtureId: id }, 'Fixture updated successfully');
+        app.logger.info(
+          { fixtureId: id, opponent: updated.opponent, date: updated.date },
+          'Fixture updated successfully'
+        );
         return updated;
       } catch (error) {
         app.logger.error({ err: error, fixtureId: id }, 'Failed to update fixture');

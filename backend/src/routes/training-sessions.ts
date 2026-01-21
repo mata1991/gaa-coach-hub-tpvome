@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import type { App } from '../index.js';
 
@@ -165,7 +165,7 @@ export function registerTrainingSessionRoutes(app: App) {
       request: FastifyRequest<{
         Params: { id: string };
         Body: {
-          dateTime?: string;
+          dateTime: string;
           location?: string;
           focus?: string;
           notes?: string;
@@ -179,11 +179,59 @@ export function registerTrainingSessionRoutes(app: App) {
       const { id } = request.params;
       const { dateTime, location, focus, notes } = request.body;
 
-      app.logger.info({ userId: session.user.id, trainingSessionId: id }, 'Updating session');
+      app.logger.info({ userId: session.user.id, trainingSessionId: id }, 'Updating training session');
 
       try {
-        const updateData: any = {};
-        if (dateTime !== undefined) updateData.date = new Date(dateTime);
+        // Fetch the training session to verify it exists and get team info
+        const trainSession = await app.db.query.trainingSessions.findFirst({
+          where: eq(schema.trainingSessions.id, id),
+          with: {
+            team: true,
+          },
+        });
+
+        if (!trainSession) {
+          app.logger.warn({ trainingSessionId: id }, 'Training session not found');
+          return reply.status(404).send({ error: 'Training session not found' });
+        }
+
+        // Check permissions: user must be COACH or CLUB_ADMIN for the team's club
+        const membership = await app.db.query.memberships.findFirst({
+          where: and(
+            eq(schema.memberships.clubId, trainSession.team.clubId),
+            eq(schema.memberships.userId, session.user.id)
+          ),
+        });
+
+        if (!membership || !['COACH', 'CLUB_ADMIN'].includes(membership.role)) {
+          app.logger.warn({ trainingSessionId: id, userId: session.user.id }, 'Unauthorized training session update');
+          return reply
+            .status(403)
+            .send({ error: 'Only COACH or CLUB_ADMIN can update training sessions' });
+        }
+
+        // Validate required fields
+        if (!dateTime || dateTime.trim() === '') {
+          app.logger.warn({ trainingSessionId: id }, 'DateTime is required');
+          return reply.status(400).send({ error: 'DateTime is required' });
+        }
+
+        // Validate date format
+        let parsedDate: Date;
+        try {
+          parsedDate = new Date(dateTime);
+          if (isNaN(parsedDate.getTime())) {
+            throw new Error('Invalid date');
+          }
+        } catch {
+          app.logger.warn({ trainingSessionId: id, dateTime }, 'Invalid date format');
+          return reply.status(400).send({ error: 'Invalid date format. Use ISO 8601 format' });
+        }
+
+        const updateData: any = {
+          date: parsedDate,
+        };
+
         if (location !== undefined) updateData.location = location;
         if (focus !== undefined) updateData.focus = focus;
         if (notes !== undefined) updateData.notes = notes;
@@ -194,7 +242,10 @@ export function registerTrainingSessionRoutes(app: App) {
           .where(eq(schema.trainingSessions.id, id))
           .returning();
 
-        app.logger.info({ trainingSessionId: id }, 'Session updated successfully');
+        app.logger.info(
+          { trainingSessionId: id, dateTime: updated.date },
+          'Training session updated successfully'
+        );
         return {
           id: updated.id,
           teamId: updated.teamId,
@@ -206,7 +257,7 @@ export function registerTrainingSessionRoutes(app: App) {
           createdAt: updated.createdAt,
         };
       } catch (error) {
-        app.logger.error({ err: error, trainingSessionId: id }, 'Failed to update session');
+        app.logger.error({ err: error, trainingSessionId: id }, 'Failed to update training session');
         throw error;
       }
     }
