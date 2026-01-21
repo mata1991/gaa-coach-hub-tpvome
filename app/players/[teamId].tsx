@@ -17,6 +17,8 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { authenticatedGet, authenticatedPost, authenticatedPut, authenticatedDelete } from '@/utils/api';
 import { Player } from '@/types';
 
+const PRIMARY_POSITIONS = ['Goalkeeper', 'Back', 'Midfielder', 'Forward'];
+
 export default function PlayersListScreen() {
   const router = useRouter();
   const { teamId } = useLocalSearchParams<{ teamId: string }>();
@@ -28,8 +30,7 @@ export default function PlayersListScreen() {
   
   // Form state
   const [name, setName] = useState('');
-  const [jerseyNo, setJerseyNo] = useState('');
-  const [positions, setPositions] = useState('');
+  const [primaryPosition, setPrimaryPosition] = useState('');
   const [dominantSide, setDominantSide] = useState<'left' | 'right' | ''>('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
@@ -60,8 +61,7 @@ export default function PlayersListScreen() {
     console.log('User tapped Add Player button');
     setEditingPlayer(null);
     setName('');
-    setJerseyNo('');
-    setPositions('');
+    setPrimaryPosition('');
     setDominantSide('');
     setNotes('');
     setShowAddModal(true);
@@ -71,8 +71,7 @@ export default function PlayersListScreen() {
     console.log('User tapped Edit Player:', player.name);
     setEditingPlayer(player);
     setName(player.name);
-    setJerseyNo(player.jerseyNo?.toString() || '');
-    setPositions(player.positions || '');
+    setPrimaryPosition(player.positions || '');
     setDominantSide(player.dominantSide || '');
     setNotes(player.notes || '');
     setShowAddModal(true);
@@ -92,8 +91,7 @@ export default function PlayersListScreen() {
       const payload = {
         teamId,
         name: name.trim(),
-        jerseyNo: jerseyNo ? parseInt(jerseyNo) : undefined,
-        positions: positions.trim() || undefined,
+        positions: primaryPosition || undefined,
         dominantSide: dominantSide || undefined,
         notes: notes.trim() || undefined,
       };
@@ -276,14 +274,31 @@ export default function PlayersListScreen() {
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Positions</Text>
-                <TextInput
-                  style={styles.input}
-                  value={positions}
-                  onChangeText={setPositions}
-                  placeholder="e.g., Full Forward, Midfielder"
-                  placeholderTextColor="#999"
-                />
+                <Text style={styles.label}>Primary Position</Text>
+                <View style={styles.positionGrid}>
+                  {PRIMARY_POSITIONS.map((position) => {
+                    const isSelected = primaryPosition === position;
+                    return (
+                      <TouchableOpacity
+                        key={position}
+                        style={[
+                          styles.positionChip,
+                          isSelected && styles.positionChipActive,
+                        ]}
+                        onPress={() => setPrimaryPosition(position)}
+                      >
+                        <Text
+                          style={[
+                            styles.positionChipText,
+                            isSelected && styles.positionChipTextActive,
+                          ]}
+                        >
+                          {position}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
 
               <View style={styles.formGroup}>
@@ -326,11 +341,14 @@ export default function PlayersListScreen() {
 
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Notes</Text>
+                <Text style={styles.helpText}>
+                  e.g. injury history, previous game notes, availability constraints, strengths/targets
+                </Text>
                 <TextInput
                   style={[styles.input, styles.textArea]}
                   value={notes}
                   onChangeText={setNotes}
-                  placeholder="Additional notes..."
+                  placeholder="Hamstring strain Sept 2025, Strong free taker, Returning from ankle injury, Limited availability midweek"
                   placeholderTextColor="#999"
                   multiline
                   numberOfLines={4}
@@ -411,26 +429,10 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 4,
   },
-  playerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   playerName: {
     fontSize: 18,
     fontWeight: '600',
     color: '#000',
-  },
-  jerseyBadge: {
-    backgroundColor: '#000',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  jerseyText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
   },
   playerPosition: {
     fontSize: 14,
@@ -508,6 +510,12 @@ const styles = StyleSheet.create({
   required: {
     color: '#dc3545',
   },
+  helpText: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 8,
+    fontStyle: 'italic',
+  },
   input: {
     borderWidth: 1,
     borderColor: '#e0e0e0',
@@ -520,6 +528,34 @@ const styles = StyleSheet.create({
   textArea: {
     height: 100,
     textAlignVertical: 'top',
+  },
+  positionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  positionChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    backgroundColor: '#fff',
+    minWidth: '47%',
+    alignItems: 'center',
+  },
+  positionChipActive: {
+    backgroundColor: '#000',
+    borderColor: '#000',
+  },
+  positionChipText: {
+    fontSize: 15,
+    color: '#000',
+    fontWeight: '500',
+  },
+  positionChipTextActive: {
+    color: '#fff',
+    fontWeight: '600',
   },
   segmentedControl: {
     flexDirection: 'row',

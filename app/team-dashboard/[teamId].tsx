@@ -56,6 +56,11 @@ export default function TeamDashboardScreen() {
     fetchDashboard();
   }, [fetchDashboard]);
 
+  const handleSwitchTeam = () => {
+    console.log('User tapped Switch Team button');
+    router.push('/select-team');
+  };
+
   const handleAddPlayers = () => {
     console.log('User tapped Add Players button');
     router.push({
@@ -234,6 +239,19 @@ export default function TeamDashboardScreen() {
           headerShown: true,
           title: data.team.name,
           headerBackTitle: 'Back',
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={handleSwitchTeam}
+              style={{ marginRight: 8 }}
+            >
+              <IconSymbol
+                ios_icon_name="arrow.triangle.2.circlepath"
+                android_material_icon_name="swap-horiz"
+                size={24}
+                color="#000"
+              />
+            </TouchableOpacity>
+          ),
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>

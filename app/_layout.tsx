@@ -1,3 +1,4 @@
+
 import "react-native-reanimated";
 import React, { useEffect } from "react";
 import { useFonts } from "expo-font";
@@ -98,8 +99,14 @@ export default function RootLayout() {
                   <Stack.Screen name="auth" options={{ headerShown: false }} />
                   <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
                   <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+                  
+                  {/* Onboarding screens */}
+                  <Stack.Screen name="get-started" options={{ headerShown: false }} />
+                  <Stack.Screen name="select-team" options={{ headerShown: false }} />
+                  
                   {/* Main app with tabs */}
                   <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  
                   {/* Match tracker screen (no tabs - needs full screen) */}
                   <Stack.Screen 
                     name="match-tracker" 
