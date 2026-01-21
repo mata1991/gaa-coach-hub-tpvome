@@ -35,7 +35,9 @@ export default function CreateTrainingSessionScreen() {
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
     console.log('[CreateTrainingSession] Date changed:', selectedDate);
-    setShowDatePicker(Platform.OS === 'ios');
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
     if (selectedDate) {
       setDate(selectedDate);
     }
@@ -43,14 +45,36 @@ export default function CreateTrainingSessionScreen() {
 
   const handleTimeChange = (event: any, selectedTime?: Date) => {
     console.log('[CreateTrainingSession] Time changed:', selectedTime);
-    setShowTimePicker(Platform.OS === 'ios');
+    if (Platform.OS === 'android') {
+      setShowTimePicker(false);
+    }
     if (selectedTime) {
       setTime(selectedTime);
     }
   };
 
+  const validateForm = (): boolean => {
+    console.log('[CreateTrainingSession] Validating form');
+    
+    if (!date) {
+      Alert.alert('Validation Error', 'Date is required');
+      return false;
+    }
+    
+    if (!time) {
+      Alert.alert('Validation Error', 'Time is required');
+      return false;
+    }
+    
+    return true;
+  };
+
   const handleCreateSession = async () => {
     console.log('[CreateTrainingSession] User tapped Create Session');
+    
+    if (!validateForm()) {
+      return;
+    }
     
     // Combine date and time
     const combinedDateTime = new Date(date);
@@ -78,14 +102,17 @@ export default function CreateTrainingSessionScreen() {
       
       console.log('[CreateTrainingSession] Session created:', session.id);
       
+      Alert.alert('Success', 'Training session created successfully');
+      
       // Navigate to attendance screen
       router.replace({
         pathname: '/training-attendance/[sessionId]',
         params: { sessionId: session.id, teamId },
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('[CreateTrainingSession] Failed to create session:', error);
-      Alert.alert('Error', 'Failed to create training session');
+      const errorMsg = error?.message || 'Failed to create training session. Please try again.';
+      Alert.alert('Error', errorMsg);
     } finally {
       setLoading(false);
     }
@@ -111,10 +138,16 @@ export default function CreateTrainingSessionScreen() {
 
           <View style={styles.form}>
             <View style={styles.field}>
-              <Text style={styles.label}>Date *</Text>
+              <Text style={styles.label}>
+                Date <Text style={styles.required}>*</Text>
+              </Text>
               <TouchableOpacity
                 style={styles.dateButton}
-                onPress={() => setShowDatePicker(true)}
+                onPress={() => {
+                  console.log('[CreateTrainingSession] Date button pressed');
+                  setShowDatePicker(true);
+                }}
+                disabled={loading}
               >
                 <IconSymbol
                   ios_icon_name="calendar"
@@ -123,6 +156,12 @@ export default function CreateTrainingSessionScreen() {
                   color={colors.text}
                 />
                 <Text style={styles.dateButtonText}>{dateStr}</Text>
+                <IconSymbol
+                  ios_icon_name="chevron.down"
+                  android_material_icon_name="arrow-drop-down"
+                  size={20}
+                  color={colors.textSecondary}
+                />
               </TouchableOpacity>
               {showDatePicker && (
                 <DateTimePicker
@@ -130,15 +169,22 @@ export default function CreateTrainingSessionScreen() {
                   mode="date"
                   display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                   onChange={handleDateChange}
+                  minimumDate={new Date()}
                 />
               )}
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>Time *</Text>
+              <Text style={styles.label}>
+                Time <Text style={styles.required}>*</Text>
+              </Text>
               <TouchableOpacity
                 style={styles.dateButton}
-                onPress={() => setShowTimePicker(true)}
+                onPress={() => {
+                  console.log('[CreateTrainingSession] Time button pressed');
+                  setShowTimePicker(true);
+                }}
+                disabled={loading}
               >
                 <IconSymbol
                   ios_icon_name="clock"
@@ -147,6 +193,12 @@ export default function CreateTrainingSessionScreen() {
                   color={colors.text}
                 />
                 <Text style={styles.dateButtonText}>{timeStr}</Text>
+                <IconSymbol
+                  ios_icon_name="chevron.down"
+                  android_material_icon_name="arrow-drop-down"
+                  size={20}
+                  color={colors.textSecondary}
+                />
               </TouchableOpacity>
               {showTimePicker && (
                 <DateTimePicker
@@ -154,6 +206,7 @@ export default function CreateTrainingSessionScreen() {
                   mode="time"
                   display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                   onChange={handleTimeChange}
+                  is24Hour={false}
                 />
               )}
             </View>
@@ -251,6 +304,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
   },
+  required: {
+    color: colors.error,
+  },
   dateButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -263,6 +319,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   dateButtonText: {
+    flex: 1,
     fontSize: 16,
     color: colors.text,
   },

@@ -192,6 +192,8 @@ export default function SelectTeamScreen() {
           headerShown: true,
           title: 'Select Team',
           headerBackVisible: false,
+          headerLeft: () => null,
+          gestureEnabled: false,
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -218,6 +220,7 @@ export default function SelectTeamScreen() {
                   <TouchableOpacity
                     style={styles.teamCard}
                     onPress={() => handleSelectTeam(team)}
+                    activeOpacity={0.7}
                   >
                     <View style={styles.teamIcon}>
                       {hasCrest ? (
@@ -269,7 +272,12 @@ export default function SelectTeamScreen() {
                   <View style={styles.teamActions}>
                     <TouchableOpacity
                       style={styles.actionButton}
-                      onPress={() => handleEditTeam(team)}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        console.log('[SelectTeam] Edit button pressed for team:', team.id);
+                        handleEditTeam(team);
+                      }}
+                      activeOpacity={0.7}
                     >
                       <IconSymbol
                         ios_icon_name="pencil"
@@ -282,7 +290,12 @@ export default function SelectTeamScreen() {
                     
                     <TouchableOpacity
                       style={[styles.actionButton, styles.deleteButton]}
-                      onPress={() => handleDeleteTeam(team)}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        console.log('[SelectTeam] Delete button pressed for team:', team.id);
+                        handleDeleteTeam(team);
+                      }}
+                      activeOpacity={0.7}
                     >
                       <IconSymbol
                         ios_icon_name="trash"
