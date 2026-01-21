@@ -1,11 +1,94 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import { user } from '../db/auth-schema.js';
 import type { App } from '../index.js';
 
 export function registerTeamsV2Routes(app: App) {
   const requireAuth = app.requireAuth();
+
+  // GET /api/teams - Get teams accessible to user
+  app.fastify.get(
+    '/api/teams',
+    async (
+      request: FastifyRequest<{
+        Querystring: { clubId?: string; includeArchived?: string };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { clubId, includeArchived } = request.query;
+      const showArchived = includeArchived === 'true';
+
+      app.logger.info(
+        { userId: session.user.id, clubId, showArchived },
+        'Fetching teams'
+      );
+
+      try {
+        let teams: any[] = [];
+
+        if (clubId) {
+          // Check if user has access to this club via membership
+          const membership = await app.db.query.memberships.findFirst({
+            where: and(
+              eq(schema.memberships.clubId, clubId),
+              eq(schema.memberships.userId, session.user.id)
+            ),
+          });
+
+          if (!membership) {
+            app.logger.warn(
+              { userId: session.user.id, clubId },
+              'User does not have access to this club'
+            );
+            return reply.status(403).send({ error: 'You do not have access to this club' });
+          }
+
+          // Fetch teams for this club
+          teams = await app.db.query.teams.findMany({
+            where: showArchived
+              ? eq(schema.teams.clubId, clubId)
+              : and(
+                  eq(schema.teams.clubId, clubId),
+                  eq(schema.teams.isArchived, false)
+                ),
+          });
+        } else {
+          // Get all clubs user has access to, then fetch teams for those clubs
+          const userMemberships = await app.db.query.memberships.findMany({
+            where: eq(schema.memberships.userId, session.user.id),
+            columns: { clubId: true },
+          });
+
+          const clubIds = userMemberships.map((m) => m.clubId);
+
+          if (clubIds.length === 0) {
+            app.logger.info({ userId: session.user.id }, 'User has no club memberships');
+            return [];
+          }
+
+          // Fetch teams from all accessible clubs
+          teams = await app.db.query.teams.findMany({
+            where: showArchived
+              ? inArray(schema.teams.clubId, clubIds)
+              : and(
+                  inArray(schema.teams.clubId, clubIds),
+                  eq(schema.teams.isArchived, false)
+                ),
+          });
+        }
+
+        app.logger.info({ userId: session.user.id, clubId, teamCount: teams.length }, 'Teams fetched');
+        return teams;
+      } catch (error) {
+        app.logger.error({ err: error, userId: session.user.id, clubId }, 'Failed to fetch teams');
+        throw error;
+      }
+    }
+  );
 
   // POST /api/teams - Create team (updated)
   app.fastify.post(
