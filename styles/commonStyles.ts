@@ -14,6 +14,8 @@ export const colors = {
   success: '#169B62',    // Green for success
   warning: '#FFB800',    // Amber for warnings
   danger: '#DC3545',     // Red for danger
+  error: '#DC3545',      // Red for errors
+  errorBackground: '#FEE', // Light red background for error banners
 };
 
 export const buttonStyles = StyleSheet.create({
