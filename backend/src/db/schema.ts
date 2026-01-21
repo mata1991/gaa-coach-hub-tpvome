@@ -19,6 +19,8 @@ import { user } from './auth-schema.js';
 // ENUMS
 // ============================================================================
 
+export const clubRoleEnum = pgEnum('club_role', ['CLUB_ADMIN', 'COACH', 'STATS_PERSON', 'PLAYER']);
+export const teamRoleEnum = pgEnum('team_role', ['COACH', 'STATS_PERSON', 'PLAYER']);
 export const roleEnum = pgEnum('role', ['club_admin', 'coach', 'stats_person', 'player']);
 export const fixtureStatusEnum = pgEnum('fixture_status', ['scheduled', 'in_progress', 'completed']);
 export const competitionTypeEnum = pgEnum('competition_type', ['League', 'Championship', 'Shield']);
@@ -47,6 +49,9 @@ export const matchStatusEnum = pgEnum('match_status', [
 export const clubs = pgTable('clubs', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
+  county: text('county'),
+  colours: text('colours'),
+  crestUrl: text('crest_url'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   createdBy: text('created_by')
     .notNull()
@@ -65,8 +70,14 @@ export const teams = pgTable('teams', {
     .notNull()
     .references(() => clubs.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
+  shortName: text('short_name'),
+  sport: text('sport'),
+  grade: text('grade'),
+  ageGroup: text('age_group'),
+  homeVenue: text('home_venue'),
   ageGrade: text('age_grade'),
   level: text('level'),
+  isArchived: boolean('is_archived').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   index('teams_club_id_idx').on(table.clubId),
@@ -346,7 +357,47 @@ export const matchState = pgTable('match_state', {
 ]);
 
 // ============================================================================
-// USER ROLES (Team-based permissions)
+// MEMBERSHIPS (Club-level permissions)
+// ============================================================================
+
+export const memberships = pgTable('memberships', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  clubId: uuid('club_id')
+    .notNull()
+    .references(() => clubs.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  role: clubRoleEnum('role').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('memberships_club_id_idx').on(table.clubId),
+  index('memberships_user_id_idx').on(table.userId),
+  uniqueIndex('memberships_club_user_unique_idx').on(table.clubId, table.userId),
+]);
+
+// ============================================================================
+// TEAM MEMBERSHIPS (Team-level permissions)
+// ============================================================================
+
+export const teamMemberships = pgTable('team_memberships', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  teamId: uuid('team_id')
+    .notNull()
+    .references(() => teams.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  role: teamRoleEnum('role').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('team_memberships_team_id_idx').on(table.teamId),
+  index('team_memberships_user_id_idx').on(table.userId),
+  uniqueIndex('team_memberships_team_user_unique_idx').on(table.teamId, table.userId),
+]);
+
+// ============================================================================
+// USER ROLES (Team-based permissions - legacy)
 // ============================================================================
 
 export const userRoles = pgTable('user_roles', {
@@ -372,6 +423,7 @@ export const userRoles = pgTable('user_roles', {
 export const clubsRelations = relations(clubs, ({ many, one }) => ({
   teams: many(teams),
   seasons: many(seasons),
+  memberships: many(memberships),
   createdByUser: one(user, {
     fields: [clubs.createdBy],
     references: [user.id],
@@ -386,6 +438,7 @@ export const teamsRelations = relations(teams, ({ one, many }) => ({
   players: many(players),
   fixtures: many(fixtures),
   trainingSessions: many(trainingSessions),
+  teamMemberships: many(teamMemberships),
   userRoles: many(userRoles),
 }));
 
@@ -529,5 +582,27 @@ export const matchStateRelations = relations(matchState, ({ one }) => ({
   fixture: one(fixtures, {
     fields: [matchState.fixtureId],
     references: [fixtures.id],
+  }),
+}));
+
+export const membershipsRelations = relations(memberships, ({ one }) => ({
+  club: one(clubs, {
+    fields: [memberships.clubId],
+    references: [clubs.id],
+  }),
+  user: one(user, {
+    fields: [memberships.userId],
+    references: [user.id],
+  }),
+}));
+
+export const teamMembershipsRelations = relations(teamMemberships, ({ one }) => ({
+  team: one(teams, {
+    fields: [teamMemberships.teamId],
+    references: [teams.id],
+  }),
+  user: one(user, {
+    fields: [teamMemberships.userId],
+    references: [user.id],
   }),
 }));

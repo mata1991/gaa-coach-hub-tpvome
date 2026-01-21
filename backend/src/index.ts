@@ -4,7 +4,9 @@ import * as authSchema from './db/auth-schema.js';
 
 // Import route registration functions
 import { registerClubRoutes } from './routes/clubs.js';
+import { registerClubsV2Routes } from './routes/clubs-v2.js';
 import { registerTeamRoutes } from './routes/teams.js';
+import { registerTeamsV2Routes } from './routes/teams-v2.js';
 import { registerSeasonRoutes } from './routes/seasons.js';
 import { registerCompetitionRoutes } from './routes/competitions.js';
 import { registerFixtureRoutes } from './routes/fixtures.js';
@@ -39,8 +41,9 @@ export type App = typeof app;
 app.withAuth();
 
 // Register all route modules
-registerClubRoutes(app);
-registerTeamRoutes(app);
+// Note: V2 routes will override V1 routes for overlapping endpoints
+registerClubsV2Routes(app);
+registerTeamsV2Routes(app);
 registerSeasonRoutes(app);
 registerCompetitionRoutes(app);
 registerFixtureRoutes(app);

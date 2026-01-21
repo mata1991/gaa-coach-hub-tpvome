@@ -1,0 +1,366 @@
+import type { FastifyRequest, FastifyReply } from 'fastify';
+import { eq, and } from 'drizzle-orm';
+import * as schema from '../db/schema.js';
+import { user } from '../db/auth-schema.js';
+import type { App } from '../index.js';
+
+export function registerTeamsV2Routes(app: App) {
+  const requireAuth = app.requireAuth();
+
+  // POST /api/teams - Create team (updated)
+  app.fastify.post(
+    '/api/teams',
+    async (
+      request: FastifyRequest<{
+        Body: {
+          clubId: string;
+          name: string;
+          shortName?: string;
+          sport?: string;
+          grade?: string;
+          ageGroup?: string;
+          homeVenue?: string;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { clubId, name, shortName, sport, grade, ageGroup, homeVenue } = request.body;
+      app.logger.info({ userId: session.user.id, clubId, name }, 'Creating team');
+
+      try {
+        // Check if user is CLUB_ADMIN or COACH
+        const membership = await app.db.query.memberships.findFirst({
+          where: and(
+            eq(schema.memberships.clubId, clubId),
+            eq(schema.memberships.userId, session.user.id)
+          ),
+        });
+
+        if (!membership || !['CLUB_ADMIN', 'COACH'].includes(membership.role)) {
+          app.logger.warn({ clubId, userId: session.user.id }, 'Unauthorized team creation');
+          return reply
+            .status(403)
+            .send({ error: 'Only CLUB_ADMIN or COACH can create teams' });
+        }
+
+        const [team] = await app.db
+          .insert(schema.teams)
+          .values({
+            clubId,
+            name,
+            shortName,
+            sport,
+            grade,
+            ageGroup,
+            homeVenue,
+          })
+          .returning();
+
+        app.logger.info({ teamId: team.id, name }, 'Team created successfully');
+        return {
+          id: team.id,
+          clubId: team.clubId,
+          name: team.name,
+          shortName: team.shortName,
+          sport: team.sport,
+          grade: team.grade,
+          ageGroup: team.ageGroup,
+          homeVenue: team.homeVenue,
+          isArchived: team.isArchived,
+          createdAt: team.createdAt,
+        };
+      } catch (error) {
+        app.logger.error({ err: error, clubId, name }, 'Failed to create team');
+        throw error;
+      }
+    }
+  );
+
+  // PUT /api/teams/:id - Update team
+  app.fastify.put(
+    '/api/teams/:id',
+    async (
+      request: FastifyRequest<{
+        Params: { id: string };
+        Body: {
+          name?: string;
+          shortName?: string;
+          sport?: string;
+          grade?: string;
+          ageGroup?: string;
+          homeVenue?: string;
+          isArchived?: boolean;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { id } = request.params;
+      const { name, shortName, sport, grade, ageGroup, homeVenue, isArchived } = request.body;
+
+      app.logger.info({ userId: session.user.id, teamId: id }, 'Updating team');
+
+      try {
+        const team = await app.db.query.teams.findFirst({
+          where: eq(schema.teams.id, id),
+        });
+
+        if (!team) {
+          app.logger.warn({ teamId: id }, 'Team not found');
+          return reply.status(404).send({ error: 'Team not found' });
+        }
+
+        // Check if user is CLUB_ADMIN or COACH
+        const membership = await app.db.query.memberships.findFirst({
+          where: and(
+            eq(schema.memberships.clubId, team.clubId),
+            eq(schema.memberships.userId, session.user.id)
+          ),
+        });
+
+        if (!membership || !['CLUB_ADMIN', 'COACH'].includes(membership.role)) {
+          app.logger.warn({ teamId: id, userId: session.user.id }, 'Unauthorized team update');
+          return reply
+            .status(403)
+            .send({ error: 'Only CLUB_ADMIN or COACH can update teams' });
+        }
+
+        const updateData: any = {};
+        if (name) updateData.name = name;
+        if (shortName !== undefined) updateData.shortName = shortName;
+        if (sport !== undefined) updateData.sport = sport;
+        if (grade !== undefined) updateData.grade = grade;
+        if (ageGroup !== undefined) updateData.ageGroup = ageGroup;
+        if (homeVenue !== undefined) updateData.homeVenue = homeVenue;
+        if (isArchived !== undefined) updateData.isArchived = isArchived;
+
+        const [updated] = await app.db
+          .update(schema.teams)
+          .set(updateData)
+          .where(eq(schema.teams.id, id))
+          .returning();
+
+        app.logger.info({ teamId: id }, 'Team updated successfully');
+        return updated;
+      } catch (error) {
+        app.logger.error({ err: error, teamId: id }, 'Failed to update team');
+        throw error;
+      }
+    }
+  );
+
+  // GET /api/teams/:id/dashboard - Get team dashboard
+  app.fastify.get(
+    '/api/teams/:id/dashboard',
+    async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { id } = request.params;
+      app.logger.info({ userId: session.user.id, teamId: id }, 'Fetching team dashboard');
+
+      try {
+        const team = await app.db.query.teams.findFirst({
+          where: eq(schema.teams.id, id),
+          with: {
+            club: true,
+            players: true,
+            fixtures: true,
+          },
+        });
+
+        if (!team) {
+          app.logger.warn({ teamId: id }, 'Team not found');
+          return reply.status(404).send({ error: 'Team not found' });
+        }
+
+        // Check if user is a member of team or club
+        const clubMembership = await app.db.query.memberships.findFirst({
+          where: and(
+            eq(schema.memberships.clubId, team.clubId),
+            eq(schema.memberships.userId, session.user.id)
+          ),
+        });
+
+        if (!clubMembership) {
+          app.logger.warn({ teamId: id, userId: session.user.id }, 'User not a member');
+          return reply.status(403).send({ error: 'You are not a member of this team or club' });
+        }
+
+        // Get upcoming and recent fixtures
+        const now = new Date();
+        const upcomingFixtures = team.fixtures
+          .filter((f) => f.date > now)
+          .sort((a, b) => a.date.getTime() - b.date.getTime())
+          .slice(0, 5);
+
+        const recentFixtures = team.fixtures
+          .filter((f) => f.date <= now)
+          .sort((a, b) => b.date.getTime() - a.date.getTime())
+          .slice(0, 5);
+
+        const dashboard = {
+          team,
+          playerCount: team.players.length,
+          upcomingFixtures,
+          recentFixtures,
+          userRole: clubMembership.role,
+        };
+
+        app.logger.info({ teamId: id }, 'Team dashboard fetched');
+        return dashboard;
+      } catch (error) {
+        app.logger.error({ err: error, teamId: id }, 'Failed to fetch team dashboard');
+        throw error;
+      }
+    }
+  );
+
+  // GET /api/team-memberships - Get team members
+  app.fastify.get(
+    '/api/team-memberships',
+    async (
+      request: FastifyRequest<{ Querystring: { teamId: string } }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { teamId } = request.query;
+      app.logger.info({ userId: session.user.id, teamId }, 'Fetching team memberships');
+
+      try {
+        const team = await app.db.query.teams.findFirst({
+          where: eq(schema.teams.id, teamId),
+        });
+
+        if (!team) {
+          app.logger.warn({ teamId }, 'Team not found');
+          return reply.status(404).send({ error: 'Team not found' });
+        }
+
+        // Check if user is a member of team or club
+        const clubMembership = await app.db.query.memberships.findFirst({
+          where: and(
+            eq(schema.memberships.clubId, team.clubId),
+            eq(schema.memberships.userId, session.user.id)
+          ),
+        });
+
+        if (!clubMembership) {
+          app.logger.warn({ teamId, userId: session.user.id }, 'User not a member of club');
+          return reply.status(403).send({ error: 'You are not a member of this club' });
+        }
+
+        const teamMemberships = await app.db.query.teamMemberships.findMany({
+          where: eq(schema.teamMemberships.teamId, teamId),
+          with: {
+            user: {
+              columns: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        });
+
+        const members = teamMemberships.map((m) => ({
+          id: m.id,
+          teamId: m.teamId,
+          userId: m.userId,
+          role: m.role,
+          userName: m.user?.name,
+          userEmail: m.user?.email,
+          createdAt: m.createdAt,
+        }));
+
+        app.logger.info({ teamId, memberCount: members.length }, 'Team memberships fetched');
+        return members;
+      } catch (error) {
+        app.logger.error({ err: error, teamId }, 'Failed to fetch team memberships');
+        throw error;
+      }
+    }
+  );
+
+  // POST /api/team-memberships - Add user to team
+  app.fastify.post(
+    '/api/team-memberships',
+    async (
+      request: FastifyRequest<{
+        Body: {
+          teamId: string;
+          userId: string;
+          role: 'COACH' | 'STATS_PERSON' | 'PLAYER';
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { teamId, userId, role } = request.body;
+      app.logger.info(
+        { userId: session.user.id, teamId, targetUserId: userId, role },
+        'Adding user to team'
+      );
+
+      try {
+        const team = await app.db.query.teams.findFirst({
+          where: eq(schema.teams.id, teamId),
+        });
+
+        if (!team) {
+          app.logger.warn({ teamId }, 'Team not found');
+          return reply.status(404).send({ error: 'Team not found' });
+        }
+
+        // Check if requester is CLUB_ADMIN or COACH
+        const requesterMembership = await app.db.query.memberships.findFirst({
+          where: and(
+            eq(schema.memberships.clubId, team.clubId),
+            eq(schema.memberships.userId, session.user.id)
+          ),
+        });
+
+        if (!requesterMembership || !['CLUB_ADMIN', 'COACH'].includes(requesterMembership.role)) {
+          app.logger.warn({ teamId, userId: session.user.id }, 'Unauthorized team membership');
+          return reply
+            .status(403)
+            .send({ error: 'Only CLUB_ADMIN or COACH can add users to team' });
+        }
+
+        // Create team membership
+        const [membership] = await app.db
+          .insert(schema.teamMemberships)
+          .values({
+            teamId,
+            userId,
+            role,
+          })
+          .returning();
+
+        app.logger.info(
+          { membershipId: membership.id, teamId, userId, role },
+          'User added to team'
+        );
+        return {
+          id: membership.id,
+          teamId: membership.teamId,
+          userId: membership.userId,
+          role: membership.role,
+          createdAt: membership.createdAt,
+        };
+      } catch (error) {
+        app.logger.error({ err: error, teamId, userId }, 'Failed to add user to team');
+        throw error;
+      }
+    }
+  );
+}
