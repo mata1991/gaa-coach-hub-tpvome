@@ -45,6 +45,8 @@ export function registerClubsV2Routes(app: App) {
           county?: string;
           colours?: string;
           crestUrl?: string;
+          primaryColor?: string;
+          secondaryColor?: string;
         };
       }>,
       reply: FastifyReply
@@ -52,7 +54,7 @@ export function registerClubsV2Routes(app: App) {
       const session = await requireAuth(request, reply);
       if (!session) return;
 
-      const { name, county, colours, crestUrl } = request.body;
+      const { name, county, colours, crestUrl, primaryColor, secondaryColor } = request.body;
       app.logger.info({ userId: session.user.id, name }, 'Creating club');
 
       try {
@@ -63,6 +65,8 @@ export function registerClubsV2Routes(app: App) {
             county,
             colours,
             crestUrl,
+            primaryColor,
+            secondaryColor,
             createdBy: session.user.id,
           })
           .returning();
@@ -81,6 +85,8 @@ export function registerClubsV2Routes(app: App) {
           county: club.county,
           colours: club.colours,
           crestUrl: club.crestUrl,
+          primaryColor: club.primaryColor,
+          secondaryColor: club.secondaryColor,
           createdAt: club.createdAt,
           createdBy: club.createdBy,
         };
@@ -102,6 +108,8 @@ export function registerClubsV2Routes(app: App) {
           county?: string;
           colours?: string;
           crestUrl?: string;
+          primaryColor?: string;
+          secondaryColor?: string;
         };
       }>,
       reply: FastifyReply
@@ -110,7 +118,7 @@ export function registerClubsV2Routes(app: App) {
       if (!session) return;
 
       const { id } = request.params;
-      const { name, county, colours, crestUrl } = request.body;
+      const { name, county, colours, crestUrl, primaryColor, secondaryColor } = request.body;
 
       app.logger.info({ userId: session.user.id, clubId: id }, 'Updating club');
 
@@ -133,6 +141,8 @@ export function registerClubsV2Routes(app: App) {
         if (county !== undefined) updateData.county = county;
         if (colours !== undefined) updateData.colours = colours;
         if (crestUrl !== undefined) updateData.crestUrl = crestUrl;
+        if (primaryColor !== undefined) updateData.primaryColor = primaryColor;
+        if (secondaryColor !== undefined) updateData.secondaryColor = secondaryColor;
 
         const [updated] = await app.db
           .update(schema.clubs)

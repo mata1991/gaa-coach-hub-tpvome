@@ -52,6 +52,8 @@ export const clubs = pgTable('clubs', {
   county: text('county'),
   colours: text('colours'),
   crestUrl: text('crest_url'),
+  primaryColor: text('primary_color'),
+  secondaryColor: text('secondary_color'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   createdBy: text('created_by')
     .notNull()
