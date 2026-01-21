@@ -94,6 +94,7 @@ export default function TeamDashboardScreen() {
     const availableFixtures = data?.upcomingFixtures || [];
     
     if (availableFixtures.length === 0) {
+      console.log('[TeamDashboard] No fixtures available, showing alert');
       Alert.alert(
         'No Fixtures',
         'You need to create a fixture before setting up your team line out.',
@@ -110,13 +111,13 @@ export default function TeamDashboardScreen() {
 
     if (availableFixtures.length === 1) {
       const fixture = availableFixtures[0];
-      console.log('Navigating to lineups for fixture:', fixture.id);
+      console.log('[TeamDashboard] Navigating to lineups for fixture:', fixture.id);
       router.push({
         pathname: '/lineups/[fixtureId]',
         params: { fixtureId: fixture.id, teamId },
       });
     } else {
-      console.log('Multiple fixtures found, showing picker');
+      console.log('[TeamDashboard] Multiple fixtures found, showing picker');
       setFixturePickerMode('build');
       setShowFixturePicker(true);
     }
@@ -311,7 +312,7 @@ export default function TeamDashboardScreen() {
                   <Text style={styles.badgeText}>{data.team.grade}</Text>
                 </View>
               )}
-              {data.team.ageGroup && (
+              {data.team.ageGroup && data.team.ageGroup !== data.team.grade && (
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>{data.team.ageGroup}</Text>
                 </View>

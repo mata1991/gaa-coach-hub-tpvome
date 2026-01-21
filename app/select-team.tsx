@@ -126,7 +126,7 @@ export default function SelectTeamScreen() {
   };
 
   const handleEditTeam = (team: Team) => {
-    console.log('[SelectTeam] User tapped Edit Team:', team.name);
+    console.log('[SelectTeam] Edit pressed', team.id);
     router.push({
       pathname: '/edit-team/[teamId]',
       params: { teamId: team.id },
@@ -134,7 +134,7 @@ export default function SelectTeamScreen() {
   };
 
   const handleDeleteTeam = async (team: Team) => {
-    console.log('[SelectTeam] User tapped Delete Team:', team.name);
+    console.log('[SelectTeam] Delete pressed', team.id);
     
     const teamName = team.name;
     const confirmMessage = `Delete team '${teamName}'? This will archive the team and hide it from the list.`;
@@ -150,7 +150,13 @@ export default function SelectTeamScreen() {
           onPress: async () => {
             try {
               console.log('[SelectTeam] Deleting team:', team.id);
+              
+              // Call backend delete endpoint
               await authenticatedDelete(`/api/teams/${team.id}`);
+              console.log('[SelectTeam] Team deleted successfully');
+              
+              // Update UI immediately - remove from local state
+              setTeams(prevTeams => prevTeams.filter(t => t.id !== team.id));
               
               // Check if deleted team was the active team
               const lastSelectedTeam = await AsyncStorage.getItem(LAST_SELECTED_TEAM_KEY);
@@ -158,9 +164,6 @@ export default function SelectTeamScreen() {
                 console.log('[SelectTeam] Deleted team was active, clearing selection');
                 await AsyncStorage.removeItem(LAST_SELECTED_TEAM_KEY);
               }
-              
-              // Refresh teams list
-              await fetchTeams();
               
               Alert.alert('Success', `Team '${teamName}' has been archived.`);
             } catch (error) {
@@ -207,6 +210,9 @@ export default function SelectTeamScreen() {
               const crestUrl = team.crestUrl || club?.crestUrl;
               const hasCrest = !!crestUrl;
               
+              // Fix duplicate grade display: only show ageGroup if it's different from grade
+              const showAgeGroup = team.ageGroup && team.ageGroup !== team.grade;
+              
               return (
                 <View key={team.id} style={styles.teamCardContainer}>
                   <TouchableOpacity
@@ -245,7 +251,7 @@ export default function SelectTeamScreen() {
                             <Text style={styles.badgeText}>{team.grade}</Text>
                           </View>
                         )}
-                        {team.ageGroup && team.ageGroup !== team.grade && (
+                        {showAgeGroup && (
                           <View style={styles.badge}>
                             <Text style={styles.badgeText}>{team.ageGroup}</Text>
                           </View>
