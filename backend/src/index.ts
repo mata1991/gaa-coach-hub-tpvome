@@ -20,6 +20,8 @@ import { registerUserRoleRoutes } from './routes/user-roles.js';
 import { registerReportRoutes } from './routes/reports.js';
 import { registerAnalyticsRoutes } from './routes/analytics.js';
 import { registerExportRoutes } from './routes/exports.js';
+import { registerMatchSquadRoutes } from './routes/match-squads.js';
+import { registerMatchStateRoutes } from './routes/match-state.js';
 
 // Combine schemas for full database type support
 const schema = { ...appSchema, ...authSchema };
@@ -54,6 +56,8 @@ registerUserRoleRoutes(app);
 registerReportRoutes(app);
 registerAnalyticsRoutes(app);
 registerExportRoutes(app);
+registerMatchSquadRoutes(app);
+registerMatchStateRoutes(app);
 
 await app.run();
 app.logger.info('GAA Coach Hub API running');

@@ -32,6 +32,13 @@ export const eventCategoryEnum = pgEnum('event_category', [
   'Discipline',
   'Substitutions',
 ]);
+export const teamSideEnum = pgEnum('team_side', ['HOME', 'AWAY']);
+export const matchStatusEnum = pgEnum('match_status', [
+  'NOT_STARTED',
+  'IN_PROGRESS',
+  'PAUSED',
+  'COMPLETED',
+]);
 
 // ============================================================================
 // CLUBS
@@ -234,6 +241,7 @@ export const matchEvents = pgTable('match_events', {
     .notNull()
     .references(() => fixtures.id, { onDelete: 'cascade' }),
   playerId: uuid('player_id').references(() => players.id, { onDelete: 'set null' }),
+  side: teamSideEnum('side'),
   timestamp: integer('timestamp').notNull(), // Match clock in seconds
   eventType: text('event_type').notNull(),
   eventCategory: eventCategoryEnum('event_category').notNull(),
@@ -289,6 +297,52 @@ export const fitnessTests = pgTable('fitness_tests', {
 }, (table) => [
   index('fitness_tests_player_id_idx').on(table.playerId),
   index('fitness_tests_date_idx').on(table.date),
+]);
+
+// ============================================================================
+// MATCH SQUADS
+// ============================================================================
+
+export const matchSquads = pgTable('match_squads', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  fixtureId: uuid('fixture_id')
+    .notNull()
+    .references(() => fixtures.id, { onDelete: 'cascade' }),
+  side: teamSideEnum('side').notNull(),
+  startingSlots: jsonb('starting_slots').notNull(), // Array of 15 LineupSlot objects
+  bench: jsonb('bench').notNull(), // Array of 15 LineupSlot objects
+  subsLog: jsonb('subs_log').default([]), // Array of SubEvent objects
+  locked: boolean('locked').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (table) => [
+  index('match_squads_fixture_id_idx').on(table.fixtureId),
+  uniqueIndex('match_squads_fixture_side_unique_idx').on(table.fixtureId, table.side),
+]);
+
+// ============================================================================
+// MATCH STATE
+// ============================================================================
+
+export const matchState = pgTable('match_state', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  fixtureId: uuid('fixture_id')
+    .notNull()
+    .unique()
+    .references(() => fixtures.id, { onDelete: 'cascade' }),
+  status: matchStatusEnum('status').default('NOT_STARTED').notNull(),
+  homeGoals: integer('home_goals').default(0).notNull(),
+  homePoints: integer('home_points').default(0).notNull(),
+  awayGoals: integer('away_goals').default(0).notNull(),
+  awayPoints: integer('away_points').default(0).notNull(),
+  matchClock: integer('match_clock').default(0).notNull(), // in seconds
+  period: integer('period').default(1).notNull(),
+  startedAt: timestamp('started_at'),
+  completedAt: timestamp('completed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (table) => [
+  index('match_state_fixture_id_idx').on(table.fixtureId),
 ]);
 
 // ============================================================================
@@ -362,6 +416,11 @@ export const fixturesRelations = relations(fixtures, ({ one, many }) => ({
   }),
   lineups: many(lineups),
   matchEvents: many(matchEvents),
+  matchSquads: many(matchSquads),
+  matchState: one(matchState, {
+    fields: [fixtures.id],
+    references: [matchState.fixtureId],
+  }),
   availability: many(availability),
 }));
 
@@ -456,5 +515,19 @@ export const userRolesRelations = relations(userRoles, ({ one }) => ({
   team: one(teams, {
     fields: [userRoles.teamId],
     references: [teams.id],
+  }),
+}));
+
+export const matchSquadsRelations = relations(matchSquads, ({ one }) => ({
+  fixture: one(fixtures, {
+    fields: [matchSquads.fixtureId],
+    references: [fixtures.id],
+  }),
+}));
+
+export const matchStateRelations = relations(matchState, ({ one }) => ({
+  fixture: one(fixtures, {
+    fields: [matchState.fixtureId],
+    references: [fixtures.id],
   }),
 }));

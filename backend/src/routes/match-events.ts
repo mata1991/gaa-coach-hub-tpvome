@@ -43,6 +43,7 @@ export function registerMatchEventRoutes(app: App) {
           fixtureId: string;
           events: Array<{
             playerId?: string;
+            side?: 'HOME' | 'AWAY';
             timestamp: number;
             eventType: string;
             eventCategory:
@@ -94,6 +95,7 @@ export function registerMatchEventRoutes(app: App) {
             await app.db.insert(schema.matchEvents).values({
               fixtureId,
               playerId: event.playerId,
+              side: event.side,
               timestamp: event.timestamp,
               eventType: event.eventType,
               eventCategory: event.eventCategory,
