@@ -1,21 +1,23 @@
+
 import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
 
 export const colors = {
-  primary: '#169B62',    // GAA Green
-  secondary: '#0D7A4D',  // Darker Green
-  accent: '#FFB800',     // Gold/Amber accent
-  background: '#F5F5F5',  // Light grey background
-  backgroundAlt: '#FFFFFF',  // White
-  text: '#1A1A1A',       // Dark text
-  textSecondary: '#666666', // Grey text
-  card: '#FFFFFF',       // White cards
-  highlight: '#FFF3CD',  // Light yellow highlight
-  border: '#E0E0E0',     // Light border
-  success: '#169B62',    // Green for success
-  warning: '#FFB800',    // Amber for warnings
-  danger: '#DC3545',     // Red for danger
-  error: '#DC3545',      // Red for errors
-  errorBackground: '#FEE', // Light red background for error banners
+  primary: '#000000',        // Black
+  secondary: '#ffffff',      // White
+  accent: '#000000',         // Black accent
+  background: '#ffffff',     // White background
+  backgroundAlt: '#f5f5f5',  // Light grey alternative
+  text: '#000000',           // Black text
+  textSecondary: '#666666',  // Grey text
+  card: '#ffffff',           // White cards
+  highlight: '#f5f5f5',      // Light grey highlight
+  border: '#e0e0e0',         // Light grey border
+  success: '#000000',        // Black for success
+  warning: '#000000',        // Black for warnings
+  danger: '#dc3545',         // Red for danger (keep for errors)
+  error: '#dc3545',          // Red for errors
+  errorBackground: '#FEE',   // Light red background for error banners
+  grey: '#e0e0e0',           // Grey for borders
 };
 
 export const buttonStyles = StyleSheet.create({

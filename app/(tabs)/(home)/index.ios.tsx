@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
-import { useThemeColors } from '@/contexts/ThemeContext';
+// ThemeColors not needed - monochrome theme is enforced
 import { authenticatedGet, BACKEND_URL } from '@/utils/api';
 import { Fixture, Team, Club } from '@/types';
 
@@ -23,7 +23,6 @@ export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { user, loading } = useAuth();
-  const { updateTheme } = useThemeColors();
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loadingData, setLoadingData] = useState(true);

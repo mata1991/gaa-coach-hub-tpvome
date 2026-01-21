@@ -11,8 +11,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
+import { FixturePicker } from '@/components/FixturePicker';
 import { authenticatedGet } from '@/utils/api';
 import { Team, Fixture } from '@/types';
 import { getSportDisplayName } from '@/constants/EventPresets';
@@ -31,6 +31,8 @@ export default function TeamDashboardScreen() {
   
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<TeamDashboardData | null>(null);
+  const [showFixturePicker, setShowFixturePicker] = useState(false);
+  const [fixturePickerMode, setFixturePickerMode] = useState<'build' | 'start'>('build');
 
   console.log('TeamDashboardScreen: Rendering team dashboard', { teamId });
 
@@ -43,7 +45,6 @@ export default function TeamDashboardScreen() {
     setLoading(true);
 
     try {
-      // Fetch team dashboard data from API
       const dashboardData = await authenticatedGet(`/api/teams/${teamId}/dashboard`);
       console.log('Team dashboard data fetched:', dashboardData);
       setData(dashboardData);
@@ -57,52 +58,138 @@ export default function TeamDashboardScreen() {
 
   const handleAddPlayers = () => {
     console.log('User tapped Add Players button');
-    // TODO: Navigate to add players screen
-    Alert.alert('Coming Soon', 'Add players feature will be available soon');
+    router.push({
+      pathname: '/players/[teamId]',
+      params: { teamId },
+    });
   };
 
   const handleCreateFixture = () => {
     console.log('User tapped Create Fixture button');
-    // TODO: Navigate to create fixture screen
-    Alert.alert('Coming Soon', 'Create fixture feature will be available soon');
+    router.push({
+      pathname: '/create-fixture/[teamId]',
+      params: { teamId },
+    });
   };
 
   const handleBuildTeam = () => {
     console.log('User tapped Build Team button');
     
     if (!data?.upcomingFixtures || data.upcomingFixtures.length === 0) {
-      Alert.alert('No Fixtures', 'Please create a fixture first before building a team');
+      Alert.alert(
+        'No Fixtures',
+        'You need to create a fixture before building a team.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Create Fixture',
+            onPress: handleCreateFixture,
+          },
+        ]
+      );
       return;
     }
 
-    const nextFixture = data.upcomingFixtures[0];
-    router.push({
-      pathname: '/lineups/[fixtureId]',
-      params: { fixtureId: nextFixture.id },
-    });
+    if (data.upcomingFixtures.length === 1) {
+      const fixture = data.upcomingFixtures[0];
+      console.log('Navigating to lineups for fixture:', fixture.id);
+      router.push({
+        pathname: '/lineups/[fixtureId]',
+        params: { fixtureId: fixture.id, teamId },
+      });
+    } else {
+      console.log('Multiple fixtures found, showing picker');
+      setFixturePickerMode('build');
+      setShowFixturePicker(true);
+    }
   };
 
-  const handleStartMatch = () => {
+  const handleStartMatch = async () => {
     console.log('User tapped Start Match button');
     
     if (!data?.upcomingFixtures || data.upcomingFixtures.length === 0) {
-      Alert.alert('No Fixtures', 'Please create a fixture first');
+      Alert.alert(
+        'No Fixtures',
+        'You need to create a fixture before starting a match.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Create Fixture',
+            onPress: handleCreateFixture,
+          },
+        ]
+      );
       return;
     }
 
-    const nextFixture = data.upcomingFixtures[0];
-    router.push({
-      pathname: '/match-tracker-live/[fixtureId]',
-      params: { fixtureId: nextFixture.id },
-    });
+    if (data.upcomingFixtures.length === 1) {
+      const fixture = data.upcomingFixtures[0];
+      await checkLineupsAndStartMatch(fixture.id);
+    } else {
+      console.log('Multiple fixtures found, showing picker');
+      setFixturePickerMode('start');
+      setShowFixturePicker(true);
+    }
+  };
+
+  const checkLineupsAndStartMatch = async (fixtureId: string) => {
+    console.log('Checking lineups for fixture:', fixtureId);
+
+    try {
+      const squads = await authenticatedGet(`/api/match-squads?fixtureId=${fixtureId}`);
+      console.log('Squads fetched:', squads);
+
+      if (!squads || squads.length === 0) {
+        Alert.alert(
+          'No Lineups',
+          'You need to build your team before starting the match.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Build Team',
+              onPress: () => {
+                router.push({
+                  pathname: '/lineups/[fixtureId]',
+                  params: { fixtureId, teamId },
+                });
+              },
+            },
+          ]
+        );
+        return;
+      }
+
+      console.log('Lineups found, navigating to live match');
+      router.push({
+        pathname: '/match-tracker-live/[fixtureId]',
+        params: { fixtureId },
+      });
+    } catch (error) {
+      console.error('Failed to check lineups:', error);
+      Alert.alert('Error', 'Failed to check lineups. Please try again.');
+    }
   };
 
   const handleReports = () => {
     console.log('User tapped Reports button');
     router.push({
-      pathname: '/season-dashboard/[teamId]',
+      pathname: '/reports/[teamId]',
       params: { teamId },
     });
+  };
+
+  const handleFixtureSelected = (fixture: Fixture) => {
+    console.log('Fixture selected from picker:', fixture.opponent);
+    setShowFixturePicker(false);
+
+    if (fixturePickerMode === 'build') {
+      router.push({
+        pathname: '/lineups/[fixtureId]',
+        params: { fixtureId: fixture.id, teamId },
+      });
+    } else {
+      checkLineupsAndStartMatch(fixture.id);
+    }
   };
 
   const canEdit = data?.userRole === 'CLUB_ADMIN' || data?.userRole === 'COACH';
@@ -110,7 +197,7 @@ export default function TeamDashboardScreen() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color="#000" />
         <Text style={styles.loadingText}>Loading team dashboard...</Text>
       </View>
     );
@@ -123,7 +210,7 @@ export default function TeamDashboardScreen() {
           ios_icon_name="exclamationmark.triangle"
           android_material_icon_name="error"
           size={48}
-          color={colors.error}
+          color="#dc3545"
         />
         <Text style={styles.errorText}>Failed to load team dashboard</Text>
         <TouchableOpacity style={styles.retryButton} onPress={fetchDashboard}>
@@ -132,6 +219,10 @@ export default function TeamDashboardScreen() {
       </View>
     );
   }
+
+  const upcomingCount = data.upcomingFixtures.length.toString();
+  const completedCount = data.recentFixtures.length.toString();
+  const playerCountStr = data.playerCount.toString();
 
   return (
     <>
@@ -167,15 +258,15 @@ export default function TeamDashboardScreen() {
 
             <View style={styles.statsRow}>
               <View style={styles.stat}>
-                <Text style={styles.statValue}>{data.playerCount}</Text>
+                <Text style={styles.statValue}>{playerCountStr}</Text>
                 <Text style={styles.statLabel}>Players</Text>
               </View>
               <View style={styles.stat}>
-                <Text style={styles.statValue}>{data.upcomingFixtures.length}</Text>
+                <Text style={styles.statValue}>{upcomingCount}</Text>
                 <Text style={styles.statLabel}>Upcoming</Text>
               </View>
               <View style={styles.stat}>
-                <Text style={styles.statValue}>{data.recentFixtures.length}</Text>
+                <Text style={styles.statValue}>{completedCount}</Text>
                 <Text style={styles.statLabel}>Completed</Text>
               </View>
             </View>
@@ -191,7 +282,7 @@ export default function TeamDashboardScreen() {
                     ios_icon_name="person.badge.plus"
                     android_material_icon_name="person-add"
                     size={32}
-                    color={colors.primary}
+                    color="#000"
                   />
                   <Text style={styles.actionText}>Add Players</Text>
                 </TouchableOpacity>
@@ -203,7 +294,7 @@ export default function TeamDashboardScreen() {
                     ios_icon_name="calendar.badge.plus"
                     android_material_icon_name="event"
                     size={32}
-                    color={colors.primary}
+                    color="#000"
                   />
                   <Text style={styles.actionText}>Create Fixture</Text>
                 </TouchableOpacity>
@@ -214,7 +305,7 @@ export default function TeamDashboardScreen() {
                   ios_icon_name="person.3.fill"
                   android_material_icon_name="group"
                   size={32}
-                  color={colors.primary}
+                  color="#000"
                 />
                 <Text style={styles.actionText}>Build Team</Text>
               </TouchableOpacity>
@@ -224,7 +315,7 @@ export default function TeamDashboardScreen() {
                   ios_icon_name="play.circle.fill"
                   android_material_icon_name="play-arrow"
                   size={32}
-                  color={colors.primary}
+                  color="#000"
                 />
                 <Text style={styles.actionText}>Start Match</Text>
               </TouchableOpacity>
@@ -234,7 +325,7 @@ export default function TeamDashboardScreen() {
                   ios_icon_name="chart.bar.fill"
                   android_material_icon_name="assessment"
                   size={32}
-                  color={colors.primary}
+                  color="#000"
                 />
                 <Text style={styles.actionText}>Reports</Text>
               </TouchableOpacity>
@@ -278,7 +369,7 @@ export default function TeamDashboardScreen() {
                 ios_icon_name="calendar"
                 android_material_icon_name="event"
                 size={48}
-                color={colors.textSecondary}
+                color="#666"
               />
               <Text style={styles.emptyText}>No upcoming fixtures</Text>
               {canEdit && (
@@ -289,6 +380,15 @@ export default function TeamDashboardScreen() {
             </View>
           )}
         </ScrollView>
+
+        {/* Fixture Picker Modal */}
+        <FixturePicker
+          visible={showFixturePicker}
+          fixtures={data.upcomingFixtures}
+          onSelect={handleFixtureSelected}
+          onClose={() => setShowFixturePicker(false)}
+          title={fixturePickerMode === 'build' ? 'Select Fixture to Build Team' : 'Select Fixture to Start Match'}
+        />
       </SafeAreaView>
     </>
   );
@@ -297,7 +397,7 @@ export default function TeamDashboardScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#fff',
   },
   content: {
     padding: 16,
@@ -307,28 +407,28 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.background,
+    backgroundColor: '#fff',
     gap: 12,
   },
   loadingText: {
     fontSize: 16,
-    color: colors.textSecondary,
+    color: '#666',
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.background,
+    backgroundColor: '#fff',
     padding: 24,
     gap: 16,
   },
   errorText: {
     fontSize: 16,
-    color: colors.text,
+    color: '#000',
     textAlign: 'center',
   },
   retryButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#000',
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
@@ -339,7 +439,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   teamInfo: {
-    backgroundColor: colors.card,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
     padding: 20,
     borderRadius: 12,
     gap: 16,
@@ -347,7 +449,7 @@ const styles = StyleSheet.create({
   teamName: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: colors.text,
+    color: '#000',
   },
   teamMeta: {
     flexDirection: 'row',
@@ -355,7 +457,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   badge: {
-    backgroundColor: colors.primary + '20',
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
@@ -363,7 +467,7 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.primary,
+    color: '#000',
   },
   statsRow: {
     flexDirection: 'row',
@@ -376,11 +480,11 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: colors.primary,
+    color: '#000',
   },
   statLabel: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: '#666',
     marginTop: 4,
   },
   section: {
@@ -389,7 +493,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: colors.text,
+    color: '#000',
   },
   actionsGrid: {
     flexDirection: 'row',
@@ -397,7 +501,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   actionCard: {
-    backgroundColor: colors.card,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
     padding: 20,
     borderRadius: 12,
     alignItems: 'center',
@@ -408,14 +514,16 @@ const styles = StyleSheet.create({
   actionText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.text,
+    color: '#000',
     textAlign: 'center',
   },
   fixturesList: {
     gap: 12,
   },
   fixtureCard: {
-    backgroundColor: colors.card,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
     padding: 16,
     borderRadius: 12,
   },
@@ -425,18 +533,20 @@ const styles = StyleSheet.create({
   fixtureOpponent: {
     fontSize: 18,
     fontWeight: '600',
-    color: colors.text,
+    color: '#000',
   },
   fixtureDate: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: '#666',
   },
   fixtureVenue: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: '#666',
   },
   emptyState: {
-    backgroundColor: colors.card,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
     padding: 40,
     borderRadius: 12,
     alignItems: 'center',
@@ -444,10 +554,10 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: colors.textSecondary,
+    color: '#666',
   },
   emptyButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#000',
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,

@@ -57,10 +57,7 @@ export default function HomeScreen() {
       const firstClub = clubsResponse[0];
       console.log('[Home] Using club:', firstClub.id, firstClub.name);
       
-      if (firstClub.primaryColor && firstClub.secondaryColor) {
-        console.log('[Home] Loading club theme:', { primaryColor: firstClub.primaryColor, secondaryColor: firstClub.secondaryColor });
-        await updateTheme(firstClub.primaryColor, firstClub.secondaryColor);
-      }
+      // Note: Club colors are ignored - monochrome theme is enforced
       
       // Fetch teams for the first club
       console.log('[Home] Fetching teams for club:', firstClub.id);
