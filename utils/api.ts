@@ -17,19 +17,26 @@ export const isBackendConfigured = (): boolean => {
 };
 
 /**
- * Get bearer token from platform-specific storage
- * Web: localStorage
- * Native: SecureStore
+ * Get bearer token from Better Auth session
+ * Retrieves the access token from the Better Auth session
  *
  * @returns Bearer token or null if not found
  */
 export const getBearerToken = async (): Promise<string | null> => {
   try {
-    if (Platform.OS === "web") {
-      return localStorage.getItem(BEARER_TOKEN_KEY);
-    } else {
-      return await SecureStore.getItemAsync(BEARER_TOKEN_KEY);
+    // Import authClient dynamically to avoid circular dependencies
+    const { authClient } = await import("@/lib/auth");
+    
+    // Get the session from Better Auth
+    const session = await authClient.getSession();
+    
+    if (session?.data?.session?.token) {
+      console.log("[API] Retrieved token from Better Auth session");
+      return session.data.session.token;
     }
+    
+    console.log("[API] No token found in Better Auth session");
+    return null;
   } catch (error) {
     console.error("[API] Error retrieving bearer token:", error);
     return null;
