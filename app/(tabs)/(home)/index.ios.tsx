@@ -46,8 +46,8 @@ export default function HomeScreen() {
       console.log('[Home iOS] Fetched clubs:', clubsResponse);
       
       if (!clubsResponse || clubsResponse.length === 0) {
-        console.warn('[Home iOS] No clubs found for user');
-        setError('No clubs found. Please create a club first.');
+        console.warn('[Home iOS] No clubs found for user, redirecting to get-started');
+        router.replace('/get-started');
         return;
       }
       

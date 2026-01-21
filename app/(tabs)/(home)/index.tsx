@@ -41,14 +41,14 @@ export default function HomeScreen() {
       console.log('[Home] Fetching teams and fixtures for user:', user.id);
       console.log('[Home] Backend URL:', BACKEND_URL);
       
-      // Fetch user's clubs first
+      // Fetch user's clubs (returns clubs where user has membership)
       console.log('[Home] Fetching clubs...');
       const clubsResponse = await authenticatedGet<any[]>('/api/clubs');
       console.log('[Home] Fetched clubs:', clubsResponse);
       
       if (!clubsResponse || clubsResponse.length === 0) {
-        console.warn('[Home] No clubs found for user');
-        setError('No clubs found. Please create a club first.');
+        console.warn('[Home] No clubs found for user, redirecting to get-started');
+        router.replace('/get-started');
         return;
       }
       

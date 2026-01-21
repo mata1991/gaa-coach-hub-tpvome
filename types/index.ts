@@ -9,6 +9,9 @@ export interface User {
 export interface Club {
   id: string;
   name: string;
+  county?: string;
+  colours?: string;
+  crestUrl?: string;
   createdAt: string;
   createdBy: string;
 }
@@ -17,8 +20,34 @@ export interface Team {
   id: string;
   clubId: string;
   name: string;
-  ageGrade?: string;
-  level?: string;
+  shortName?: string;
+  sport?: string;
+  grade?: string;
+  ageGroup?: string;
+  homeVenue?: string;
+  isArchived?: boolean;
+  ageGrade?: string; // Keep for backward compatibility
+  level?: string; // Keep for backward compatibility
+  createdAt: string;
+}
+
+export interface Membership {
+  id: string;
+  clubId: string;
+  userId: string;
+  role: 'CLUB_ADMIN' | 'COACH' | 'STATS_PERSON' | 'PLAYER';
+  userName?: string;
+  userEmail?: string;
+  createdAt: string;
+}
+
+export interface TeamMembership {
+  id: string;
+  teamId: string;
+  userId: string;
+  role: 'COACH' | 'STATS_PERSON' | 'PLAYER';
+  userName?: string;
+  userEmail?: string;
   createdAt: string;
 }
 
