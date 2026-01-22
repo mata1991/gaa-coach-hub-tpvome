@@ -24,6 +24,7 @@ import { registerAnalyticsRoutes } from './routes/analytics.js';
 import { registerExportRoutes } from './routes/exports.js';
 import { registerMatchSquadRoutes } from './routes/match-squads.js';
 import { registerMatchStateRoutes } from './routes/match-state.js';
+import { registerUploadRoutes } from './routes/uploads.js';
 
 // Combine schemas for full database type support
 const schema = { ...appSchema, ...authSchema };
@@ -39,6 +40,9 @@ export type App = typeof app;
 
 // Enable authentication with Better Auth
 app.withAuth();
+
+// Enable storage for file uploads
+app.withStorage();
 
 // Register all route modules
 // Note: V2 routes will override V1 routes for overlapping endpoints
@@ -61,6 +65,7 @@ registerAnalyticsRoutes(app);
 registerExportRoutes(app);
 registerMatchSquadRoutes(app);
 registerMatchStateRoutes(app);
+registerUploadRoutes(app);
 
 await app.run();
 app.logger.info('GAA Coach Hub API running');

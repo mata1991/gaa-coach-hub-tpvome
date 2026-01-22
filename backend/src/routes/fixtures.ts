@@ -48,10 +48,14 @@ export function registerFixtureRoutes(app: App) {
           status?: 'scheduled' | 'in_progress' | 'completed';
           homeTeamName?: string;
           homeCrestUrl?: string;
+          homeCrestImageUrl?: string;
           homeColours?: string;
+          homeJerseyImageUrl?: string;
           awayTeamName?: string;
           awayCrestUrl?: string;
+          awayCrestImageUrl?: string;
           awayColours?: string;
+          awayJerseyImageUrl?: string;
         };
       }>,
       reply: FastifyReply
@@ -68,10 +72,14 @@ export function registerFixtureRoutes(app: App) {
         status,
         homeTeamName,
         homeCrestUrl,
+        homeCrestImageUrl,
         homeColours,
+        homeJerseyImageUrl,
         awayTeamName,
         awayCrestUrl,
+        awayCrestImageUrl,
         awayColours,
+        awayJerseyImageUrl,
       } = request.body;
       app.logger.info(
         { userId: session.user.id, teamId, competitionId, opponent, date },
@@ -93,10 +101,14 @@ export function registerFixtureRoutes(app: App) {
         }
         if (homeTeamName !== undefined) insertData.homeTeamName = homeTeamName;
         if (homeCrestUrl !== undefined) insertData.homeCrestUrl = homeCrestUrl;
+        if (homeCrestImageUrl !== undefined) insertData.homeCrestImageUrl = homeCrestImageUrl;
         if (homeColours !== undefined) insertData.homeColours = homeColours;
+        if (homeJerseyImageUrl !== undefined) insertData.homeJerseyImageUrl = homeJerseyImageUrl;
         if (awayTeamName !== undefined) insertData.awayTeamName = awayTeamName;
         if (awayCrestUrl !== undefined) insertData.awayCrestUrl = awayCrestUrl;
+        if (awayCrestImageUrl !== undefined) insertData.awayCrestImageUrl = awayCrestImageUrl;
         if (awayColours !== undefined) insertData.awayColours = awayColours;
+        if (awayJerseyImageUrl !== undefined) insertData.awayJerseyImageUrl = awayJerseyImageUrl;
 
         const [fixture] = await app.db
           .insert(schema.fixtures)
@@ -167,10 +179,14 @@ export function registerFixtureRoutes(app: App) {
           status?: 'scheduled' | 'in_progress' | 'completed';
           homeTeamName?: string;
           homeCrestUrl?: string;
+          homeCrestImageUrl?: string;
           homeColours?: string;
+          homeJerseyImageUrl?: string;
           awayTeamName?: string;
           awayCrestUrl?: string;
+          awayCrestImageUrl?: string;
           awayColours?: string;
+          awayJerseyImageUrl?: string;
         };
       }>,
       reply: FastifyReply
@@ -187,10 +203,14 @@ export function registerFixtureRoutes(app: App) {
         status,
         homeTeamName,
         homeCrestUrl,
+        homeCrestImageUrl,
         homeColours,
+        homeJerseyImageUrl,
         awayTeamName,
         awayCrestUrl,
+        awayCrestImageUrl,
         awayColours,
+        awayJerseyImageUrl,
       } = request.body;
 
       app.logger.info({ userId: session.user.id, fixtureId: id }, 'Updating fixture');
@@ -257,10 +277,14 @@ export function registerFixtureRoutes(app: App) {
         if (status !== undefined) updateData.status = status;
         if (homeTeamName !== undefined) updateData.homeTeamName = homeTeamName;
         if (homeCrestUrl !== undefined) updateData.homeCrestUrl = homeCrestUrl;
+        if (homeCrestImageUrl !== undefined) updateData.homeCrestImageUrl = homeCrestImageUrl;
         if (homeColours !== undefined) updateData.homeColours = homeColours;
+        if (homeJerseyImageUrl !== undefined) updateData.homeJerseyImageUrl = homeJerseyImageUrl;
         if (awayTeamName !== undefined) updateData.awayTeamName = awayTeamName;
         if (awayCrestUrl !== undefined) updateData.awayCrestUrl = awayCrestUrl;
+        if (awayCrestImageUrl !== undefined) updateData.awayCrestImageUrl = awayCrestImageUrl;
         if (awayColours !== undefined) updateData.awayColours = awayColours;
+        if (awayJerseyImageUrl !== undefined) updateData.awayJerseyImageUrl = awayJerseyImageUrl;
 
         const [updated] = await app.db
           .update(schema.fixtures)
