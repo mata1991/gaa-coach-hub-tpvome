@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FixturePicker } from '@/components/FixturePicker';
-import { authenticatedGet, authenticatedDelete } from '@/utils/api';
+import { authenticatedGet, authenticatedDelete, authenticatedPost } from '@/utils/api';
 import { Team, Fixture, Club } from '@/types';
 import { getSportDisplayName } from '@/constants/EventPresets';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -191,26 +191,37 @@ export default function TeamDashboardScreen() {
   };
 
   const checkLineupsAndStartMatch = async (fixtureId: string) => {
-    console.log('[TeamDashboard] Checking lineups for fixture:', fixtureId);
-    console.log('[TeamDashboard] Request URL:', `/api/fixtures/${fixtureId}/lineup-status`);
+    console.log('[TeamDashboard] Checking squad status for fixture:', fixtureId);
+    console.log('[TeamDashboard] Request URL:', `/api/fixtures/${fixtureId}/squad-status`);
 
     try {
-      const response = await authenticatedGet<{ hasLineup: boolean }>(`/api/fixtures/${fixtureId}/lineup-status`);
-      console.log('[TeamDashboard] Lineup status response:', response);
+      const response = await authenticatedGet<{ homeReady: boolean; awayReady: boolean }>(`/api/fixtures/${fixtureId}/squad-status`);
+      console.log('[TeamDashboard] Squad status response:', response);
       console.log('[TeamDashboard] Response status code: 200');
       console.log('[TeamDashboard] Response body:', JSON.stringify(response));
 
-      if (!response.hasLineup) {
-        console.log('[TeamDashboard] No lineup exists, prompting user to create Team Line Out');
+      const homeReady = response.homeReady || false;
+      const awayReady = response.awayReady || false;
+
+      if (!homeReady || !awayReady) {
+        // Squads are missing, show alert and navigate to lineup screen
+        const missingSquads = [];
+        if (!homeReady) missingSquads.push('HOME');
+        if (!awayReady) missingSquads.push('AWAY');
+        
+        const missingText = missingSquads.join(' and ');
+        const squadWord = missingSquads.length > 1 ? 'squads' : 'squad';
+        
+        console.log('[TeamDashboard] Missing squads:', missingText);
         Alert.alert(
-          'No Lineup Saved',
-          'No lineup saved yet. Create Team Line Out to start match.',
+          'Squads Required',
+          `${missingText} ${squadWord} must be created before starting the match.`,
           [
             { text: 'Cancel', style: 'cancel' },
             {
-              text: 'Create Team Line Out',
+              text: 'Create Squads',
               onPress: () => {
-                console.log('[TeamDashboard] Navigating to Team Line Out screen');
+                console.log('[TeamDashboard] Navigating to Team Line Out screen to create squads');
                 router.push({
                   pathname: '/lineups/[fixtureId]',
                   params: { fixtureId, teamId },
@@ -222,23 +233,52 @@ export default function TeamDashboardScreen() {
         return;
       }
 
-      console.log('[TeamDashboard] Lineup exists, navigating to live match tracker');
+      // Both squads exist, proceed to start match
+      console.log('[TeamDashboard] Both squads ready, starting match');
       try {
+        const startResponse = await authenticatedPost(`/api/fixtures/${fixtureId}/match-state/start`, {});
+        console.log('[TeamDashboard] Match started successfully:', startResponse);
+        console.log('[TeamDashboard] Navigating to live match tracker');
+        
         router.push({
           pathname: '/match-tracker-live/[fixtureId]',
           params: { fixtureId },
         });
         console.log('[TeamDashboard] Navigation to match tracker initiated');
-      } catch (navError) {
-        console.error('[TeamDashboard] Navigation to match tracker failed:', navError);
-        Alert.alert(
-          'Navigation Error',
-          'Failed to open match tracker. Please try again.',
-          [{ text: 'OK' }]
-        );
+      } catch (startError: any) {
+        console.error('[TeamDashboard] Failed to start match:', startError);
+        console.error('[TeamDashboard] Start error message:', startError?.message);
+        console.error('[TeamDashboard] Start error status:', startError?.status);
+        
+        // If we get a 400 error about squads, show the squad setup screen
+        if (startError?.status === 400 && startError?.message?.includes('squad')) {
+          console.log('[TeamDashboard] Backend returned 400 - squads issue, navigating to lineup screen');
+          Alert.alert(
+            'Squads Required',
+            'Both HOME and AWAY squads must be created before starting the match.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Create Squads',
+                onPress: () => {
+                  router.push({
+                    pathname: '/lineups/[fixtureId]',
+                    params: { fixtureId, teamId },
+                  });
+                },
+              },
+            ]
+          );
+        } else {
+          Alert.alert(
+            'Error',
+            `Failed to start match: ${startError?.message || 'Unknown error'}`,
+            [{ text: 'OK' }]
+          );
+        }
       }
     } catch (error: any) {
-      console.error('[TeamDashboard] Failed to check lineups:', error);
+      console.error('[TeamDashboard] Failed to check squad status:', error);
       console.error('[TeamDashboard] Error message:', error?.message);
       console.error('[TeamDashboard] Error status:', error?.status);
       console.error('[TeamDashboard] Error stack:', error?.stack);
@@ -262,28 +302,29 @@ export default function TeamDashboardScreen() {
         console.log('[TeamDashboard] 404 error - route not found or fixture does not exist');
         Alert.alert(
           'App Configuration Error',
-          'The lineup check endpoint is not available. Please contact support.',
+          'The squad status endpoint is not available. Please contact support.',
           [
             { text: 'OK' },
           ]
         );
       } else if (error?.message?.includes('Network') || error?.message?.includes('fetch') || error?.message?.includes('Failed to fetch')) {
-        console.log('[TeamDashboard] Network error detected, checking for cached lineup');
+        console.log('[TeamDashboard] Network error detected, checking for cached squads');
         
-        // Check if there's a cached lineup for offline use
+        // Check if there's a cached squad for offline use
         try {
           const cachedSquadsKey = `match-squads-${fixtureId}`;
           const cachedSquads = await AsyncStorage.getItem(cachedSquadsKey);
           
           if (cachedSquads) {
             const squads = JSON.parse(cachedSquads);
-            const hasLineup = squads && (squads.home || squads.away);
+            const homeReady = squads && squads.home;
+            const awayReady = squads && squads.away;
             
-            if (hasLineup) {
-              console.log('[TeamDashboard] Found cached lineup, allowing offline match tracker');
+            if (homeReady && awayReady) {
+              console.log('[TeamDashboard] Found cached squads, allowing offline match tracker');
               Alert.alert(
                 'Offline Mode',
-                'You are offline. Using cached lineup data. Match events will be synced when you reconnect.',
+                'You are offline. Using cached squad data. Match events will be synced when you reconnect.',
                 [
                   { text: 'Cancel', style: 'cancel' },
                   {
@@ -301,16 +342,16 @@ export default function TeamDashboardScreen() {
             }
           }
           
-          console.log('[TeamDashboard] No cached lineup found');
+          console.log('[TeamDashboard] No cached squads found or incomplete');
           Alert.alert(
-            'Lineup Required',
-            'Lineup required to start match. Please connect to the internet to create a lineup.',
+            'Squads Required',
+            'Squads required to start match. Please connect to the internet to create squads.',
             [
               { text: 'OK' },
             ]
           );
         } catch (cacheError) {
-          console.error('[TeamDashboard] Error checking cached lineup:', cacheError);
+          console.error('[TeamDashboard] Error checking cached squads:', cacheError);
           Alert.alert(
             'Could Not Reach Server',
             'Could not reach server. Please check your connection and try again.',

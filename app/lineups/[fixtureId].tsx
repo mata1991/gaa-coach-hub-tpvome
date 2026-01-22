@@ -275,12 +275,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
   },
+  quickAddSubtext: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 12,
+    marginBottom: 8,
+  },
   lockedBanner: {
     backgroundColor: '#FF9500',
     padding: 12,
     alignItems: 'center',
   },
   lockedText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  statusBanner: {
+    backgroundColor: '#FF9500',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  readyBanner: {
+    backgroundColor: '#34C759',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  statusTextContainer: {
+    flex: 1,
+  },
+  statusText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#FFFFFF',
@@ -584,6 +613,42 @@ export default function LineupsScreen() {
     }
   };
 
+  const handleUsePlaceholders = async () => {
+    if (!currentSquad) return;
+
+    console.log('[Lineups] Creating placeholder squad for AWAY team');
+    
+    // Create placeholder starting lineup (1-15)
+    const placeholderStarting: LineupSlot[] = GAA_POSITIONS.map(pos => ({
+      positionNo: pos.positionNo,
+      positionName: pos.positionName,
+      playerId: `placeholder-away-${pos.positionNo}`,
+      playerName: `Away ${pos.positionNo}`,
+      jerseyNo: pos.positionNo.toString(),
+    }));
+
+    // Create placeholder bench (16-30)
+    const placeholderBench: LineupSlot[] = Array.from({ length: 15 }, (_, i) => {
+      const benchNo = i + 16;
+      return {
+        positionNo: benchNo,
+        positionName: `Bench ${i + 1}`,
+        playerId: `placeholder-away-${benchNo}`,
+        playerName: `Away ${benchNo}`,
+        jerseyNo: benchNo.toString(),
+      };
+    });
+
+    await saveSquad(placeholderStarting, placeholderBench);
+    setShowPlayerPicker(false);
+    
+    Alert.alert(
+      'Placeholders Created',
+      'Away squad created with placeholder names (Away 1-15). You can edit individual players by tapping on them.',
+      [{ text: 'OK' }]
+    );
+  };
+
   const saveSquad = async (startingSlots: LineupSlot[], bench: LineupSlot[]) => {
     console.log('Saving squad for side:', selectedSide);
     try {
@@ -623,14 +688,35 @@ export default function LineupsScreen() {
   };
 
   const handleStartMatch = async () => {
-    console.log('Starting match');
-    const homeStartingCount = homeSquad?.startingSlots.filter(s => s.playerId).length || 0;
-    const awayStartingCount = awaySquad?.startingSlots.filter(s => s.playerId).length || 0;
+    console.log('[Lineups] User tapped Start Match');
+    
+    // Check if both squads exist
+    if (!homeSquad || !awaySquad) {
+      const missingSquads = [];
+      if (!homeSquad) missingSquads.push('HOME');
+      if (!awaySquad) missingSquads.push('AWAY');
+      
+      const missingText = missingSquads.join(' and ');
+      const squadWord = missingSquads.length > 1 ? 'squads' : 'squad';
+      
+      Alert.alert(
+        'Squads Required',
+        `${missingText} ${squadWord} must be created before starting the match. Switch to the ${missingSquads[0]} tab to create it.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    const homeStartingCount = homeSquad.startingSlots.filter(s => s.playerId).length || 0;
+    const awayStartingCount = awaySquad.startingSlots.filter(s => s.playerId).length || 0;
 
     if (homeStartingCount < 15 || awayStartingCount < 15) {
+      const homeCountText = homeStartingCount.toString();
+      const awayCountText = awayStartingCount.toString();
+      
       Alert.alert(
         'Incomplete Lineups',
-        `Home: ${homeStartingCount}/15, Away: ${awayStartingCount}/15. Start anyway?`,
+        `Home: ${homeCountText}/15, Away: ${awayCountText}/15. Start anyway?`,
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Start Match', onPress: startMatch },
@@ -642,13 +728,27 @@ export default function LineupsScreen() {
   };
 
   const startMatch = async () => {
+    console.log('[Lineups] Starting match for fixture:', fixtureId);
     try {
       await authenticatedPost(`/api/fixtures/${fixtureId}/match-state/start`, {});
-      console.log('Match started, navigating to tracker');
+      console.log('[Lineups] Match started successfully, navigating to tracker');
       router.push(`/match-tracker-live/${fixtureId}`);
-    } catch (error) {
-      console.error('Error starting match:', error);
-      Alert.alert('Error', 'Failed to start match');
+    } catch (error: any) {
+      console.error('[Lineups] Error starting match:', error);
+      console.error('[Lineups] Error status:', error?.status);
+      console.error('[Lineups] Error message:', error?.message);
+      
+      // If we get a 400 error about squads, show helpful message
+      if (error?.status === 400 && error?.message?.includes('squad')) {
+        Alert.alert(
+          'Squads Required',
+          'Both HOME and AWAY squads must be created before starting the match. Please ensure both tabs have squads created.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        const errorMessage = error?.message || 'Unknown error';
+        Alert.alert('Error', `Failed to start match: ${errorMessage}`);
+      }
     }
   };
 
@@ -807,19 +907,47 @@ export default function LineupsScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.quickAddContainer}>
-              <Text style={styles.quickAddTitle}>Quick Add New Player</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Player Name"
-                placeholderTextColor={colors.textSecondary}
-                value={quickAddName}
-                onChangeText={setQuickAddName}
-              />
-              <TouchableOpacity style={styles.quickAddButton} onPress={handleQuickAdd}>
-                <Text style={styles.buttonText}>Add Player</Text>
-              </TouchableOpacity>
-            </View>
+            {selectedSide === 'HOME' ? (
+              <View style={styles.quickAddContainer}>
+                <Text style={styles.quickAddTitle}>Quick Add New Player</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Player Name"
+                  placeholderTextColor={colors.textSecondary}
+                  value={quickAddName}
+                  onChangeText={setQuickAddName}
+                />
+                <TouchableOpacity style={styles.quickAddButton} onPress={handleQuickAdd}>
+                  <Text style={styles.buttonText}>Add Player</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.quickAddContainer}>
+                <Text style={styles.quickAddTitle}>Away Squad Options</Text>
+                <TouchableOpacity
+                  style={styles.quickAddButton}
+                  onPress={() => {
+                    console.log('[Lineups] User tapped Use Placeholders for AWAY squad');
+                    handleUsePlaceholders();
+                  }}
+                >
+                  <Text style={styles.buttonText}>Use Placeholders (Away 1-15)</Text>
+                </TouchableOpacity>
+                <Text style={styles.quickAddSubtext}>
+                  Or manually add opponent players below
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Opponent Player Name"
+                  placeholderTextColor={colors.textSecondary}
+                  value={quickAddName}
+                  onChangeText={setQuickAddName}
+                />
+                <TouchableOpacity style={styles.quickAddButton} onPress={handleQuickAdd}>
+                  <Text style={styles.buttonText}>Add Opponent Player</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             <ScrollView style={styles.modalScroll}>
               {availablePlayers.map(player => {
@@ -878,6 +1006,11 @@ export default function LineupsScreen() {
   const homeJerseyUrl = fixture?.homeJerseyImageUrl;
   const awayJerseyUrl = fixture?.awayJerseyImageUrl;
 
+  // Check squad readiness
+  const homeReady = homeSquad && homeSquad.startingSlots.some(s => s.playerId);
+  const awayReady = awaySquad && awaySquad.startingSlots.some(s => s.playerId);
+  const bothSquadsReady = homeReady && awayReady;
+
   return (
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ title: `Team Line Out vs ${opponentName}`, headerShown: true }} />
@@ -885,6 +1018,40 @@ export default function LineupsScreen() {
       {isLocked && (
         <View style={styles.lockedBanner}>
           <Text style={styles.lockedText}>Lineups Locked - Match Started</Text>
+        </View>
+      )}
+
+      {!isLocked && !bothSquadsReady && (
+        <View style={styles.statusBanner}>
+          <IconSymbol
+            ios_icon_name="info.circle"
+            android_material_icon_name="info"
+            size={20}
+            color="#FFFFFF"
+          />
+          <View style={styles.statusTextContainer}>
+            {!homeReady && !awayReady && (
+              <Text style={styles.statusText}>Create HOME and AWAY squads to start match</Text>
+            )}
+            {homeReady && !awayReady && (
+              <Text style={styles.statusText}>HOME complete • AWAY squad required</Text>
+            )}
+            {!homeReady && awayReady && (
+              <Text style={styles.statusText}>AWAY complete • HOME squad required</Text>
+            )}
+          </View>
+        </View>
+      )}
+
+      {!isLocked && bothSquadsReady && (
+        <View style={styles.readyBanner}>
+          <IconSymbol
+            ios_icon_name="checkmark.circle"
+            android_material_icon_name="check-circle"
+            size={20}
+            color="#FFFFFF"
+          />
+          <Text style={styles.statusText}>Both squads ready • Tap Start Match to begin</Text>
         </View>
       )}
 
