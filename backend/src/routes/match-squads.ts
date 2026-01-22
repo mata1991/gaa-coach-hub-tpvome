@@ -398,7 +398,7 @@ export function registerMatchSquadRoutes(app: App) {
           return reply.status(404).send({ error: 'Fixture not found' });
         }
 
-        // Check if HOME squad exists
+        // Check if HOME squad exists and has at least one player in startingSlots
         const homeSquad = await app.db.query.matchSquads.findFirst({
           where: and(
             eq(schema.matchSquads.fixtureId, fixtureId),
@@ -406,7 +406,7 @@ export function registerMatchSquadRoutes(app: App) {
           ),
         });
 
-        // Check if AWAY squad exists
+        // Check if AWAY squad exists and has at least one player in startingSlots
         const awaySquad = await app.db.query.matchSquads.findFirst({
           where: and(
             eq(schema.matchSquads.fixtureId, fixtureId),
@@ -414,13 +414,94 @@ export function registerMatchSquadRoutes(app: App) {
           ),
         });
 
-        const homeReady = !!homeSquad;
-        const awayReady = !!awaySquad;
+        // Check if squads have at least one player in starting slots
+        const homeStarting = homeSquad ? (homeSquad.startingSlots as any[]) || [] : [];
+        const awayStarting = awaySquad ? (awaySquad.startingSlots as any[]) || [] : [];
+
+        const homeReady = !!homeSquad && homeStarting.length > 0;
+        const awayReady = !!awaySquad && awayStarting.length > 0;
 
         app.logger.info({ fixtureId, homeReady, awayReady }, 'Squad status checked');
         return { homeReady, awayReady };
       } catch (error) {
         app.logger.error({ err: error, fixtureId }, 'Failed to check squad status');
+        throw error;
+      }
+    }
+  );
+
+  // POST /api/fixtures/:fixtureId/squads/away/placeholders - Create placeholder away squad
+  app.fastify.post(
+    '/api/fixtures/:fixtureId/squads/away/placeholders',
+    async (request: FastifyRequest<{ Params: { fixtureId: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { fixtureId } = request.params;
+      app.logger.info({ userId: session.user.id, fixtureId }, 'Creating placeholder away squad');
+
+      try {
+        // Verify fixture exists
+        const fixture = await app.db.query.fixtures.findFirst({
+          where: eq(schema.fixtures.id, fixtureId),
+        });
+
+        if (!fixture) {
+          app.logger.warn({ fixtureId }, 'Fixture not found');
+          return reply.status(404).send({ error: 'Fixture not found' });
+        }
+
+        // Check if away squad already exists
+        const existingAway = await app.db.query.matchSquads.findFirst({
+          where: and(
+            eq(schema.matchSquads.fixtureId, fixtureId),
+            eq(schema.matchSquads.side, 'AWAY')
+          ),
+        });
+
+        if (existingAway) {
+          app.logger.warn({ fixtureId }, 'Away squad already exists');
+          return reply.status(400).send({ error: 'Away squad already exists for this fixture' });
+        }
+
+        // Create placeholder starting slots (1-15)
+        const startingSlots: LineupSlot[] = [];
+        for (let i = 1; i <= 15; i++) {
+          startingSlots.push({
+            positionNo: i,
+            positionName: DEFAULT_POSITIONS[i - 1]?.positionName || `Position ${i}`,
+            playerName: `Away ${i}`,
+          });
+        }
+
+        // Create placeholder bench slots (16-30)
+        const benchSlots: LineupSlot[] = [];
+        for (let i = 16; i <= 30; i++) {
+          benchSlots.push({
+            positionNo: i,
+            positionName: `Substitute ${i - 15}`,
+            playerName: `Away ${i}`,
+          });
+        }
+
+        // Create the away squad
+        const [awaySquad] = await app.db
+          .insert(schema.matchSquads)
+          .values({
+            fixtureId,
+            side: 'AWAY',
+            startingSlots: startingSlots,
+            bench: benchSlots,
+          })
+          .returning();
+
+        app.logger.info(
+          { fixtureId, squadId: awaySquad.id, side: 'AWAY' },
+          'Placeholder away squad created successfully'
+        );
+        return awaySquad;
+      } catch (error) {
+        app.logger.error({ err: error, fixtureId }, 'Failed to create placeholder away squad');
         throw error;
       }
     }
