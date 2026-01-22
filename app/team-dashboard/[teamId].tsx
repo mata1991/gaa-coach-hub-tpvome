@@ -132,9 +132,10 @@ export default function TeamDashboardScreen() {
   };
 
   const handleStartMatch = async () => {
-    console.log('User tapped Start Match button');
+    console.log('[TeamDashboard] User tapped Start Match button');
     
     if (!data?.upcomingFixtures || data.upcomingFixtures.length === 0) {
+      console.log('[TeamDashboard] No fixtures available, showing create fixture prompt');
       Alert.alert(
         'No Fixtures',
         'You need to create a fixture before starting a match.',
@@ -142,31 +143,38 @@ export default function TeamDashboardScreen() {
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Create Fixture',
-            onPress: handleCreateFixture,
+            onPress: () => {
+              console.log('[TeamDashboard] User chose to create fixture');
+              handleCreateFixture();
+            },
           },
         ]
       );
       return;
     }
 
+    console.log('[TeamDashboard] Found', data.upcomingFixtures.length, 'upcoming fixtures');
+
     if (data.upcomingFixtures.length === 1) {
       const fixture = data.upcomingFixtures[0];
+      console.log('[TeamDashboard] Single fixture found, checking lineups for:', fixture.opponent);
       await checkLineupsAndStartMatch(fixture.id);
     } else {
-      console.log('Multiple fixtures found, showing picker');
+      console.log('[TeamDashboard] Multiple fixtures found, showing fixture picker');
       setFixturePickerMode('start');
       setShowFixturePicker(true);
     }
   };
 
   const checkLineupsAndStartMatch = async (fixtureId: string) => {
-    console.log('Checking lineups for fixture:', fixtureId);
+    console.log('[TeamDashboard] Checking lineups for fixture:', fixtureId);
 
     try {
       const squads = await authenticatedGet(`/api/match-squads?fixtureId=${fixtureId}`);
-      console.log('Squads fetched:', squads);
+      console.log('[TeamDashboard] Squads fetched:', squads);
 
       if (!squads || squads.length === 0) {
+        console.log('[TeamDashboard] No lineups found, prompting user to build team');
         Alert.alert(
           'No Lineups',
           'You need to build your team before starting the match.',
@@ -175,6 +183,7 @@ export default function TeamDashboardScreen() {
             {
               text: 'Build Team',
               onPress: () => {
+                console.log('[TeamDashboard] Navigating to lineups screen');
                 router.push({
                   pathname: '/lineups/[fixtureId]',
                   params: { fixtureId, teamId },
@@ -186,14 +195,28 @@ export default function TeamDashboardScreen() {
         return;
       }
 
-      console.log('Lineups found, navigating to live match');
-      router.push({
-        pathname: '/match-tracker-live/[fixtureId]',
-        params: { fixtureId },
-      });
+      console.log('[TeamDashboard] Lineups found, navigating to live match tracker');
+      try {
+        router.push({
+          pathname: '/match-tracker-live/[fixtureId]',
+          params: { fixtureId },
+        });
+        console.log('[TeamDashboard] Navigation to match tracker initiated');
+      } catch (navError) {
+        console.error('[TeamDashboard] Navigation to match tracker failed:', navError);
+        Alert.alert(
+          'Navigation Error',
+          'Failed to open match tracker. Please try again or contact support.',
+          [{ text: 'OK' }]
+        );
+      }
     } catch (error) {
-      console.error('Failed to check lineups:', error);
-      Alert.alert('Error', 'Failed to check lineups. Please try again.');
+      console.error('[TeamDashboard] Failed to check lineups:', error);
+      Alert.alert(
+        'Error',
+        'Failed to check lineups. Please check your connection and try again.',
+        [{ text: 'OK' }]
+      );
     }
   };
 

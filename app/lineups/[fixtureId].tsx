@@ -328,6 +328,13 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
+  jerseyPreview: {
+    width: 40,
+    height: 40,
+    marginTop: 4,
+    borderRadius: 4,
+    backgroundColor: colors.background,
+  },
   vsText: {
     fontSize: 16,
     fontWeight: '700',
@@ -723,7 +730,7 @@ export default function LineupsScreen() {
           const hasPlayer = !!slot.playerId;
           const displayPlayer = slot.playerName || 'Tap to add player';
           const displayJersey = slot.jerseyNo ? `#${slot.jerseyNo}` : '';
-          const benchNumber = index + 1;
+          const benchNumber = index + 16;
 
           return (
             <TouchableOpacity
@@ -844,10 +851,12 @@ export default function LineupsScreen() {
   // Get team names and details
   const homeTeamName = fixture?.homeTeamName || 'Home Team';
   const awayTeamName = fixture?.awayTeamName || fixture?.opponent || 'Away Team';
-  const homeCrestUrl = fixture?.homeCrestUrl;
-  const awayCrestUrl = fixture?.awayCrestUrl;
+  const homeCrestUrl = fixture?.homeCrestImageUrl || fixture?.homeCrestUrl;
+  const awayCrestUrl = fixture?.awayCrestImageUrl || fixture?.awayCrestUrl;
   const homeColours = fixture?.homeColours;
   const awayColours = fixture?.awayColours;
+  const homeJerseyUrl = fixture?.homeJerseyImageUrl;
+  const awayJerseyUrl = fixture?.awayJerseyImageUrl;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -859,7 +868,7 @@ export default function LineupsScreen() {
         </View>
       )}
 
-      {/* Team Header with Crests and Colors */}
+      {/* Team Header with Crests, Jerseys, and Colors */}
       <View style={styles.teamHeader}>
         <View style={styles.teamInfo}>
           {homeCrestUrl ? (
@@ -867,6 +876,7 @@ export default function LineupsScreen() {
               source={resolveImageSource(homeCrestUrl)} 
               style={styles.teamCrest}
               resizeMode="contain"
+              onError={() => console.log('[Lineups] Failed to load home crest image')}
             />
           ) : (
             <View style={styles.teamCrestPlaceholder}>
@@ -883,6 +893,14 @@ export default function LineupsScreen() {
             {homeColours && (
               <Text style={styles.teamColours}>{homeColours}</Text>
             )}
+            {homeJerseyUrl && (
+              <Image 
+                source={resolveImageSource(homeJerseyUrl)} 
+                style={styles.jerseyPreview}
+                resizeMode="contain"
+                onError={() => console.log('[Lineups] Failed to load home jersey image')}
+              />
+            )}
           </View>
         </View>
 
@@ -894,6 +912,7 @@ export default function LineupsScreen() {
               source={resolveImageSource(awayCrestUrl)} 
               style={styles.teamCrest}
               resizeMode="contain"
+              onError={() => console.log('[Lineups] Failed to load away crest image')}
             />
           ) : (
             <View style={styles.teamCrestPlaceholder}>
@@ -909,6 +928,14 @@ export default function LineupsScreen() {
             <Text style={styles.teamName}>{awayTeamName}</Text>
             {awayColours && (
               <Text style={styles.teamColours}>{awayColours}</Text>
+            )}
+            {awayJerseyUrl && (
+              <Image 
+                source={resolveImageSource(awayJerseyUrl)} 
+                style={styles.jerseyPreview}
+                resizeMode="contain"
+                onError={() => console.log('[Lineups] Failed to load away jersey image')}
+              />
             )}
           </View>
         </View>
@@ -936,10 +963,10 @@ export default function LineupsScreen() {
       <ScrollView style={styles.content}>
         {renderPitchLayout()}
 
-        <Text style={styles.sectionTitle}>Starting 15</Text>
+        <Text style={styles.sectionTitle}>Starting 15 (1-15)</Text>
         {renderStartingList()}
 
-        <Text style={styles.sectionTitle}>Bench (15)</Text>
+        <Text style={styles.sectionTitle}>Bench (16-30)</Text>
         {renderBench()}
 
         <View style={{ height: 100 }} />

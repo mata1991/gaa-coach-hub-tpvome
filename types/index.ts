@@ -81,10 +81,14 @@ export interface Fixture {
   status: 'scheduled' | 'in_progress' | 'completed';
   homeTeamName?: string;
   homeCrestUrl?: string;
+  homeCrestImageUrl?: string;
   homeColours?: string;
+  homeJerseyImageUrl?: string;
   awayTeamName?: string;
   awayCrestUrl?: string;
+  awayCrestImageUrl?: string;
   awayColours?: string;
+  awayJerseyImageUrl?: string;
   createdAt: string;
 }
 

@@ -10,13 +10,24 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Image,
+  ImageSourcePropType,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as ImagePicker from 'expo-image-picker';
 import { IconSymbol } from '@/components/IconSymbol';
 import { authenticatedGet, authenticatedPut, authenticatedDelete } from '@/utils/api';
 import { Fixture } from '@/types';
+import Constants from 'expo-constants';
+
+// Helper to resolve image sources (handles both local require() and remote URLs)
+function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
+  if (!source) return { uri: '' };
+  if (typeof source === 'string') return { uri: source };
+  return source as ImageSourcePropType;
+}
 
 export default function EditFixtureScreen() {
   const router = useRouter();
@@ -36,13 +47,21 @@ export default function EditFixtureScreen() {
   
   // Home team customization
   const [homeTeamName, setHomeTeamName] = useState('');
-  const [homeCrestUrl, setHomeCrestUrl] = useState('');
+  const [homeCrestImageUrl, setHomeCrestImageUrl] = useState('');
   const [homeColours, setHomeColours] = useState('');
+  const [homeJerseyImageUrl, setHomeJerseyImageUrl] = useState('');
   
   // Away team customization
   const [awayTeamName, setAwayTeamName] = useState('');
-  const [awayCrestUrl, setAwayCrestUrl] = useState('');
+  const [awayCrestImageUrl, setAwayCrestImageUrl] = useState('');
   const [awayColours, setAwayColours] = useState('');
+  const [awayJerseyImageUrl, setAwayJerseyImageUrl] = useState('');
+  
+  // Upload states
+  const [uploadingHomeCrest, setUploadingHomeCrest] = useState(false);
+  const [uploadingAwayCrest, setUploadingAwayCrest] = useState(false);
+  const [uploadingHomeJersey, setUploadingHomeJersey] = useState(false);
+  const [uploadingAwayJersey, setUploadingAwayJersey] = useState(false);
 
   console.log('[EditFixture] Rendering edit fixture screen', { fixtureId, teamId });
 
@@ -63,11 +82,13 @@ export default function EditFixtureScreen() {
       
       // Set home/away team customization
       setHomeTeamName(fixtureData.homeTeamName || '');
-      setHomeCrestUrl(fixtureData.homeCrestUrl || '');
+      setHomeCrestImageUrl(fixtureData.homeCrestImageUrl || '');
       setHomeColours(fixtureData.homeColours || '');
+      setHomeJerseyImageUrl(fixtureData.homeJerseyImageUrl || '');
       setAwayTeamName(fixtureData.awayTeamName || '');
-      setAwayCrestUrl(fixtureData.awayCrestUrl || '');
+      setAwayCrestImageUrl(fixtureData.awayCrestImageUrl || '');
       setAwayColours(fixtureData.awayColours || '');
+      setAwayJerseyImageUrl(fixtureData.awayJerseyImageUrl || '');
 
       // Fetch competitions
       try {
@@ -123,6 +144,89 @@ export default function EditFixtureScreen() {
     return true;
   };
 
+  const handleImageUpload = async (type: 'homeCrest' | 'awayCrest' | 'homeJersey' | 'awayJersey') => {
+    console.log(`[EditFixture] User tapped upload ${type}`);
+    
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'Please allow access to your photo library to upload images.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (result.canceled) {
+        console.log('[EditFixture] Image picker canceled');
+        return;
+      }
+
+      const imageUri = result.assets[0].uri;
+      console.log('[EditFixture] Image selected:', imageUri);
+
+      // Set uploading state
+      if (type === 'homeCrest') setUploadingHomeCrest(true);
+      else if (type === 'awayCrest') setUploadingAwayCrest(true);
+      else if (type === 'homeJersey') setUploadingHomeJersey(true);
+      else if (type === 'awayJersey') setUploadingAwayJersey(true);
+
+      // Upload to backend
+      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
+      if (!backendUrl) {
+        throw new Error('Backend URL not configured');
+      }
+
+      const formData = new FormData();
+      const filename = imageUri.split('/').pop() || 'image.jpg';
+      const match = /\.(\w+)$/.exec(filename);
+      const fileType = match ? `image/${match[1]}` : 'image/jpeg';
+
+      formData.append('image', {
+        uri: imageUri,
+        name: filename,
+        type: fileType,
+      } as any);
+
+      const response = await fetch(`${backendUrl}/api/upload/image`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.status}`);
+      }
+
+      const uploadResult = await response.json();
+      console.log('[EditFixture] Upload successful:', uploadResult);
+
+      // Update state with uploaded URL
+      if (type === 'homeCrest') setHomeCrestImageUrl(uploadResult.url);
+      else if (type === 'awayCrest') setAwayCrestImageUrl(uploadResult.url);
+      else if (type === 'homeJersey') setHomeJerseyImageUrl(uploadResult.url);
+      else if (type === 'awayJersey') setAwayJerseyImageUrl(uploadResult.url);
+
+      Alert.alert('Success', 'Image uploaded successfully');
+    } catch (error) {
+      console.error('[EditFixture] Image upload failed:', error);
+      Alert.alert('Error', 'Failed to upload image. Please try again.');
+    } finally {
+      // Clear uploading state
+      if (type === 'homeCrest') setUploadingHomeCrest(false);
+      else if (type === 'awayCrest') setUploadingAwayCrest(false);
+      else if (type === 'homeJersey') setUploadingHomeJersey(false);
+      else if (type === 'awayJersey') setUploadingAwayJersey(false);
+    }
+  };
+
   const handleSaveFixture = async () => {
     console.log('[EditFixture] User tapped Save button');
 
@@ -139,11 +243,13 @@ export default function EditFixtureScreen() {
         date: date.toISOString(),
         competitionId: selectedCompetition || undefined,
         homeTeamName: homeTeamName.trim() || undefined,
-        homeCrestUrl: homeCrestUrl.trim() || undefined,
+        homeCrestImageUrl: homeCrestImageUrl || undefined,
         homeColours: homeColours.trim() || undefined,
+        homeJerseyImageUrl: homeJerseyImageUrl || undefined,
         awayTeamName: awayTeamName.trim() || undefined,
-        awayCrestUrl: awayCrestUrl.trim() || undefined,
+        awayCrestImageUrl: awayCrestImageUrl || undefined,
         awayColours: awayColours.trim() || undefined,
+        awayJerseyImageUrl: awayJerseyImageUrl || undefined,
       };
 
       console.log('[EditFixture] Updating fixture:', payload);
@@ -348,17 +454,93 @@ export default function EditFixtureScreen() {
           </View>
 
           <View style={styles.formGroup}>
-            <Text style={styles.label}>Home Team Crest URL</Text>
-            <TextInput
-              style={styles.input}
-              value={homeCrestUrl}
-              onChangeText={setHomeCrestUrl}
-              placeholder="https://example.com/home-crest.png"
-              placeholderTextColor="#999"
-              autoCapitalize="none"
-              keyboardType="url"
-              editable={!saving}
-            />
+            <Text style={styles.label}>Upload Home Crest</Text>
+            <TouchableOpacity
+              style={styles.uploadButton}
+              onPress={() => handleImageUpload('homeCrest')}
+              disabled={saving || uploadingHomeCrest}
+            >
+              {uploadingHomeCrest ? (
+                <ActivityIndicator color="#000" />
+              ) : (
+                <>
+                  <IconSymbol
+                    ios_icon_name="photo"
+                    android_material_icon_name="image"
+                    size={24}
+                    color="#000"
+                  />
+                  <Text style={styles.uploadButtonText}>
+                    {homeCrestImageUrl ? 'Change Crest' : 'Upload Crest'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+            {homeCrestImageUrl && (
+              <View style={styles.imagePreview}>
+                <Image
+                  source={resolveImageSource(homeCrestImageUrl)}
+                  style={styles.previewImage}
+                  resizeMode="contain"
+                />
+                <TouchableOpacity
+                  style={styles.removeImageButton}
+                  onPress={() => setHomeCrestImageUrl('')}
+                >
+                  <IconSymbol
+                    ios_icon_name="xmark.circle.fill"
+                    android_material_icon_name="cancel"
+                    size={24}
+                    color="#dc3545"
+                  />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Upload Home Jersey</Text>
+            <TouchableOpacity
+              style={styles.uploadButton}
+              onPress={() => handleImageUpload('homeJersey')}
+              disabled={saving || uploadingHomeJersey}
+            >
+              {uploadingHomeJersey ? (
+                <ActivityIndicator color="#000" />
+              ) : (
+                <>
+                  <IconSymbol
+                    ios_icon_name="photo"
+                    android_material_icon_name="image"
+                    size={24}
+                    color="#000"
+                  />
+                  <Text style={styles.uploadButtonText}>
+                    {homeJerseyImageUrl ? 'Change Jersey' : 'Upload Jersey'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+            {homeJerseyImageUrl && (
+              <View style={styles.imagePreview}>
+                <Image
+                  source={resolveImageSource(homeJerseyImageUrl)}
+                  style={styles.previewImage}
+                  resizeMode="contain"
+                />
+                <TouchableOpacity
+                  style={styles.removeImageButton}
+                  onPress={() => setHomeJerseyImageUrl('')}
+                >
+                  <IconSymbol
+                    ios_icon_name="xmark.circle.fill"
+                    android_material_icon_name="cancel"
+                    size={24}
+                    color="#dc3545"
+                  />
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           <View style={styles.formGroup}>
@@ -390,17 +572,93 @@ export default function EditFixtureScreen() {
           </View>
 
           <View style={styles.formGroup}>
-            <Text style={styles.label}>Away Team Crest URL</Text>
-            <TextInput
-              style={styles.input}
-              value={awayCrestUrl}
-              onChangeText={setAwayCrestUrl}
-              placeholder="https://example.com/away-crest.png"
-              placeholderTextColor="#999"
-              autoCapitalize="none"
-              keyboardType="url"
-              editable={!saving}
-            />
+            <Text style={styles.label}>Upload Away Crest</Text>
+            <TouchableOpacity
+              style={styles.uploadButton}
+              onPress={() => handleImageUpload('awayCrest')}
+              disabled={saving || uploadingAwayCrest}
+            >
+              {uploadingAwayCrest ? (
+                <ActivityIndicator color="#000" />
+              ) : (
+                <>
+                  <IconSymbol
+                    ios_icon_name="photo"
+                    android_material_icon_name="image"
+                    size={24}
+                    color="#000"
+                  />
+                  <Text style={styles.uploadButtonText}>
+                    {awayCrestImageUrl ? 'Change Crest' : 'Upload Crest'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+            {awayCrestImageUrl && (
+              <View style={styles.imagePreview}>
+                <Image
+                  source={resolveImageSource(awayCrestImageUrl)}
+                  style={styles.previewImage}
+                  resizeMode="contain"
+                />
+                <TouchableOpacity
+                  style={styles.removeImageButton}
+                  onPress={() => setAwayCrestImageUrl('')}
+                >
+                  <IconSymbol
+                    ios_icon_name="xmark.circle.fill"
+                    android_material_icon_name="cancel"
+                    size={24}
+                    color="#dc3545"
+                  />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Upload Away Jersey</Text>
+            <TouchableOpacity
+              style={styles.uploadButton}
+              onPress={() => handleImageUpload('awayJersey')}
+              disabled={saving || uploadingAwayJersey}
+            >
+              {uploadingAwayJersey ? (
+                <ActivityIndicator color="#000" />
+              ) : (
+                <>
+                  <IconSymbol
+                    ios_icon_name="photo"
+                    android_material_icon_name="image"
+                    size={24}
+                    color="#000"
+                  />
+                  <Text style={styles.uploadButtonText}>
+                    {awayJerseyImageUrl ? 'Change Jersey' : 'Upload Jersey'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+            {awayJerseyImageUrl && (
+              <View style={styles.imagePreview}>
+                <Image
+                  source={resolveImageSource(awayJerseyImageUrl)}
+                  style={styles.previewImage}
+                  resizeMode="contain"
+                />
+                <TouchableOpacity
+                  style={styles.removeImageButton}
+                  onPress={() => setAwayJerseyImageUrl('')}
+                >
+                  <IconSymbol
+                    ios_icon_name="xmark.circle.fill"
+                    android_material_icon_name="cancel"
+                    size={24}
+                    color="#dc3545"
+                  />
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           <View style={styles.formGroup}>
@@ -583,5 +841,37 @@ const styles = StyleSheet.create({
     color: '#dc3545',
     fontSize: 16,
     fontWeight: '600',
+  },
+  uploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 16,
+    backgroundColor: '#f5f5f5',
+  },
+  uploadButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
+  },
+  imagePreview: {
+    marginTop: 12,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  previewImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: -8,
+    right: '35%',
   },
 });
