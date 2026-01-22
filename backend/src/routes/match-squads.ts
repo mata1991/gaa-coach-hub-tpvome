@@ -376,4 +376,53 @@ export function registerMatchSquadRoutes(app: App) {
       }
     }
   );
+
+  // GET /api/fixtures/:fixtureId/squad-status - Check if both HOME and AWAY squads exist
+  app.fastify.get(
+    '/api/fixtures/:fixtureId/squad-status',
+    async (request: FastifyRequest<{ Params: { fixtureId: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { fixtureId } = request.params;
+      app.logger.info({ userId: session.user.id, fixtureId }, 'Checking squad status');
+
+      try {
+        // First, verify the fixture exists
+        const fixture = await app.db.query.fixtures.findFirst({
+          where: eq(schema.fixtures.id, fixtureId),
+        });
+
+        if (!fixture) {
+          app.logger.warn({ fixtureId }, 'Fixture not found');
+          return reply.status(404).send({ error: 'Fixture not found' });
+        }
+
+        // Check if HOME squad exists
+        const homeSquad = await app.db.query.matchSquads.findFirst({
+          where: and(
+            eq(schema.matchSquads.fixtureId, fixtureId),
+            eq(schema.matchSquads.side, 'HOME')
+          ),
+        });
+
+        // Check if AWAY squad exists
+        const awaySquad = await app.db.query.matchSquads.findFirst({
+          where: and(
+            eq(schema.matchSquads.fixtureId, fixtureId),
+            eq(schema.matchSquads.side, 'AWAY')
+          ),
+        });
+
+        const homeReady = !!homeSquad;
+        const awayReady = !!awaySquad;
+
+        app.logger.info({ fixtureId, homeReady, awayReady }, 'Squad status checked');
+        return { homeReady, awayReady };
+      } catch (error) {
+        app.logger.error({ err: error, fixtureId }, 'Failed to check squad status');
+        throw error;
+      }
+    }
+  );
 }
