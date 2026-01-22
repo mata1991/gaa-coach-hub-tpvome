@@ -117,6 +117,52 @@ export function registerTeamsV2Routes(app: App) {
     }
   );
 
+  // GET /api/teams/:teamId - Get single team details
+  app.fastify.get(
+    '/api/teams/:teamId',
+    async (request: FastifyRequest<{ Params: { teamId: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { teamId } = request.params;
+      app.logger.info({ userId: session.user.id, teamId }, 'Fetching team details');
+
+      try {
+        // Fetch the team
+        const team = await app.db.query.teams.findFirst({
+          where: eq(schema.teams.id, teamId),
+        });
+
+        if (!team) {
+          app.logger.warn({ teamId }, 'Team not found');
+          return reply.status(404).send({ error: 'Team not found' });
+        }
+
+        // Check if user has access to this team's club via membership
+        const membership = await app.db.query.memberships.findFirst({
+          where: and(
+            eq(schema.memberships.clubId, team.clubId),
+            eq(schema.memberships.userId, session.user.id)
+          ),
+        });
+
+        if (!membership) {
+          app.logger.warn(
+            { userId: session.user.id, teamId, clubId: team.clubId },
+            'User does not have access to this team'
+          );
+          return reply.status(403).send({ error: 'You do not have access to this team' });
+        }
+
+        app.logger.info({ teamId, name: team.name }, 'Team details fetched');
+        return team;
+      } catch (error) {
+        app.logger.error({ err: error, teamId }, 'Failed to fetch team details');
+        throw error;
+      }
+    }
+  );
+
   // POST /api/teams - Create team (updated)
   app.fastify.post(
     '/api/teams',
