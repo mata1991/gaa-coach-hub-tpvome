@@ -4,11 +4,8 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   Alert,
-  Modal,
-  TextInput,
   ActivityIndicator,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -16,8 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { authenticatedGet, authenticatedPost, authenticatedPut } from '@/utils/api';
-import { MatchSquad, MatchState, MatchEvent, TeamSide, LineupSlot } from '@/types';
-import { EVENT_PRESETS } from '@/constants/EventPresets';
+import { MatchSquad, MatchState, MatchEvent } from '@/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNetworkState } from 'expo-network';
 
@@ -31,7 +27,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  scoreboard: {
+  header: {
     backgroundColor: colors.card,
     padding: 16,
     borderBottomWidth: 1,
@@ -57,11 +53,6 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '700',
     color: colors.text,
-  },
-  scoreDetail: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 2,
   },
   clockContainer: {
     alignItems: 'center',
@@ -115,9 +106,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  activePeriodText: {
-    color: '#FFFFFF',
-  },
   syncIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -129,141 +117,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
   },
-  modeToggle: {
-    flexDirection: 'row',
-    backgroundColor: colors.card,
-    padding: 4,
-    margin: 16,
-    borderRadius: 12,
-  },
-  modeButton: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  activeMode: {
-    backgroundColor: colors.primary,
-  },
-  modeText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  activeModeText: {
-    color: '#FFFFFF',
-  },
-  sideToggle: {
-    flexDirection: 'row',
-    backgroundColor: colors.card,
-    padding: 4,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 12,
-  },
-  sideButton: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  activeSide: {
-    backgroundColor: colors.primary,
-  },
-  sideText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  activeSideText: {
-    color: '#FFFFFF',
-  },
   content: {
     flex: 1,
-  },
-  playersList: {
-    paddingHorizontal: 16,
-  },
-  playerItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  selectedPlayer: {
-    backgroundColor: colors.primary,
-  },
-  playerNumber: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
-  },
-  selectedPlayerNumber: {
-    backgroundColor: '#FFFFFF',
-  },
-  playerNumberText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  selectedPlayerNumberText: {
-    color: colors.primary,
-  },
-  playerInfo: {
-    flex: 1,
-  },
-  playerName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  selectedPlayerName: {
-    color: '#FFFFFF',
-  },
-  playerPosition: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  selectedPlayerPosition: {
-    color: 'rgba(255, 255, 255, 0.8)',
-  },
-  eventsGrid: {
-    paddingHorizontal: 16,
-  },
-  eventCategory: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  eventRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 16,
+    padding: 16,
   },
   eventButton: {
-    backgroundColor: colors.card,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-    minWidth: 100,
+    width: '100%',
+    minHeight: 80,
+    backgroundColor: '#000000',
+    borderWidth: 2,
+    borderColor: '#FF0000',
+    borderRadius: 12,
+    justifyContent: 'center',
     alignItems: 'center',
   },
   eventButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
-  actionBar: {
+  footer: {
     flexDirection: 'row',
     padding: 16,
     gap: 12,
@@ -271,7 +146,7 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     backgroundColor: colors.background,
   },
-  actionButton: {
+  footerButton: {
     flex: 1,
     minHeight: 56,
     backgroundColor: '#000000',
@@ -282,69 +157,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryAction: {
-    backgroundColor: '#FF0000',
-    borderColor: '#FF0000',
-  },
-  actionButtonText: {
+  footerButtonText: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  primaryActionText: {
-    color: '#FFFFFF',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: colors.background,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '60%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  subsContainer: {
-    padding: 16,
-  },
-  subsSection: {
-    marginBottom: 16,
-  },
-  subsLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  subsButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  subsButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
 });
-
-type CaptureMode = 'player-first' | 'event-first';
 
 export default function MatchTrackerLiveScreen() {
   const params = useLocalSearchParams();
@@ -355,15 +173,8 @@ export default function MatchTrackerLiveScreen() {
   const [matchState, setMatchState] = useState<MatchState | null>(null);
   const [homeSquad, setHomeSquad] = useState<MatchSquad | null>(null);
   const [awaySquad, setAwaySquad] = useState<MatchSquad | null>(null);
-  const [captureMode, setCaptureMode] = useState<CaptureMode>('player-first');
-  const [selectedSide, setSelectedSide] = useState<TeamSide>('HOME');
-  const [selectedPlayer, setSelectedPlayer] = useState<LineupSlot | null>(null);
-  const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
-  const [showSubsModal, setShowSubsModal] = useState(false);
-  const [playerOff, setPlayerOff] = useState<LineupSlot | null>(null);
-  const [playerOn, setPlayerOn] = useState<LineupSlot | null>(null);
   const [events, setEvents] = useState<MatchEvent[]>([]);
   const [pendingEvents, setPendingEvents] = useState<MatchEvent[]>([]);
 
@@ -404,19 +215,17 @@ export default function MatchTrackerLiveScreen() {
   }, [networkState.isConnected, pendingEvents.length]);
 
   const fetchData = async () => {
-    console.log('Fetching match tracker data');
+    console.log('[MatchTracker] Fetching match tracker data');
     try {
       setLoading(true);
 
       const stateResponse = await authenticatedGet(`/api/fixtures/${fixtureId}/match-state`);
       setMatchState(stateResponse);
-      // Timer should NOT auto-start - user must press Start
       setIsRunning(false);
       setHasStarted(stateResponse.matchClock > 0);
 
       const squadsResponse = await authenticatedGet(`/api/fixtures/${fixtureId}/squads`);
       
-      // squadsResponse is an array of squads, not an object with home/away keys
       const squadsArray = Array.isArray(squadsResponse) ? squadsResponse : [];
       const homeSquadData = squadsArray.find((s: any) => s.side === 'HOME');
       const awaySquadData = squadsArray.find((s: any) => s.side === 'AWAY');
@@ -424,7 +233,6 @@ export default function MatchTrackerLiveScreen() {
       setHomeSquad(homeSquadData || null);
       setAwaySquad(awaySquadData || null);
 
-      // Fetch events - handle 404 gracefully (treat as empty array)
       try {
         const eventsResponse = await authenticatedGet(`/api/fixtures/${fixtureId}/events`);
         setEvents(Array.isArray(eventsResponse) ? eventsResponse : []);
@@ -438,7 +246,7 @@ export default function MatchTrackerLiveScreen() {
         }
       }
     } catch (error) {
-      console.error('Error fetching match tracker data:', error);
+      console.error('[MatchTracker] Error fetching match tracker data:', error);
       Alert.alert('Error', 'Failed to load match data');
     } finally {
       setLoading(false);
@@ -452,7 +260,7 @@ export default function MatchTrackerLiveScreen() {
         setPendingEvents(JSON.parse(stored));
       }
     } catch (error) {
-      console.error('Error loading pending events:', error);
+      console.error('[MatchTracker] Error loading pending events:', error);
     }
   };
 
@@ -460,26 +268,26 @@ export default function MatchTrackerLiveScreen() {
     try {
       await AsyncStorage.setItem(`pending_events_${fixtureId}`, JSON.stringify(events));
     } catch (error) {
-      console.error('Error saving pending events:', error);
+      console.error('[MatchTracker] Error saving pending events:', error);
     }
   };
 
   const syncPendingEvents = async () => {
     if (pendingEvents.length === 0) return;
 
-    console.log('Syncing pending events:', pendingEvents.length);
+    console.log('[MatchTracker] Syncing pending events:', pendingEvents.length);
     try {
       await authenticatedPost('/api/match-events/batch', { events: pendingEvents });
       setPendingEvents([]);
       await AsyncStorage.removeItem(`pending_events_${fixtureId}`);
-      console.log('Events synced successfully');
+      console.log('[MatchTracker] Events synced successfully');
     } catch (error) {
-      console.error('Error syncing events:', error);
+      console.error('[MatchTracker] Error syncing events:', error);
     }
   };
 
   const handleToggleClock = () => {
-    console.log('Toggling clock');
+    console.log('[MatchTracker] Toggling clock');
     if (!hasStarted) {
       setHasStarted(true);
     }
@@ -490,7 +298,7 @@ export default function MatchTrackerLiveScreen() {
   };
 
   const handleHalfChange = (half: 'H1' | 'H2') => {
-    console.log('Changing half to:', half);
+    console.log('[MatchTracker] Changing half to:', half);
     updateMatchState({ half });
   };
 
@@ -503,77 +311,33 @@ export default function MatchTrackerLiveScreen() {
     try {
       await authenticatedPut(`/api/fixtures/${fixtureId}/match-state`, updates);
     } catch (error) {
-      console.error('Error updating match state:', error);
+      console.error('[MatchTracker] Error updating match state:', error);
     }
   };
 
-  const handlePlayerPress = (player: LineupSlot) => {
-    console.log('Player selected:', player.playerName);
-    if (captureMode === 'player-first') {
-      setSelectedPlayer(player);
-    }
+  const handleEventPress = () => {
+    console.log('[MatchTracker] User tapped EVENT button - navigating to event picker');
+    router.push(`/match-tracker-live/${fixtureId}/event-picker`);
   };
 
-  const handleEventPress = (eventType: string, category: string) => {
-    console.log('Event selected:', eventType);
-    if (captureMode === 'event-first') {
-      setSelectedEvent(eventType);
-    } else if (selectedPlayer) {
-      recordEvent(selectedPlayer, eventType, category);
-      setSelectedPlayer(null);
-    }
-  };
-
-  const recordEvent = async (player: LineupSlot, eventType: string, category: string) => {
-    if (!matchState || !player.playerId) return;
-
-    console.log('Recording event:', eventType, 'for player:', player.playerName);
-
-    const currentHalf = (matchState as any).half || 'H1';
-
-    const event: MatchEvent = {
-      fixtureId,
-      playerId: player.playerId,
-      side: selectedSide,
-      timestamp: matchState.matchClock,
-      eventType,
-      eventCategory: category as any,
-      half: currentHalf,
-      clientId: `${Date.now()}_${Math.random()}`,
-      synced: false,
-    };
-
-    const newEvents = [...events, event];
-    setEvents(newEvents);
-
-    const newPending = [...pendingEvents, event];
-    setPendingEvents(newPending);
-    await savePendingEvents(newPending);
-
-    if (eventType === 'Goal') {
-      const goalsKey = selectedSide === 'HOME' ? 'homeGoals' : 'awayGoals';
-      updateMatchState({ [goalsKey]: matchState[goalsKey] + 1 });
-    } else if (eventType === 'Point') {
-      const pointsKey = selectedSide === 'HOME' ? 'homePoints' : 'awayPoints';
-      updateMatchState({ [pointsKey]: matchState[pointsKey] + 1 });
+  const handleUndo = async () => {
+    if (events.length === 0 && pendingEvents.length === 0) {
+      Alert.alert('No Events', 'There are no events to undo');
+      return;
     }
 
-    if (networkState.isConnected) {
-      syncPendingEvents();
-    }
-  };
+    console.log('[MatchTracker] User tapped Undo button');
 
-  const handleUndo = () => {
-    if (events.length === 0) return;
+    const lastEvent = events.length > 0 ? events[events.length - 1] : pendingEvents[pendingEvents.length - 1];
+    
+    if (!lastEvent) return;
 
-    console.log('Undoing last event');
-    const lastEvent = events[events.length - 1];
-    const newEvents = events.slice(0, -1);
+    const newEvents = events.filter(e => e.clientId !== lastEvent.clientId);
     setEvents(newEvents);
 
     const newPending = pendingEvents.filter(e => e.clientId !== lastEvent.clientId);
     setPendingEvents(newPending);
-    savePendingEvents(newPending);
+    await savePendingEvents(newPending);
 
     if (lastEvent.eventType === 'Goal' && matchState) {
       const goalsKey = lastEvent.side === 'HOME' ? 'homeGoals' : 'awayGoals';
@@ -582,31 +346,8 @@ export default function MatchTrackerLiveScreen() {
       const pointsKey = lastEvent.side === 'HOME' ? 'homePoints' : 'awayPoints';
       updateMatchState({ [pointsKey]: Math.max(0, matchState[pointsKey] - 1) });
     }
-  };
 
-  const handleSubstitution = async () => {
-    if (!playerOff || !playerOn || !matchState) {
-      Alert.alert('Error', 'Please select both players');
-      return;
-    }
-
-    console.log('Recording substitution:', playerOff.playerName, '->', playerOn.playerName);
-
-    try {
-      await authenticatedPost(`/api/fixtures/${fixtureId}/squads/${selectedSide}/substitute`, {
-        playerOffId: playerOff.playerId,
-        playerOnId: playerOn.playerId,
-        matchTime: matchState.matchClock,
-      });
-
-      await fetchData();
-      setShowSubsModal(false);
-      setPlayerOff(null);
-      setPlayerOn(null);
-    } catch (error) {
-      console.error('Error recording substitution:', error);
-      Alert.alert('Error', 'Failed to record substitution');
-    }
+    Alert.alert('Undo', 'Last event removed');
   };
 
   const handleEndMatch = async () => {
@@ -619,12 +360,12 @@ export default function MatchTrackerLiveScreen() {
           text: 'End Match',
           style: 'destructive',
           onPress: async () => {
-            console.log('Ending match');
+            console.log('[MatchTracker] User confirmed End Match');
             try {
               await authenticatedPost(`/api/fixtures/${fixtureId}/match-state/complete`, {});
               router.push(`/match-report/${fixtureId}`);
             } catch (error) {
-              console.error('Error ending match:', error);
+              console.error('[MatchTracker] Error ending match:', error);
               Alert.alert('Error', 'Failed to end match');
             }
           },
@@ -641,31 +382,38 @@ export default function MatchTrackerLiveScreen() {
     return `${minsStr}:${secsStr}`;
   };
 
-  // Format GAA score as goals-points (e.g., "1-01", "0-20", "0-00")
   const formatScore = (goals: number, points: number): string => {
     const goalsStr = goals.toString();
     const pointsStr = points.toString().padStart(2, '0');
     return `${goalsStr}-${pointsStr}`;
   };
 
-  const currentSquad = selectedSide === 'HOME' ? homeSquad : awaySquad;
-  const onFieldPlayers = currentSquad?.startingSlots.filter(s => s.playerId) || [];
-
-  const renderScoreboard = () => {
-    if (!matchState) return null;
-
-    // Format scores as goals-points (e.g., "1-01", "0-20")
-    const homeScoreText = formatScore(matchState.homeGoals || 0, matchState.homePoints || 0);
-    const awayScoreText = formatScore(matchState.awayGoals || 0, matchState.awayPoints || 0);
-    const clockText = formatTime(matchState.matchClock);
-    const isOnline = networkState.isConnected;
-    const syncStatusText = isOnline ? 'Online' : 'Offline';
-    const pendingCount = pendingEvents.length;
-    const pendingText = pendingCount > 0 ? `${pendingCount} pending` : '';
-    const currentHalf = (matchState as any).half || 'H1';
-
+  if (loading) {
     return (
-      <View style={styles.scoreboard}>
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ title: 'Match Tracker', headerShown: true }} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const homeScoreText = formatScore(matchState?.homeGoals || 0, matchState?.homePoints || 0);
+  const awayScoreText = formatScore(matchState?.awayGoals || 0, matchState?.awayPoints || 0);
+  const clockText = formatTime(matchState?.matchClock || 0);
+  const isOnline = networkState.isConnected;
+  const syncStatusText = isOnline ? 'Online' : 'Offline';
+  const pendingCount = pendingEvents.length;
+  const pendingText = pendingCount > 0 ? `${pendingCount} pending` : '';
+  const currentHalf = (matchState as any)?.half || 'H1';
+  const clockButtonText = !hasStarted ? 'Start' : isRunning ? 'Pause' : 'Resume';
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <Stack.Screen options={{ title: 'Live Match Tracker', headerShown: true }} />
+
+      <View style={styles.header}>
         <View style={styles.scoreRow}>
           <View style={styles.teamScore}>
             <Text style={styles.teamName}>HOME</Text>
@@ -681,9 +429,7 @@ export default function MatchTrackerLiveScreen() {
           <Text style={styles.clock}>{clockText}</Text>
           <View style={styles.clockControls}>
             <TouchableOpacity style={styles.clockButton} onPress={handleToggleClock}>
-              <Text style={styles.clockButtonText}>
-                {!hasStarted ? 'Start' : isRunning ? 'Pause' : 'Resume'}
-              </Text>
+              <Text style={styles.clockButtonText}>{clockButtonText}</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.periodSelector}>
@@ -696,9 +442,7 @@ export default function MatchTrackerLiveScreen() {
                   style={[styles.periodButton, isActive && styles.activePeriod]}
                   onPress={() => handleHalfChange(half)}
                 >
-                  <Text style={[styles.periodText, isActive && styles.activePeriodText]}>
-                    {halfText}
-                  </Text>
+                  <Text style={styles.periodText}>{halfText}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -714,256 +458,21 @@ export default function MatchTrackerLiveScreen() {
           </View>
         </View>
       </View>
-    );
-  };
-
-  const renderModeToggle = () => {
-    const isPlayerFirst = captureMode === 'player-first';
-    const isEventFirst = captureMode === 'event-first';
-
-    return (
-      <View style={styles.modeToggle}>
-        <TouchableOpacity
-          style={[styles.modeButton, isPlayerFirst && styles.activeMode]}
-          onPress={() => setCaptureMode('player-first')}
-        >
-          <Text style={[styles.modeText, isPlayerFirst && styles.activeModeText]}>
-            Player First
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.modeButton, isEventFirst && styles.activeMode]}
-          onPress={() => setCaptureMode('event-first')}
-        >
-          <Text style={[styles.modeText, isEventFirst && styles.activeModeText]}>
-            Event First
-          </Text>
-        </TouchableOpacity>
-      </View>
-    );
-  };
-
-  const renderSideToggle = () => {
-    const isHome = selectedSide === 'HOME';
-    const isAway = selectedSide === 'AWAY';
-
-    return (
-      <View style={styles.sideToggle}>
-        <TouchableOpacity
-          style={[styles.sideButton, isHome && styles.activeSide]}
-          onPress={() => {
-            setSelectedSide('HOME');
-            setSelectedPlayer(null);
-          }}
-        >
-          <Text style={[styles.sideText, isHome && styles.activeSideText]}>Home</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.sideButton, isAway && styles.activeSide]}
-          onPress={() => {
-            setSelectedSide('AWAY');
-            setSelectedPlayer(null);
-          }}
-        >
-          <Text style={[styles.sideText, isAway && styles.activeSideText]}>Away</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  };
-
-  const renderPlayersList = () => {
-    return (
-      <ScrollView style={styles.playersList}>
-        {onFieldPlayers.map((player, index) => {
-          const isSelected = selectedPlayer?.playerId === player.playerId;
-          const playerName = player.playerName || '';
-          const positionName = player.positionName;
-          const jerseyNo = player.jerseyNo || player.positionNo.toString();
-
-          return (
-            <TouchableOpacity
-              key={index}
-              style={[styles.playerItem, isSelected && styles.selectedPlayer]}
-              onPress={() => handlePlayerPress(player)}
-            >
-              <View style={[styles.playerNumber, isSelected && styles.selectedPlayerNumber]}>
-                <Text style={[styles.playerNumberText, isSelected && styles.selectedPlayerNumberText]}>
-                  {jerseyNo}
-                </Text>
-              </View>
-              <View style={styles.playerInfo}>
-                <Text style={[styles.playerName, isSelected && styles.selectedPlayerName]}>
-                  {playerName}
-                </Text>
-                <Text style={[styles.playerPosition, isSelected && styles.selectedPlayerPosition]}>
-                  {positionName}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-    );
-  };
-
-  const renderEventsGrid = () => {
-    return (
-      <ScrollView style={styles.eventsGrid}>
-        {EVENT_PRESETS.map((preset, index) => (
-          <React.Fragment key={index}>
-            <Text style={styles.eventCategory}>{preset.category}</Text>
-            <View style={styles.eventRow}>
-              {preset.types.map((type, typeIndex) => {
-                const eventName = type.name;
-                return (
-                  <TouchableOpacity
-                    key={typeIndex}
-                    style={styles.eventButton}
-                    onPress={() => handleEventPress(type.name, preset.category)}
-                  >
-                    <Text style={styles.eventButtonText}>{eventName}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </React.Fragment>
-        ))}
-      </ScrollView>
-    );
-  };
-
-  const renderSubsModal = () => {
-    const onField = currentSquad?.startingSlots.filter(s => s.playerId) || [];
-    const bench = currentSquad?.bench.filter(s => s.playerId) || [];
-
-    return (
-      <Modal
-        visible={showSubsModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowSubsModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Substitution</Text>
-              <TouchableOpacity onPress={() => setShowSubsModal(false)}>
-                <IconSymbol
-                  ios_icon_name="xmark"
-                  android_material_icon_name="close"
-                  size={24}
-                  color={colors.text}
-                />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.subsContainer}>
-              <View style={styles.subsSection}>
-                <Text style={styles.subsLabel}>Player OFF (On Field)</Text>
-                {onField.map((player, index) => {
-                  const isSelected = playerOff?.playerId === player.playerId;
-                  const playerName = player.playerName || '';
-                  const jerseyNo = player.jerseyNo || player.positionNo.toString();
-
-                  return (
-                    <TouchableOpacity
-                      key={index}
-                      style={[styles.playerItem, isSelected && styles.selectedPlayer]}
-                      onPress={() => setPlayerOff(player)}
-                    >
-                      <View style={[styles.playerNumber, isSelected && styles.selectedPlayerNumber]}>
-                        <Text style={[styles.playerNumberText, isSelected && styles.selectedPlayerNumberText]}>
-                          {jerseyNo}
-                        </Text>
-                      </View>
-                      <View style={styles.playerInfo}>
-                        <Text style={[styles.playerName, isSelected && styles.selectedPlayerName]}>
-                          {playerName}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <View style={styles.subsSection}>
-                <Text style={styles.subsLabel}>Player ON (Bench)</Text>
-                {bench.map((player, index) => {
-                  const isSelected = playerOn?.playerId === player.playerId;
-                  const playerName = player.playerName || '';
-                  const jerseyNo = player.jerseyNo || '';
-
-                  return (
-                    <TouchableOpacity
-                      key={index}
-                      style={[styles.playerItem, isSelected && styles.selectedPlayer]}
-                      onPress={() => setPlayerOn(player)}
-                    >
-                      <View style={[styles.playerNumber, isSelected && styles.selectedPlayerNumber]}>
-                        <Text style={[styles.playerNumberText, isSelected && styles.selectedPlayerNumberText]}>
-                          {jerseyNo || index + 16}
-                        </Text>
-                      </View>
-                      <View style={styles.playerInfo}>
-                        <Text style={[styles.playerName, isSelected && styles.selectedPlayerName]}>
-                          {playerName}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <TouchableOpacity
-                style={styles.subsButton}
-                onPress={handleSubstitution}
-                disabled={!playerOff || !playerOn}
-              >
-                <Text style={styles.subsButtonText}>Record Substitution</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-    );
-  };
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ title: 'Match Tracker', headerShown: true }} />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <Stack.Screen options={{ title: 'Live Match Tracker', headerShown: true }} />
-
-      {renderScoreboard()}
-      {renderModeToggle()}
-      {renderSideToggle()}
 
       <View style={styles.content}>
-        {captureMode === 'player-first' ? renderPlayersList() : renderEventsGrid()}
-      </View>
-
-      <View style={styles.actionBar}>
-        <TouchableOpacity style={styles.actionButton} onPress={handleUndo}>
-          <Text style={styles.actionButtonText}>Undo</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={() => setShowSubsModal(true)}>
-          <Text style={styles.actionButtonText}>Subs</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.actionButton, styles.primaryAction]} onPress={handleEndMatch}>
-          <Text style={[styles.actionButtonText, styles.primaryActionText]}>End Match</Text>
+        <TouchableOpacity style={styles.eventButton} onPress={handleEventPress}>
+          <Text style={styles.eventButtonText}>EVENT</Text>
         </TouchableOpacity>
       </View>
 
-      {renderSubsModal()}
+      <View style={styles.footer}>
+        <TouchableOpacity style={styles.footerButton} onPress={handleUndo}>
+          <Text style={styles.footerButtonText}>Undo</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.footerButton} onPress={handleEndMatch}>
+          <Text style={styles.footerButtonText}>End Match</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
