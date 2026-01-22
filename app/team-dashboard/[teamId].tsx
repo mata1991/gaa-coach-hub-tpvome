@@ -195,7 +195,7 @@ export default function TeamDashboardScreen() {
     console.log('[TeamDashboard] Request URL:', `/api/fixtures/${fixtureId}/lineup-status`);
 
     try {
-      const response = await authenticatedGet(`/api/fixtures/${fixtureId}/lineup-status`);
+      const response = await authenticatedGet<{ hasLineup: boolean }>(`/api/fixtures/${fixtureId}/lineup-status`);
       console.log('[TeamDashboard] Lineup status response:', response);
       console.log('[TeamDashboard] Response status code: 200');
       console.log('[TeamDashboard] Response body:', JSON.stringify(response));
@@ -240,14 +240,15 @@ export default function TeamDashboardScreen() {
     } catch (error: any) {
       console.error('[TeamDashboard] Failed to check lineups:', error);
       console.error('[TeamDashboard] Error message:', error?.message);
+      console.error('[TeamDashboard] Error status:', error?.status);
       console.error('[TeamDashboard] Error stack:', error?.stack);
 
       // Check for specific error types
-      if (error?.message?.includes('401') || error?.message?.includes('403')) {
-        console.log('[TeamDashboard] Authentication error detected');
+      if (error?.status === 401 || error?.status === 403 || error?.message?.includes('401') || error?.message?.includes('403')) {
+        console.log('[TeamDashboard] Authentication error detected (401/403)');
         Alert.alert(
           'Session Expired',
-          'Session expired, please log in again.',
+          'Your session has expired. Please log in again.',
           [
             {
               text: 'OK',
@@ -255,6 +256,15 @@ export default function TeamDashboardScreen() {
                 router.push('/auth');
               },
             },
+          ]
+        );
+      } else if (error?.status === 404 || error?.message?.includes('404') || error?.message?.includes('not found')) {
+        console.log('[TeamDashboard] 404 error - route not found or fixture does not exist');
+        Alert.alert(
+          'App Configuration Error',
+          'The lineup check endpoint is not available. Please contact support.',
+          [
+            { text: 'OK' },
           ]
         );
       } else if (error?.message?.includes('Network') || error?.message?.includes('fetch') || error?.message?.includes('Failed to fetch')) {
@@ -302,7 +312,7 @@ export default function TeamDashboardScreen() {
         } catch (cacheError) {
           console.error('[TeamDashboard] Error checking cached lineup:', cacheError);
           Alert.alert(
-            'Connection Error',
+            'Could Not Reach Server',
             'Could not reach server. Please check your connection and try again.',
             [
               { text: 'Cancel', style: 'cancel' },
