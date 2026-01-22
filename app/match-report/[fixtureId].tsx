@@ -66,8 +66,8 @@ interface MatchReport {
       redCards: number;
     };
   }>;
-  quarterBreakdown: Array<{
-    quarter: number;
+  halfBreakdown: Array<{
+    half: 'H1' | 'H2';
     stats: {
       goals: number;
       points: number;
@@ -89,7 +89,7 @@ export default function MatchReportScreen() {
 
   const [report, setReport] = useState<MatchReport | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedTab, setSelectedTab] = useState<'overview' | 'players' | 'quarters' | 'heatmaps'>('overview');
+  const [selectedTab, setSelectedTab] = useState<'overview' | 'players' | 'halves' | 'heatmaps'>('overview');
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
@@ -252,6 +252,17 @@ export default function MatchReportScreen() {
     );
   }
 
+  // Format GAA score as goals-points (e.g., "1-01", "0-20")
+  const formatScore = (goals: number, points: number): string => {
+    const goalsStr = goals.toString();
+    const pointsStr = points.toString().padStart(2, '0');
+    return `${goalsStr}-${pointsStr}`;
+  };
+
+  const scoreDisplay = formatScore(report.teamStats.totalGoals, report.teamStats.totalPoints);
+  const totalPoints = report.teamStats.totalGoals * 3 + report.teamStats.totalPoints;
+  const totalPointsText = `${totalPoints} points`;
+
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <Stack.Screen
@@ -278,18 +289,14 @@ export default function MatchReportScreen() {
         <Text style={styles.venue}>{report.fixture.venue}</Text>
         <Text style={styles.date}>{new Date(report.fixture.date).toLocaleDateString()}</Text>
         <View style={styles.scoreContainer}>
-          <Text style={styles.score}>
-            {report.teamStats.totalGoals}-{report.teamStats.totalPoints}
-          </Text>
-          <Text style={styles.scoreLabel}>
-            ({report.teamStats.totalGoals * 3 + report.teamStats.totalPoints} points)
-          </Text>
+          <Text style={styles.score}>{scoreDisplay}</Text>
+          <Text style={styles.scoreLabel}>({totalPointsText})</Text>
         </View>
       </View>
 
       {/* Tabs */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs}>
-        {(['overview', 'players', 'quarters', 'heatmaps'] as const).map((tab) => (
+        {(['overview', 'players', 'halves', 'heatmaps'] as const).map((tab) => (
           <TouchableOpacity
             key={tab}
             style={[styles.tab, selectedTab === tab && styles.tabActive]}
@@ -430,17 +437,20 @@ export default function MatchReportScreen() {
           </View>
         )}
 
-        {selectedTab === 'quarters' && (
+        {selectedTab === 'halves' && (
           <View>
-            {report.quarterBreakdown.map((quarter) => (
-              <StatCard key={quarter.quarter} title={`Quarter ${quarter.quarter}`}>
-                <StatRow label="Goals" value={quarter.stats.goals} />
-                <StatRow label="Points" value={quarter.stats.points} />
-                <StatRow label="Wides" value={quarter.stats.wides} />
-                <StatRow label="Turnovers" value={quarter.stats.turnovers} />
-                <StatRow label="Puckouts" value={quarter.stats.puckouts} />
-              </StatCard>
-            ))}
+            {report.halfBreakdown.map((half) => {
+              const halfTitle = half.half === 'H1' ? '1st Half' : '2nd Half';
+              return (
+                <StatCard key={half.half} title={halfTitle}>
+                  <StatRow label="Goals" value={half.stats.goals} />
+                  <StatRow label="Points" value={half.stats.points} />
+                  <StatRow label="Wides" value={half.stats.wides} />
+                  <StatRow label="Turnovers" value={half.stats.turnovers} />
+                  <StatRow label="Puckouts" value={half.stats.puckouts} />
+                </StatCard>
+              );
+            })}
           </View>
         )}
 

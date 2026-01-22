@@ -113,6 +113,7 @@ export interface MatchEvent {
   timestamp: number; // seconds
   eventType: string;
   eventCategory: 'Scoring' | 'Puckouts' | 'Possession' | 'Discipline' | 'Substitutions';
+  half?: 'H1' | 'H2'; // Half when event occurred
   outcome?: string;
   zone?: string;
   notes?: string;
@@ -170,7 +171,8 @@ export interface MatchState {
   awayGoals: number;
   awayPoints: number;
   matchClock: number; // seconds
-  period: number;
+  period: number; // Legacy field, use half instead
+  half?: 'H1' | 'H2'; // New field for halves
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string;

@@ -91,25 +91,29 @@ const styles = StyleSheet.create({
   periodSelector: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 8,
-    marginTop: 8,
+    gap: 12,
+    marginTop: 12,
   },
   periodButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
+    minHeight: 56,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#000000',
+    borderWidth: 2,
+    borderColor: '#FF0000',
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   activePeriod: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: '#FF0000',
+    borderColor: '#FF0000',
   },
   periodText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.text,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
   activePeriodText: {
     color: '#FFFFFF',
@@ -262,25 +266,30 @@ const styles = StyleSheet.create({
   actionBar: {
     flexDirection: 'row',
     padding: 16,
-    gap: 8,
+    gap: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.background,
   },
   actionButton: {
     flex: 1,
-    backgroundColor: colors.card,
+    minHeight: 56,
+    backgroundColor: '#000000',
+    borderWidth: 2,
+    borderColor: '#FF0000',
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   primaryAction: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#FF0000',
+    borderColor: '#FF0000',
   },
   actionButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
   primaryActionText: {
     color: '#FFFFFF',
@@ -351,6 +360,7 @@ export default function MatchTrackerLiveScreen() {
   const [selectedPlayer, setSelectedPlayer] = useState<LineupSlot | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
   const [showSubsModal, setShowSubsModal] = useState(false);
   const [playerOff, setPlayerOff] = useState<LineupSlot | null>(null);
   const [playerOn, setPlayerOn] = useState<LineupSlot | null>(null);
@@ -400,7 +410,9 @@ export default function MatchTrackerLiveScreen() {
 
       const stateResponse = await authenticatedGet(`/api/fixtures/${fixtureId}/match-state`);
       setMatchState(stateResponse);
-      setIsRunning(stateResponse.status === 'IN_PROGRESS');
+      // Timer should NOT auto-start - user must press Start
+      setIsRunning(false);
+      setHasStarted(stateResponse.matchClock > 0);
 
       const squadsResponse = await authenticatedGet(`/api/fixtures/${fixtureId}/squads`);
       
@@ -412,8 +424,19 @@ export default function MatchTrackerLiveScreen() {
       setHomeSquad(homeSquadData || null);
       setAwaySquad(awaySquadData || null);
 
-      const eventsResponse = await authenticatedGet(`/api/fixtures/${fixtureId}/events`);
-      setEvents(eventsResponse);
+      // Fetch events - handle 404 gracefully (treat as empty array)
+      try {
+        const eventsResponse = await authenticatedGet(`/api/fixtures/${fixtureId}/events`);
+        setEvents(Array.isArray(eventsResponse) ? eventsResponse : []);
+      } catch (error: any) {
+        if (error?.status === 404) {
+          console.log('[MatchTracker] No events found (404), treating as empty');
+          setEvents([]);
+        } else {
+          console.error('[MatchTracker] Error fetching events:', error);
+          setEvents([]);
+        }
+      }
     } catch (error) {
       console.error('Error fetching match tracker data:', error);
       Alert.alert('Error', 'Failed to load match data');
@@ -457,15 +480,18 @@ export default function MatchTrackerLiveScreen() {
 
   const handleToggleClock = () => {
     console.log('Toggling clock');
+    if (!hasStarted) {
+      setHasStarted(true);
+    }
     setIsRunning(!isRunning);
     if (matchState) {
       updateMatchState({ status: isRunning ? 'PAUSED' : 'IN_PROGRESS' });
     }
   };
 
-  const handlePeriodChange = (period: number) => {
-    console.log('Changing period to:', period);
-    updateMatchState({ period });
+  const handleHalfChange = (half: 'H1' | 'H2') => {
+    console.log('Changing half to:', half);
+    updateMatchState({ half });
   };
 
   const updateMatchState = async (updates: Partial<MatchState>) => {
@@ -503,6 +529,8 @@ export default function MatchTrackerLiveScreen() {
 
     console.log('Recording event:', eventType, 'for player:', player.playerName);
 
+    const currentHalf = (matchState as any).half || 'H1';
+
     const event: MatchEvent = {
       fixtureId,
       playerId: player.playerId,
@@ -510,6 +538,7 @@ export default function MatchTrackerLiveScreen() {
       timestamp: matchState.matchClock,
       eventType,
       eventCategory: category as any,
+      half: currentHalf,
       clientId: `${Date.now()}_${Math.random()}`,
       synced: false,
     };
@@ -612,36 +641,39 @@ export default function MatchTrackerLiveScreen() {
     return `${minsStr}:${secsStr}`;
   };
 
+  // Format GAA score as goals-points (e.g., "1-01", "0-20", "0-00")
+  const formatScore = (goals: number, points: number): string => {
+    const goalsStr = goals.toString();
+    const pointsStr = points.toString().padStart(2, '0');
+    return `${goalsStr}-${pointsStr}`;
+  };
+
   const currentSquad = selectedSide === 'HOME' ? homeSquad : awaySquad;
   const onFieldPlayers = currentSquad?.startingSlots.filter(s => s.playerId) || [];
 
   const renderScoreboard = () => {
     if (!matchState) return null;
 
-    const homeTotal = matchState.homeGoals * 3 + matchState.homePoints;
-    const awayTotal = matchState.awayGoals * 3 + matchState.awayPoints;
-    const homeGoalsText = `${matchState.homeGoals}`;
-    const homePointsText = `${matchState.homePoints}`;
-    const awayGoalsText = `${matchState.awayGoals}`;
-    const awayPointsText = `${matchState.awayPoints}`;
+    // Format scores as goals-points (e.g., "1-01", "0-20")
+    const homeScoreText = formatScore(matchState.homeGoals || 0, matchState.homePoints || 0);
+    const awayScoreText = formatScore(matchState.awayGoals || 0, matchState.awayPoints || 0);
     const clockText = formatTime(matchState.matchClock);
     const isOnline = networkState.isConnected;
     const syncStatusText = isOnline ? 'Online' : 'Offline';
     const pendingCount = pendingEvents.length;
     const pendingText = pendingCount > 0 ? `${pendingCount} pending` : '';
+    const currentHalf = (matchState as any).half || 'H1';
 
     return (
       <View style={styles.scoreboard}>
         <View style={styles.scoreRow}>
           <View style={styles.teamScore}>
             <Text style={styles.teamName}>HOME</Text>
-            <Text style={styles.score}>{homeTotal}</Text>
-            <Text style={styles.scoreDetail}>{homeGoalsText}G {homePointsText}P</Text>
+            <Text style={styles.score}>{homeScoreText}</Text>
           </View>
           <View style={styles.teamScore}>
             <Text style={styles.teamName}>AWAY</Text>
-            <Text style={styles.score}>{awayTotal}</Text>
-            <Text style={styles.scoreDetail}>{awayGoalsText}G {awayPointsText}P</Text>
+            <Text style={styles.score}>{awayScoreText}</Text>
           </View>
         </View>
 
@@ -649,21 +681,23 @@ export default function MatchTrackerLiveScreen() {
           <Text style={styles.clock}>{clockText}</Text>
           <View style={styles.clockControls}>
             <TouchableOpacity style={styles.clockButton} onPress={handleToggleClock}>
-              <Text style={styles.clockButtonText}>{isRunning ? 'Pause' : 'Start'}</Text>
+              <Text style={styles.clockButtonText}>
+                {!hasStarted ? 'Start' : isRunning ? 'Pause' : 'Resume'}
+              </Text>
             </TouchableOpacity>
           </View>
           <View style={styles.periodSelector}>
-            {[1, 2, 3, 4].map(p => {
-              const isActive = matchState.period === p;
-              const periodText = `Q${p}`;
+            {(['H1', 'H2'] as const).map(half => {
+              const isActive = currentHalf === half;
+              const halfText = half === 'H1' ? '1st Half' : '2nd Half';
               return (
                 <TouchableOpacity
-                  key={p}
+                  key={half}
                   style={[styles.periodButton, isActive && styles.activePeriod]}
-                  onPress={() => handlePeriodChange(p)}
+                  onPress={() => handleHalfChange(half)}
                 >
                   <Text style={[styles.periodText, isActive && styles.activePeriodText]}>
-                    {periodText}
+                    {halfText}
                   </Text>
                 </TouchableOpacity>
               );

@@ -126,3 +126,61 @@ export const Button: React.FC<ButtonProps> = ({
 };
 
 export default Button;
+
+// BigOutlineButton for GAA Coach Hub - large, high visibility buttons with red outline
+interface BigOutlineButtonProps {
+  title: string;
+  onPress: () => void;
+  disabled?: boolean;
+  style?: ViewStyle;
+  textStyle?: TextStyle;
+}
+
+export function BigOutlineButton({
+  title,
+  onPress,
+  disabled = false,
+  style,
+  textStyle,
+}: BigOutlineButtonProps) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={[
+        bigOutlineStyles.button,
+        disabled && bigOutlineStyles.buttonDisabled,
+        style,
+      ]}
+    >
+      <Text style={[bigOutlineStyles.buttonText, disabled && bigOutlineStyles.buttonTextDisabled, textStyle]}>
+        {title}
+      </Text>
+    </Pressable>
+  );
+}
+
+const bigOutlineStyles = StyleSheet.create({
+  button: {
+    minHeight: 56,
+    borderWidth: 2,
+    borderColor: '#FF0000',
+    backgroundColor: '#000000',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  buttonDisabled: {
+    borderColor: '#666666',
+    opacity: 0.5,
+  },
+  buttonText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  buttonTextDisabled: {
+    color: '#999999',
+  },
+});
