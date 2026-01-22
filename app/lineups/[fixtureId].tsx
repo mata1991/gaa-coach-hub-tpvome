@@ -622,31 +622,24 @@ export default function LineupsScreen() {
   const handleUsePlaceholders = async () => {
     if (!currentSquad) return;
 
-    console.log('[Lineups] Creating placeholder squad for AWAY team');
+    console.log('[Lineups] Creating placeholder squad for AWAY team using dedicated endpoint');
     
-    // Create placeholder starting lineup (1-15)
-    const placeholderStarting: LineupSlot[] = GAA_POSITIONS.map(pos => ({
-      positionNo: pos.positionNo,
-      positionName: pos.positionName,
-      playerId: `placeholder-away-${pos.positionNo}`,
-      playerName: `Away ${pos.positionNo}`,
-      jerseyNo: pos.positionNo.toString(),
-    }));
-
-    // Create placeholder bench (16-30)
-    const placeholderBench: LineupSlot[] = Array.from({ length: 15 }, (_, i) => {
-      const benchNo = i + 16;
-      return {
-        positionNo: benchNo,
-        positionName: `Bench ${i + 1}`,
-        playerId: `placeholder-away-${benchNo}`,
-        playerName: `Away ${benchNo}`,
-        jerseyNo: benchNo.toString(),
-      };
-    });
-
     try {
-      await saveSquad(placeholderStarting, placeholderBench);
+      // Use the dedicated placeholder creation endpoint
+      const response = await authenticatedPost(`/api/fixtures/${fixtureId}/squads/away/placeholders`, {});
+      console.log('[Lineups] Placeholder squad created successfully:', response);
+      
+      // Update the away squad state with the response
+      setAwaySquad(response);
+      
+      // Update cache with new squad data
+      const cachedSquadsKey = `match-squads-${fixtureId}`;
+      const currentCache = await AsyncStorage.getItem(cachedSquadsKey);
+      const squadsData = currentCache ? JSON.parse(currentCache) : {};
+      squadsData.away = response;
+      await AsyncStorage.setItem(cachedSquadsKey, JSON.stringify(squadsData));
+      console.log('[Lineups] Updated cached squads after placeholder creation');
+      
       setShowPlayerPicker(false);
       
       Alert.alert(
@@ -701,42 +694,79 @@ export default function LineupsScreen() {
   const handleStartMatch = async () => {
     console.log('[Lineups] User tapped Start Match');
     
-    // Check if both squads have been saved (have IDs)
-    const homeHasId = homeSquad && homeSquad.id && homeSquad.id !== '';
-    const awayHasId = awaySquad && awaySquad.id && awaySquad.id !== '';
-    
-    if (!homeHasId || !awayHasId) {
-      const missingSquads = [];
-      if (!homeHasId) missingSquads.push('HOME');
-      if (!awayHasId) missingSquads.push('AWAY');
+    // First, check squad status via API to ensure backend agrees
+    try {
+      console.log('[Lineups] Checking squad status via API');
+      const statusResponse = await authenticatedGet<{ homeReady: boolean; awayReady: boolean }>(`/api/fixtures/${fixtureId}/squad-status`);
+      console.log('[Lineups] Squad status from API:', statusResponse);
       
-      const missingText = missingSquads.join(' and ');
-      const squadWord = missingSquads.length > 1 ? 'squads' : 'squad';
+      const homeReady = statusResponse.homeReady || false;
+      const awayReady = statusResponse.awayReady || false;
       
-      Alert.alert(
-        'Squads Required',
-        `${missingText} ${squadWord} must be created before starting the match. Switch to the ${missingSquads[0]} tab and add at least one player to create the squad.`,
-        [{ text: 'OK' }]
-      );
-      return;
-    }
+      if (!homeReady || !awayReady) {
+        const missingSquads = [];
+        if (!homeReady) missingSquads.push('HOME');
+        if (!awayReady) missingSquads.push('AWAY');
+        
+        const missingText = missingSquads.join(' and ');
+        const squadWord = missingSquads.length > 1 ? 'squads' : 'squad';
+        
+        let message = `${missingText} ${squadWord} must be created before starting the match.\n\n`;
+        if (!homeReady && !awayReady) {
+          message += 'Create both HOME and AWAY squads by adding at least one player to each.';
+        } else if (!homeReady) {
+          message += 'Switch to the HOME tab and add at least one player.';
+        } else {
+          message += 'Switch to the AWAY tab and add at least one player (or use placeholders).';
+        }
+        
+        Alert.alert('Squads Required', message, [{ text: 'OK' }]);
+        return;
+      }
+      
+      // Both squads exist, check if lineups are complete
+      const homeStartingCount = homeSquad?.startingSlots.filter(s => s.playerId).length || 0;
+      const awayStartingCount = awaySquad?.startingSlots.filter(s => s.playerId).length || 0;
 
-    const homeStartingCount = homeSquad.startingSlots.filter(s => s.playerId).length || 0;
-    const awayStartingCount = awaySquad.startingSlots.filter(s => s.playerId).length || 0;
-
-    if (homeStartingCount < 15 || awayStartingCount < 15) {
-      const homeCountText = homeStartingCount.toString();
-      const awayCountText = awayStartingCount.toString();
+      if (homeStartingCount < 15 || awayStartingCount < 15) {
+        const homeCountText = homeStartingCount.toString();
+        const awayCountText = awayStartingCount.toString();
+        
+        Alert.alert(
+          'Incomplete Lineups',
+          `Home: ${homeCountText}/15, Away: ${awayCountText}/15. Start anyway?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Start Match', onPress: startMatch },
+          ]
+        );
+      } else {
+        startMatch();
+      }
+    } catch (error: any) {
+      console.error('[Lineups] Error checking squad status:', error);
       
-      Alert.alert(
-        'Incomplete Lineups',
-        `Home: ${homeCountText}/15, Away: ${awayCountText}/15. Start anyway?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Start Match', onPress: startMatch },
-        ]
-      );
-    } else {
+      // If we can't check status, fall back to local check
+      const homeHasId = homeSquad && homeSquad.id && homeSquad.id !== '';
+      const awayHasId = awaySquad && awaySquad.id && awaySquad.id !== '';
+      
+      if (!homeHasId || !awayHasId) {
+        const missingSquads = [];
+        if (!homeHasId) missingSquads.push('HOME');
+        if (!awayHasId) missingSquads.push('AWAY');
+        
+        const missingText = missingSquads.join(' and ');
+        const squadWord = missingSquads.length > 1 ? 'squads' : 'squad';
+        
+        Alert.alert(
+          'Squads Required',
+          `${missingText} ${squadWord} must be created before starting the match. Switch to the ${missingSquads[0]} tab and add at least one player to create the squad.`,
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      
+      // If we have local squads, try to start anyway
       startMatch();
     }
   };
@@ -756,7 +786,7 @@ export default function LineupsScreen() {
       if (error?.status === 400 && error?.message?.includes('squad')) {
         Alert.alert(
           'Squads Required',
-          'Both HOME and AWAY squads must be created before starting the match. Please ensure both tabs have squads created.',
+          'Both HOME and AWAY squads must be created before starting the match. Please ensure both tabs have squads created with at least one player each.',
           [{ text: 'OK' }]
         );
       } else {

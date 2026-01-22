@@ -280,9 +280,10 @@ export default function TeamDashboardScreen() {
             ]
           );
         } else {
+          const errorMessage = startError?.message || 'Unknown error';
           Alert.alert(
             'Error',
-            `Failed to start match: ${startError?.message || 'Unknown error'}`,
+            `Failed to start match: ${errorMessage}`,
             [{ text: 'OK' }]
           );
         }
@@ -309,12 +310,12 @@ export default function TeamDashboardScreen() {
           ]
         );
       } else if (error?.status === 404 || error?.message?.includes('404') || error?.message?.includes('not found')) {
-        console.log('[TeamDashboard] 404 error - route not found or fixture does not exist');
+        console.log('[TeamDashboard] 404 error - fixture not found');
         Alert.alert(
-          'Error',
-          'Could not find fixture or squad status. Please try again or contact support.',
+          'Fixture Not Found',
+          'Could not find this fixture. It may have been deleted.',
           [
-            { text: 'OK' },
+            { text: 'OK', onPress: () => fetchDashboard(true) },
           ]
         );
       } else if (error?.message?.includes('Network') || error?.message?.includes('fetch') || error?.message?.includes('Failed to fetch')) {

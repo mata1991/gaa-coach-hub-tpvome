@@ -403,8 +403,14 @@ export default function MatchTrackerLiveScreen() {
       setIsRunning(stateResponse.status === 'IN_PROGRESS');
 
       const squadsResponse = await authenticatedGet(`/api/fixtures/${fixtureId}/squads`);
-      setHomeSquad(squadsResponse.home);
-      setAwaySquad(squadsResponse.away);
+      
+      // squadsResponse is an array of squads, not an object with home/away keys
+      const squadsArray = Array.isArray(squadsResponse) ? squadsResponse : [];
+      const homeSquadData = squadsArray.find((s: any) => s.side === 'HOME');
+      const awaySquadData = squadsArray.find((s: any) => s.side === 'AWAY');
+      
+      setHomeSquad(homeSquadData || null);
+      setAwaySquad(awaySquadData || null);
 
       const eventsResponse = await authenticatedGet(`/api/fixtures/${fixtureId}/events`);
       setEvents(eventsResponse);
