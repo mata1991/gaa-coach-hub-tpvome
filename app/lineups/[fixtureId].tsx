@@ -407,12 +407,18 @@ export default function LineupsScreen() {
       setFixture(fixtureResponse);
 
       const squadsResponse = await authenticatedGet(`/api/fixtures/${fixtureId}/squads`);
-      setHomeSquad(squadsResponse.home || createEmptySquad('HOME'));
-      setAwaySquad(squadsResponse.away || createEmptySquad('AWAY'));
+      
+      // squadsResponse is an array of squads, not an object with home/away keys
+      const squadsArray = Array.isArray(squadsResponse) ? squadsResponse : [];
+      const homeSquadData = squadsArray.find((s: any) => s.side === 'HOME');
+      const awaySquadData = squadsArray.find((s: any) => s.side === 'AWAY');
+      
+      setHomeSquad(homeSquadData || createEmptySquad('HOME'));
+      setAwaySquad(awaySquadData || createEmptySquad('AWAY'));
 
       // Cache squads for offline use
       const cachedSquadsKey = `match-squads-${fixtureId}`;
-      await AsyncStorage.setItem(cachedSquadsKey, JSON.stringify(squadsResponse));
+      await AsyncStorage.setItem(cachedSquadsKey, JSON.stringify({ home: homeSquadData, away: awaySquadData }));
       console.log('[Lineups] Cached squads for offline use');
 
       const playersResponse = await authenticatedGet(`/api/players?teamId=${fixtureResponse.teamId}`);
@@ -639,14 +645,19 @@ export default function LineupsScreen() {
       };
     });
 
-    await saveSquad(placeholderStarting, placeholderBench);
-    setShowPlayerPicker(false);
-    
-    Alert.alert(
-      'Placeholders Created',
-      'Away squad created with placeholder names (Away 1-15). You can edit individual players by tapping on them.',
-      [{ text: 'OK' }]
-    );
+    try {
+      await saveSquad(placeholderStarting, placeholderBench);
+      setShowPlayerPicker(false);
+      
+      Alert.alert(
+        'Placeholders Created',
+        'Away squad created with placeholder names (Away 1-30). You can edit individual players by tapping on them.',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('[Lineups] Error creating placeholders:', error);
+      Alert.alert('Error', 'Failed to create placeholder squad. Please try again.');
+    }
   };
 
   const saveSquad = async (startingSlots: LineupSlot[], bench: LineupSlot[]) => {
@@ -690,18 +701,21 @@ export default function LineupsScreen() {
   const handleStartMatch = async () => {
     console.log('[Lineups] User tapped Start Match');
     
-    // Check if both squads exist
-    if (!homeSquad || !awaySquad) {
+    // Check if both squads have been saved (have IDs)
+    const homeHasId = homeSquad && homeSquad.id && homeSquad.id !== '';
+    const awayHasId = awaySquad && awaySquad.id && awaySquad.id !== '';
+    
+    if (!homeHasId || !awayHasId) {
       const missingSquads = [];
-      if (!homeSquad) missingSquads.push('HOME');
-      if (!awaySquad) missingSquads.push('AWAY');
+      if (!homeHasId) missingSquads.push('HOME');
+      if (!awayHasId) missingSquads.push('AWAY');
       
       const missingText = missingSquads.join(' and ');
       const squadWord = missingSquads.length > 1 ? 'squads' : 'squad';
       
       Alert.alert(
         'Squads Required',
-        `${missingText} ${squadWord} must be created before starting the match. Switch to the ${missingSquads[0]} tab to create it.`,
+        `${missingText} ${squadWord} must be created before starting the match. Switch to the ${missingSquads[0]} tab and add at least one player to create the squad.`,
         [{ text: 'OK' }]
       );
       return;
@@ -1006,9 +1020,9 @@ export default function LineupsScreen() {
   const homeJerseyUrl = fixture?.homeJerseyImageUrl;
   const awayJerseyUrl = fixture?.awayJerseyImageUrl;
 
-  // Check squad readiness
-  const homeReady = homeSquad && homeSquad.startingSlots.some(s => s.playerId);
-  const awayReady = awaySquad && awaySquad.startingSlots.some(s => s.playerId);
+  // Check squad readiness (squad must be saved with an ID and have at least one player)
+  const homeReady = homeSquad && homeSquad.id && homeSquad.id !== '' && homeSquad.startingSlots.some(s => s.playerId);
+  const awayReady = awaySquad && awaySquad.id && awaySquad.id !== '' && awaySquad.startingSlots.some(s => s.playerId);
   const bothSquadsReady = homeReady && awayReady;
 
   return (

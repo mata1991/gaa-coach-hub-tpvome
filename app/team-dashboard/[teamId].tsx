@@ -213,9 +213,19 @@ export default function TeamDashboardScreen() {
         const squadWord = missingSquads.length > 1 ? 'squads' : 'squad';
         
         console.log('[TeamDashboard] Missing squads:', missingText);
+        
+        let message = `${missingText} ${squadWord} must be created before starting the match.\n\n`;
+        if (!homeReady && !awayReady) {
+          message += 'Create both HOME and AWAY squads in the Team Line Out screen.';
+        } else if (!homeReady) {
+          message += 'Switch to the HOME tab and add players to create the squad.';
+        } else {
+          message += 'Switch to the AWAY tab and add players (or use placeholders) to create the squad.';
+        }
+        
         Alert.alert(
           'Squads Required',
-          `${missingText} ${squadWord} must be created before starting the match.`,
+          message,
           [
             { text: 'Cancel', style: 'cancel' },
             {
@@ -255,7 +265,7 @@ export default function TeamDashboardScreen() {
           console.log('[TeamDashboard] Backend returned 400 - squads issue, navigating to lineup screen');
           Alert.alert(
             'Squads Required',
-            'Both HOME and AWAY squads must be created before starting the match.',
+            'Both HOME and AWAY squads must be created before starting the match. Please ensure both squads have been saved with at least one player each.',
             [
               { text: 'Cancel', style: 'cancel' },
               {
@@ -301,8 +311,8 @@ export default function TeamDashboardScreen() {
       } else if (error?.status === 404 || error?.message?.includes('404') || error?.message?.includes('not found')) {
         console.log('[TeamDashboard] 404 error - route not found or fixture does not exist');
         Alert.alert(
-          'App Configuration Error',
-          'The squad status endpoint is not available. Please contact support.',
+          'Error',
+          'Could not find fixture or squad status. Please try again or contact support.',
           [
             { text: 'OK' },
           ]
