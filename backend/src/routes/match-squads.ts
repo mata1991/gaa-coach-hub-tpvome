@@ -339,4 +339,41 @@ export function registerMatchSquadRoutes(app: App) {
       }
     }
   );
+
+  // GET /api/fixtures/:fixtureId/lineup-status - Check if a lineup exists for fixture
+  app.fastify.get(
+    '/api/fixtures/:fixtureId/lineup-status',
+    async (request: FastifyRequest<{ Params: { fixtureId: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { fixtureId } = request.params;
+      app.logger.info({ userId: session.user.id, fixtureId }, 'Checking lineup status');
+
+      try {
+        // First, verify the fixture exists
+        const fixture = await app.db.query.fixtures.findFirst({
+          where: eq(schema.fixtures.id, fixtureId),
+        });
+
+        if (!fixture) {
+          app.logger.warn({ fixtureId }, 'Fixture not found');
+          return reply.status(404).send({ error: 'Fixture not found' });
+        }
+
+        // Check if any match squad exists for this fixture (HOME or AWAY)
+        const matchSquad = await app.db.query.matchSquads.findFirst({
+          where: eq(schema.matchSquads.fixtureId, fixtureId),
+        });
+
+        const hasLineup = !!matchSquad;
+
+        app.logger.info({ fixtureId, hasLineup }, 'Lineup status checked');
+        return { hasLineup };
+      } catch (error) {
+        app.logger.error({ err: error, fixtureId }, 'Failed to check lineup status');
+        throw error;
+      }
+    }
+  );
 }
