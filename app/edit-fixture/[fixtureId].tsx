@@ -197,58 +197,21 @@ export default function EditFixtureScreen() {
       else if (type === 'homeJersey') setUploadingHomeJersey(true);
       else if (type === 'awayJersey') setUploadingAwayJersey(true);
 
-      // Upload to backend with authentication
-      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
-      if (!backendUrl) {
-        throw new Error('Backend URL not configured');
-      }
-
-      // Get auth token
-      const { authClient } = await import('@/lib/auth');
-      const session = await authClient.getSession();
-      const token = session?.data?.session?.token;
-
-      if (!token) {
-        console.error('[EditFixture] No auth token found');
-        Alert.alert('Session Expired', 'Your session has expired. Please log in again.');
-        return;
-      }
-
-      const formData = new FormData();
+      // Prepare file object
       const filename = imageUri.split('/').pop() || 'image.jpg';
       const match = /\.(\w+)$/.exec(filename);
       const fileType = match ? `image/${match[1]}` : 'image/jpeg';
 
-      formData.append('image', {
+      const file = {
         uri: imageUri,
         name: filename,
         type: fileType,
-      } as any);
+      };
 
-      console.log('[EditFixture] Uploading to:', `${backendUrl}/api/upload/image`);
-      const response = await fetch(`${backendUrl}/api/upload/image`, {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      console.log('[EditFixture] Upload response status:', response.status);
-
-      if (response.status === 401 || response.status === 403) {
-        console.error('[EditFixture] Authentication failed during upload');
-        Alert.alert('Session Expired', 'Your session has expired. Please log in again.');
-        return;
-      }
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[EditFixture] Upload failed:', response.status, errorText);
-        throw new Error(`Upload failed: ${response.status}`);
-      }
-
-      const uploadResult = await response.json();
+      // Use centralized authenticated upload
+      const { authenticatedUpload } = await import('@/utils/api');
+      const uploadResult = await authenticatedUpload<{ url: string }>('/api/upload/image', file);
+      
       console.log('[EditFixture] Upload successful:', uploadResult);
 
       // Update state with uploaded URL
@@ -258,9 +221,28 @@ export default function EditFixtureScreen() {
       else if (type === 'awayJersey') setAwayJerseyImageUrl(uploadResult.url);
 
       Alert.alert('Success', 'Image uploaded successfully');
-    } catch (error) {
+    } catch (error: any) {
       console.error('[EditFixture] Image upload failed:', error);
-      Alert.alert('Error', 'Failed to upload image. Please try again.');
+      console.error('[EditFixture] Error code:', error?.code);
+      console.error('[EditFixture] Error status:', error?.status);
+      
+      // Handle specific error cases
+      if (error?.code === 'AUTH_TOKEN_MISSING' || error?.code === 'AUTH_EXPIRED') {
+        Alert.alert(
+          'Session Expired',
+          'Your session has expired. Please log in again.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                router.replace('/auth');
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Upload Failed', 'Failed to upload image. Please check your connection and try again.');
+      }
     } finally {
       // Clear uploading state
       if (type === 'homeCrest') setUploadingHomeCrest(false);

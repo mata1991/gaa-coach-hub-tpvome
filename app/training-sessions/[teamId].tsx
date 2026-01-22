@@ -30,7 +30,7 @@ export default function TrainingSessionsScreen() {
   }, [teamId]);
 
   const fetchSessions = async () => {
-    console.log('[TrainingSessions] Fetching training sessions');
+    console.log('[TrainingSessions] Fetching training sessions for teamId:', teamId);
     try {
       setLoading(true);
       const sessionsData = await authenticatedGet<TrainingSession[]>(
@@ -44,9 +44,32 @@ export default function TrainingSessionsScreen() {
       );
       
       setSessions(sortedSessions);
-    } catch (error) {
+    } catch (error: any) {
       console.error('[TrainingSessions] Failed to fetch sessions:', error);
-      Alert.alert('Error', 'Failed to load training sessions');
+      console.error('[TrainingSessions] Error message:', error?.message);
+      console.error('[TrainingSessions] Error status:', error?.status);
+      
+      // Show specific error message based on error type
+      let errorMessage = 'Failed to load training sessions. Please try again.';
+      
+      if (error?.message?.includes('401') || error?.message?.includes('403')) {
+        errorMessage = 'Session expired. Please log in again.';
+      } else if (error?.message?.includes('404')) {
+        errorMessage = 'Training sessions not found. Please check your connection.';
+      } else if (error?.message?.includes('Network') || error?.message?.includes('fetch')) {
+        errorMessage = 'Could not reach server. Please check your connection.';
+      }
+      
+      Alert.alert('Error', errorMessage, [
+        {
+          text: 'Retry',
+          onPress: () => fetchSessions(),
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ]);
     } finally {
       setLoading(false);
     }

@@ -47,7 +47,7 @@ export default function EditTeamScreen() {
   }, [teamId]);
 
   const fetchTeam = async () => {
-    console.log('[EditTeam] Fetching team data');
+    console.log('[EditTeam] Fetching team data for teamId:', teamId);
     try {
       setLoading(true);
       const teamData = await authenticatedGet<Team>(`/api/teams/${teamId}`);
@@ -62,10 +62,33 @@ export default function EditTeamScreen() {
       setHomeVenue(teamData.homeVenue || '');
       setCrestUrl(teamData.crestUrl || '');
       setColours(teamData.colours || '');
-    } catch (error) {
+    } catch (error: any) {
       console.error('[EditTeam] Failed to fetch team:', error);
-      Alert.alert('Error', 'Failed to load team data');
-      router.back();
+      console.error('[EditTeam] Error message:', error?.message);
+      console.error('[EditTeam] Error status:', error?.status);
+      
+      // Show specific error message based on error type
+      let errorMessage = 'Failed to load team data. Please try again.';
+      
+      if (error?.message?.includes('401') || error?.message?.includes('403')) {
+        errorMessage = 'Session expired. Please log in again.';
+      } else if (error?.message?.includes('404')) {
+        errorMessage = 'Team not found. It may have been deleted.';
+      } else if (error?.message?.includes('Network') || error?.message?.includes('fetch')) {
+        errorMessage = 'Could not reach server. Please check your connection.';
+      }
+      
+      Alert.alert('Error', errorMessage, [
+        {
+          text: 'Retry',
+          onPress: () => fetchTeam(),
+        },
+        {
+          text: 'Go Back',
+          style: 'cancel',
+          onPress: () => router.back(),
+        },
+      ]);
     } finally {
       setLoading(false);
     }
