@@ -12,6 +12,7 @@ import {
   Platform,
   Image,
   ImageSourcePropType,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -42,6 +43,8 @@ export default function EditFixtureScreen() {
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [tempDate, setTempDate] = useState(new Date());
+  const [tempTime, setTempTime] = useState(new Date());
   const [competitions, setCompetitions] = useState<any[]>([]);
   const [selectedCompetition, setSelectedCompetition] = useState<string>('');
   
@@ -113,26 +116,44 @@ export default function EditFixtureScreen() {
   }, [fetchData]);
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false);
     if (selectedDate) {
-      const newDate = new Date(date);
-      newDate.setFullYear(selectedDate.getFullYear());
-      newDate.setMonth(selectedDate.getMonth());
-      newDate.setDate(selectedDate.getDate());
-      setDate(newDate);
-      console.log('[EditFixture] Date changed:', newDate);
+      setTempDate(selectedDate);
     }
   };
 
   const handleTimeChange = (event: any, selectedTime?: Date) => {
-    setShowTimePicker(false);
     if (selectedTime) {
-      const newDate = new Date(date);
-      newDate.setHours(selectedTime.getHours());
-      newDate.setMinutes(selectedTime.getMinutes());
-      setDate(newDate);
-      console.log('[EditFixture] Time changed:', newDate);
+      setTempTime(selectedTime);
     }
+  };
+
+  const confirmDateSelection = () => {
+    const newDate = new Date(date);
+    newDate.setFullYear(tempDate.getFullYear());
+    newDate.setMonth(tempDate.getMonth());
+    newDate.setDate(tempDate.getDate());
+    setDate(newDate);
+    setShowDatePicker(false);
+    console.log('[EditFixture] Date confirmed:', newDate);
+  };
+
+  const confirmTimeSelection = () => {
+    const newDate = new Date(date);
+    newDate.setHours(tempTime.getHours());
+    newDate.setMinutes(tempTime.getMinutes());
+    setDate(newDate);
+    setShowTimePicker(false);
+    console.log('[EditFixture] Time confirmed:', newDate);
+  };
+
+  const cancelDateSelection = () => {
+    setShowDatePicker(false);
+    setTempDate(date);
+  };
+
+  const cancelTimeSelection = () => {
+    setShowTimePicker(false);
+    setTempTime(date);
   };
 
   const validateForm = () => {
@@ -176,10 +197,21 @@ export default function EditFixtureScreen() {
       else if (type === 'homeJersey') setUploadingHomeJersey(true);
       else if (type === 'awayJersey') setUploadingAwayJersey(true);
 
-      // Upload to backend
+      // Upload to backend with authentication
       const backendUrl = Constants.expoConfig?.extra?.backendUrl;
       if (!backendUrl) {
         throw new Error('Backend URL not configured');
+      }
+
+      // Get auth token
+      const { authClient } = await import('@/lib/auth');
+      const session = await authClient.getSession();
+      const token = session?.data?.session?.token;
+
+      if (!token) {
+        console.error('[EditFixture] No auth token found');
+        Alert.alert('Session Expired', 'Your session has expired. Please log in again.');
+        return;
       }
 
       const formData = new FormData();
@@ -193,15 +225,26 @@ export default function EditFixtureScreen() {
         type: fileType,
       } as any);
 
+      console.log('[EditFixture] Uploading to:', `${backendUrl}/api/upload/image`);
       const response = await fetch(`${backendUrl}/api/upload/image`, {
         method: 'POST',
         body: formData,
         headers: {
-          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${token}`,
         },
       });
 
+      console.log('[EditFixture] Upload response status:', response.status);
+
+      if (response.status === 401 || response.status === 403) {
+        console.error('[EditFixture] Authentication failed during upload');
+        Alert.alert('Session Expired', 'Your session has expired. Please log in again.');
+        return;
+      }
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[EditFixture] Upload failed:', response.status, errorText);
         throw new Error(`Upload failed: ${response.status}`);
       }
 
@@ -374,7 +417,10 @@ export default function EditFixtureScreen() {
             </Text>
             <TouchableOpacity
               style={styles.dateButton}
-              onPress={() => setShowDatePicker(true)}
+              onPress={() => {
+                setTempDate(date);
+                setShowDatePicker(true);
+              }}
               disabled={saving}
             >
               <IconSymbol
@@ -393,7 +439,10 @@ export default function EditFixtureScreen() {
             </Text>
             <TouchableOpacity
               style={styles.dateButton}
-              onPress={() => setShowTimePicker(true)}
+              onPress={() => {
+                setTempTime(date);
+                setShowTimePicker(true);
+              }}
               disabled={saving}
             >
               <IconSymbol
@@ -702,23 +751,77 @@ export default function EditFixtureScreen() {
           </View>
         </ScrollView>
 
-        {showDatePicker && (
-          <DateTimePicker
-            value={date}
-            mode="date"
-            display="default"
-            onChange={handleDateChange}
-          />
-        )}
+        <Modal
+          visible={showDatePicker}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={cancelDateSelection}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Date</Text>
+              </View>
+              <DateTimePicker
+                value={tempDate}
+                mode="date"
+                display="spinner"
+                onChange={handleDateChange}
+                style={styles.picker}
+              />
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.modalCancelButton}
+                  onPress={cancelDateSelection}
+                >
+                  <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalConfirmButton}
+                  onPress={confirmDateSelection}
+                >
+                  <Text style={styles.modalConfirmButtonText}>Confirm</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
-        {showTimePicker && (
-          <DateTimePicker
-            value={date}
-            mode="time"
-            display="default"
-            onChange={handleTimeChange}
-          />
-        )}
+        <Modal
+          visible={showTimePicker}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={cancelTimeSelection}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Time</Text>
+              </View>
+              <DateTimePicker
+                value={tempTime}
+                mode="time"
+                display="spinner"
+                onChange={handleTimeChange}
+                style={styles.picker}
+              />
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.modalCancelButton}
+                  onPress={cancelTimeSelection}
+                >
+                  <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalConfirmButton}
+                  onPress={confirmTimeSelection}
+                >
+                  <Text style={styles.modalConfirmButtonText}>Confirm</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </>
   );
@@ -873,5 +976,61 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -8,
     right: '35%',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    width: '85%',
+    maxWidth: 400,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
+    textAlign: 'center',
+  },
+  picker: {
+    width: '100%',
+    height: 200,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+  },
+  modalCancelButton: {
+    flex: 1,
+    padding: 16,
+    alignItems: 'center',
+    borderRightWidth: 1,
+    borderRightColor: '#e0e0e0',
+  },
+  modalCancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  modalConfirmButton: {
+    flex: 1,
+    padding: 16,
+    alignItems: 'center',
+    backgroundColor: '#000',
+  },
+  modalConfirmButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
