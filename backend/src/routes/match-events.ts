@@ -6,17 +6,17 @@ import type { App } from '../index.js';
 export function registerMatchEventRoutes(app: App) {
   const requireAuth = app.requireAuth();
 
-  // GET /api/match-events - Get all events for a fixture
+  // GET /api/fixtures/:fixtureId/events - Get all events for a fixture
   app.fastify.get(
-    '/api/match-events',
+    '/api/fixtures/:fixtureId/events',
     async (
-      request: FastifyRequest<{ Querystring: { fixtureId: string } }>,
+      request: FastifyRequest<{ Params: { fixtureId: string } }>,
       reply: FastifyReply
     ) => {
       const session = await requireAuth(request, reply);
       if (!session) return;
 
-      const { fixtureId } = request.query;
+      const { fixtureId } = request.params;
       app.logger.info({ userId: session.user.id, fixtureId }, 'Fetching match events');
 
       try {
@@ -29,6 +29,82 @@ export function registerMatchEventRoutes(app: App) {
         return events;
       } catch (error) {
         app.logger.error({ err: error, fixtureId }, 'Failed to fetch match events');
+        throw error;
+      }
+    }
+  );
+
+  // POST /api/fixtures/:fixtureId/events - Create a match event
+  app.fastify.post(
+    '/api/fixtures/:fixtureId/events',
+    async (
+      request: FastifyRequest<{
+        Params: { fixtureId: string };
+        Body: {
+          playerId?: string;
+          side?: 'HOME' | 'AWAY';
+          timestamp: number;
+          eventType: string;
+          eventCategory: 'Scoring' | 'Puckouts' | 'Possession' | 'Discipline' | 'Substitutions';
+          half?: 'H1' | 'H2';
+          outcome?: string;
+          zone?: string;
+          notes?: string;
+          clientId?: string;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { fixtureId } = request.params;
+      const { playerId, side, timestamp, eventType, eventCategory, half, outcome, zone, notes, clientId } =
+        request.body;
+
+      app.logger.info(
+        { userId: session.user.id, fixtureId, eventType, timestamp },
+        'Creating match event'
+      );
+
+      try {
+        // Check for duplicate if clientId provided
+        if (clientId) {
+          const existing = await app.db.query.matchEvents.findFirst({
+            where: and(
+              eq(schema.matchEvents.fixtureId, fixtureId),
+              eq(schema.matchEvents.clientId, clientId)
+            ),
+          });
+
+          if (existing) {
+            app.logger.warn({ fixtureId, clientId }, 'Duplicate event detected');
+            return existing;
+          }
+        }
+
+        const [created] = await app.db
+          .insert(schema.matchEvents)
+          .values({
+            fixtureId,
+            playerId,
+            side,
+            timestamp,
+            eventType,
+            eventCategory,
+            half,
+            outcome,
+            zone,
+            notes,
+            clientId,
+            synced: true,
+          })
+          .returning();
+
+        app.logger.info({ fixtureId, eventId: created.id, eventType }, 'Match event created successfully');
+        return created;
+      } catch (error) {
+        app.logger.error({ err: error, fixtureId, eventType }, 'Failed to create match event');
         throw error;
       }
     }
@@ -52,6 +128,7 @@ export function registerMatchEventRoutes(app: App) {
               | 'Possession'
               | 'Discipline'
               | 'Substitutions';
+            half?: 'H1' | 'H2';
             outcome?: string;
             zone?: string;
             notes?: string;
@@ -99,6 +176,7 @@ export function registerMatchEventRoutes(app: App) {
               timestamp: event.timestamp,
               eventType: event.eventType,
               eventCategory: event.eventCategory,
+              half: event.half,
               outcome: event.outcome,
               zone: event.zone,
               notes: event.notes,
@@ -141,6 +219,7 @@ export function registerMatchEventRoutes(app: App) {
           playerId?: string;
           timestamp?: number;
           eventType?: string;
+          half?: 'H1' | 'H2';
           outcome?: string;
           zone?: string;
           notes?: string;
@@ -152,7 +231,7 @@ export function registerMatchEventRoutes(app: App) {
       if (!session) return;
 
       const { id } = request.params;
-      const { playerId, timestamp, eventType, outcome, zone, notes } = request.body;
+      const { playerId, timestamp, eventType, half, outcome, zone, notes } = request.body;
 
       app.logger.info({ userId: session.user.id, matchEventId: id }, 'Updating match event');
 
@@ -161,6 +240,7 @@ export function registerMatchEventRoutes(app: App) {
         if (playerId !== undefined) updateData.playerId = playerId;
         if (timestamp !== undefined) updateData.timestamp = timestamp;
         if (eventType) updateData.eventType = eventType;
+        if (half) updateData.half = half;
         if (outcome !== undefined) updateData.outcome = outcome;
         if (zone !== undefined) updateData.zone = zone;
         if (notes !== undefined) updateData.notes = notes;

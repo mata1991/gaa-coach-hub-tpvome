@@ -275,6 +275,7 @@ export const matchEvents = pgTable('match_events', {
   timestamp: integer('timestamp').notNull(), // Match clock in seconds
   eventType: text('event_type').notNull(),
   eventCategory: eventCategoryEnum('event_category').notNull(),
+  half: text('half'), // 'H1' or 'H2'
   outcome: text('outcome'),
   zone: text('zone'),
   notes: text('notes'),
@@ -366,7 +367,7 @@ export const matchState = pgTable('match_state', {
   awayGoals: integer('away_goals').default(0).notNull(),
   awayPoints: integer('away_points').default(0).notNull(),
   matchClock: integer('match_clock').default(0).notNull(), // in seconds
-  period: integer('period').default(1).notNull(),
+  half: text('half').default('H1').notNull(), // 'H1' or 'H2'
   startedAt: timestamp('started_at'),
   completedAt: timestamp('completed_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),

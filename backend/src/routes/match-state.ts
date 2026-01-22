@@ -108,7 +108,7 @@ export function registerMatchStateRoutes(app: App) {
             status: 'IN_PROGRESS',
             startedAt: new Date(),
             matchClock: 0,
-            period: 1,
+            half: 'H1',
           })
           .where(eq(schema.matchState.id, matchState.id))
           .returning();
@@ -135,7 +135,7 @@ export function registerMatchStateRoutes(app: App) {
           awayGoals?: number;
           awayPoints?: number;
           matchClock?: number;
-          period?: number;
+          half?: 'H1' | 'H2';
         };
       }>,
       reply: FastifyReply
@@ -144,11 +144,11 @@ export function registerMatchStateRoutes(app: App) {
       if (!session) return;
 
       const { fixtureId } = request.params;
-      const { status, homeGoals, homePoints, awayGoals, awayPoints, matchClock, period } =
+      const { status, homeGoals, homePoints, awayGoals, awayPoints, matchClock, half } =
         request.body;
 
       app.logger.info(
-        { userId: session.user.id, fixtureId, status, homeGoals, awayGoals },
+        { userId: session.user.id, fixtureId, status, homeGoals, awayGoals, half },
         'Updating match state'
       );
 
@@ -169,7 +169,7 @@ export function registerMatchStateRoutes(app: App) {
         if (awayGoals !== undefined) updateData.awayGoals = awayGoals;
         if (awayPoints !== undefined) updateData.awayPoints = awayPoints;
         if (matchClock !== undefined) updateData.matchClock = matchClock;
-        if (period !== undefined) updateData.period = period;
+        if (half) updateData.half = half;
 
         const [updated] = await app.db
           .update(schema.matchState)

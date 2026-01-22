@@ -34,19 +34,23 @@ interface MatchReport {
     fouls: number;
     efficiency: number;
   }>;
-  quarterBreakdown: Array<{
-    quarter: number;
-    goals: number;
-    points: number;
-    wides: number;
+  halfBreakdown: Array<{
+    half: 'H1' | 'H2';
+    stats: {
+      goals: number;
+      points: number;
+      wides: number;
+      turnovers: number;
+      puckouts: number;
+    };
   }>;
   shotHeatmap: Record<string, number>;
   puckoutHeatmap: Record<string, number>;
 }
 
-function calculateQuarter(timestamp: number): number {
-  const quarterDuration = (70 * 60) / 4; // 70 minutes divided into 4 quarters
-  return Math.floor(timestamp / quarterDuration) + 1;
+function calculateHalf(timestamp: number): 'H1' | 'H2' {
+  const halfDuration = (70 * 60) / 2; // 70 minutes divided into 2 halves
+  return timestamp < halfDuration ? 'H1' : 'H2';
 }
 
 export function registerReportRoutes(app: App) {
@@ -114,22 +118,20 @@ export function registerReportRoutes(app: App) {
         > = {};
         const shotHeatmap: Record<string, number> = {};
         const puckoutHeatmap: Record<string, number> = {};
-        const quarterBreakdown: Record<number, { goals: number; points: number; wides: number }> =
-          {};
-
-        // Initialize quarters
-        for (let i = 1; i <= 4; i++) {
-          quarterBreakdown[i] = { goals: 0, points: 0, wides: 0 };
-        }
+        const halfBreakdown: Record<'H1' | 'H2', { goals: number; points: number; wides: number; turnovers: number; puckouts: number }> =
+          {
+            H1: { goals: 0, points: 0, wides: 0, turnovers: 0, puckouts: 0 },
+            H2: { goals: 0, points: 0, wides: 0, turnovers: 0, puckouts: 0 },
+          };
 
         // Process events
         events.forEach((event) => {
-          const quarter = calculateQuarter(event.timestamp);
+          const half = calculateHalf(event.timestamp);
 
           if (event.eventCategory === 'Scoring') {
             if (event.eventType === 'Goal') {
               goals++;
-              quarterBreakdown[quarter].goals++;
+              halfBreakdown[half].goals++;
               if (event.playerId && playerMap.has(event.playerId)) {
                 const name = playerMap.get(event.playerId)!.name;
                 if (!playerContributions[event.playerId]) {
@@ -149,7 +151,7 @@ export function registerReportRoutes(app: App) {
               }
             } else if (event.eventType === 'Point') {
               points++;
-              quarterBreakdown[quarter].points++;
+              halfBreakdown[half].points++;
               if (event.playerId && playerMap.has(event.playerId)) {
                 const name = playerMap.get(event.playerId)!.name;
                 if (!playerContributions[event.playerId]) {
@@ -169,7 +171,7 @@ export function registerReportRoutes(app: App) {
               }
             } else if (event.eventType === 'Wide') {
               wides++;
-              quarterBreakdown[quarter].wides++;
+              halfBreakdown[half].wides++;
             } else if (event.eventType === 'Free Converted') {
               freesConverted++;
               if (event.playerId && playerMap.has(event.playerId)) {
@@ -197,8 +199,10 @@ export function registerReportRoutes(app: App) {
           } else if (event.eventCategory === 'Puckouts') {
             if (event.eventType === 'Won Clean' || event.eventType === 'Broken Won') {
               puckoutsWon++;
+              halfBreakdown[half].puckouts++;
             } else if (event.eventType === 'Lost') {
               puckoutsLost++;
+              halfBreakdown[half].puckouts++;
             }
             if (event.zone) {
               puckoutHeatmap[event.zone] = (puckoutHeatmap[event.zone] || 0) + 1;
@@ -209,6 +213,7 @@ export function registerReportRoutes(app: App) {
           } else if (event.eventCategory === 'Possession') {
             if (event.eventType === 'Turnover Won') {
               turnoversWon++;
+              halfBreakdown[half].turnovers++;
               if (event.playerId && playerMap.has(event.playerId)) {
                 const name = playerMap.get(event.playerId)!.name;
                 if (!playerContributions[event.playerId]) {
@@ -228,6 +233,7 @@ export function registerReportRoutes(app: App) {
               }
             } else if (event.eventType === 'Turnover Lost') {
               turnoversLost++;
+              halfBreakdown[half].turnovers++;
               if (event.playerId && playerMap.has(event.playerId)) {
                 const name = playerMap.get(event.playerId)!.name;
                 if (!playerContributions[event.playerId]) {
@@ -309,10 +315,16 @@ export function registerReportRoutes(app: App) {
             freesConversionRate,
           },
           playerStats: playerStats.sort((a, b) => b.contributions - a.contributions),
-          quarterBreakdown: Object.entries(quarterBreakdown).map(([q, data]) => ({
-            quarter: parseInt(q),
-            ...data,
-          })),
+          halfBreakdown: [
+            {
+              half: 'H1' as const,
+              stats: halfBreakdown.H1,
+            },
+            {
+              half: 'H2' as const,
+              stats: halfBreakdown.H2,
+            },
+          ],
           shotHeatmap,
           puckoutHeatmap,
         };
