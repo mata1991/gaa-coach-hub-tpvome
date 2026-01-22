@@ -20,6 +20,7 @@ import { colors } from '@/styles/commonStyles';
 import { authenticatedGet, authenticatedPost, authenticatedPut } from '@/utils/api';
 import { LineupSlot, MatchSquad, Player, TeamSide, Fixture } from '@/types';
 import { GAA_POSITIONS } from '@/constants/EventPresets';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Helper to resolve image sources (handles both local require() and remote URLs)
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -380,6 +381,11 @@ export default function LineupsScreen() {
       setHomeSquad(squadsResponse.home || createEmptySquad('HOME'));
       setAwaySquad(squadsResponse.away || createEmptySquad('AWAY'));
 
+      // Cache squads for offline use
+      const cachedSquadsKey = `match-squads-${fixtureId}`;
+      await AsyncStorage.setItem(cachedSquadsKey, JSON.stringify(squadsResponse));
+      console.log('[Lineups] Cached squads for offline use');
+
       const playersResponse = await authenticatedGet(`/api/players?teamId=${fixtureResponse.teamId}`);
       setPlayers(playersResponse);
     } catch (error) {
@@ -594,6 +600,20 @@ export default function LineupsScreen() {
       } else {
         setAwaySquad(response);
       }
+
+      // Update cache with new squad data
+      const cachedSquadsKey = `match-squads-${fixtureId}`;
+      const currentCache = await AsyncStorage.getItem(cachedSquadsKey);
+      const squadsData = currentCache ? JSON.parse(currentCache) : {};
+      
+      if (selectedSide === 'HOME') {
+        squadsData.home = response;
+      } else {
+        squadsData.away = response;
+      }
+      
+      await AsyncStorage.setItem(cachedSquadsKey, JSON.stringify(squadsData));
+      console.log('[Lineups] Updated cached squads after save');
     } catch (error) {
       console.error('Error saving squad:', error);
       Alert.alert('Error', 'Failed to save lineup');

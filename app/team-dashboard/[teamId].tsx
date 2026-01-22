@@ -12,12 +12,13 @@ import {
   ImageSourcePropType,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { FixturePicker } from '@/components/FixturePicker';
 import { authenticatedGet, authenticatedDelete } from '@/utils/api';
 import { Team, Fixture, Club } from '@/types';
 import { getSportDisplayName } from '@/constants/EventPresets';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Helper to resolve image sources (handles both local and remote)
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -40,15 +41,21 @@ export default function TeamDashboardScreen() {
   const { teamId } = useLocalSearchParams<{ teamId: string }>();
   
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<TeamDashboardData | null>(null);
   const [showFixturePicker, setShowFixturePicker] = useState(false);
   const [fixturePickerMode, setFixturePickerMode] = useState<'build' | 'start'>('build');
 
   console.log('TeamDashboardScreen: Rendering team dashboard', { teamId });
 
-  const fetchDashboard = React.useCallback(async () => {
-    console.log('Fetching team dashboard data...');
-    setLoading(true);
+  const fetchDashboard = React.useCallback(async (isRefresh = false) => {
+    console.log('Fetching team dashboard data...', { isRefresh });
+    
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
 
     try {
       const dashboardData = await authenticatedGet(`/api/teams/${teamId}/dashboard`);
@@ -58,13 +65,30 @@ export default function TeamDashboardScreen() {
       console.error('Failed to fetch team dashboard:', error);
       Alert.alert('Error', 'Failed to load team dashboard');
     } finally {
-      setLoading(false);
+      if (isRefresh) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   }, [teamId]);
 
   useEffect(() => {
     fetchDashboard();
   }, [fetchDashboard]);
+
+  // Auto-refresh on screen focus
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('[TeamDashboard] Screen focused, refreshing data');
+      fetchDashboard(true);
+    }, [fetchDashboard])
+  );
+
+  const handleRefresh = () => {
+    console.log('[TeamDashboard] User tapped Refresh button');
+    fetchDashboard(true);
+  };
 
   const handleSwitchTeam = () => {
     console.log('User tapped Switch Team button');
@@ -168,22 +192,25 @@ export default function TeamDashboardScreen() {
 
   const checkLineupsAndStartMatch = async (fixtureId: string) => {
     console.log('[TeamDashboard] Checking lineups for fixture:', fixtureId);
+    console.log('[TeamDashboard] Request URL:', `/api/fixtures/${fixtureId}/lineup-status`);
 
     try {
-      const squads = await authenticatedGet(`/api/match-squads?fixtureId=${fixtureId}`);
-      console.log('[TeamDashboard] Squads fetched:', squads);
+      const response = await authenticatedGet(`/api/fixtures/${fixtureId}/lineup-status`);
+      console.log('[TeamDashboard] Lineup status response:', response);
+      console.log('[TeamDashboard] Response status code: 200');
+      console.log('[TeamDashboard] Response body:', JSON.stringify(response));
 
-      if (!squads || squads.length === 0) {
-        console.log('[TeamDashboard] No lineups found, prompting user to build team');
+      if (!response.hasLineup) {
+        console.log('[TeamDashboard] No lineup exists, prompting user to create Team Line Out');
         Alert.alert(
-          'No Lineups',
-          'You need to build your team before starting the match.',
+          'No Lineup Saved',
+          'No lineup saved yet. Create Team Line Out to start match.',
           [
             { text: 'Cancel', style: 'cancel' },
             {
-              text: 'Build Team',
+              text: 'Create Team Line Out',
               onPress: () => {
-                console.log('[TeamDashboard] Navigating to lineups screen');
+                console.log('[TeamDashboard] Navigating to Team Line Out screen');
                 router.push({
                   pathname: '/lineups/[fixtureId]',
                   params: { fixtureId, teamId },
@@ -195,7 +222,7 @@ export default function TeamDashboardScreen() {
         return;
       }
 
-      console.log('[TeamDashboard] Lineups found, navigating to live match tracker');
+      console.log('[TeamDashboard] Lineup exists, navigating to live match tracker');
       try {
         router.push({
           pathname: '/match-tracker-live/[fixtureId]',
@@ -206,17 +233,100 @@ export default function TeamDashboardScreen() {
         console.error('[TeamDashboard] Navigation to match tracker failed:', navError);
         Alert.alert(
           'Navigation Error',
-          'Failed to open match tracker. Please try again or contact support.',
+          'Failed to open match tracker. Please try again.',
           [{ text: 'OK' }]
         );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[TeamDashboard] Failed to check lineups:', error);
-      Alert.alert(
-        'Error',
-        'Failed to check lineups. Please check your connection and try again.',
-        [{ text: 'OK' }]
-      );
+      console.error('[TeamDashboard] Error message:', error?.message);
+      console.error('[TeamDashboard] Error stack:', error?.stack);
+
+      // Check for specific error types
+      if (error?.message?.includes('401') || error?.message?.includes('403')) {
+        console.log('[TeamDashboard] Authentication error detected');
+        Alert.alert(
+          'Session Expired',
+          'Session expired, please log in again.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                router.push('/auth');
+              },
+            },
+          ]
+        );
+      } else if (error?.message?.includes('Network') || error?.message?.includes('fetch') || error?.message?.includes('Failed to fetch')) {
+        console.log('[TeamDashboard] Network error detected, checking for cached lineup');
+        
+        // Check if there's a cached lineup for offline use
+        try {
+          const cachedSquadsKey = `match-squads-${fixtureId}`;
+          const cachedSquads = await AsyncStorage.getItem(cachedSquadsKey);
+          
+          if (cachedSquads) {
+            const squads = JSON.parse(cachedSquads);
+            const hasLineup = squads && (squads.home || squads.away);
+            
+            if (hasLineup) {
+              console.log('[TeamDashboard] Found cached lineup, allowing offline match tracker');
+              Alert.alert(
+                'Offline Mode',
+                'You are offline. Using cached lineup data. Match events will be synced when you reconnect.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Start Match',
+                    onPress: () => {
+                      router.push({
+                        pathname: '/match-tracker-live/[fixtureId]',
+                        params: { fixtureId },
+                      });
+                    },
+                  },
+                ]
+              );
+              return;
+            }
+          }
+          
+          console.log('[TeamDashboard] No cached lineup found');
+          Alert.alert(
+            'Lineup Required',
+            'Lineup required to start match. Please connect to the internet to create a lineup.',
+            [
+              { text: 'OK' },
+            ]
+          );
+        } catch (cacheError) {
+          console.error('[TeamDashboard] Error checking cached lineup:', cacheError);
+          Alert.alert(
+            'Connection Error',
+            'Could not reach server. Please check your connection and try again.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Retry',
+                onPress: () => checkLineupsAndStartMatch(fixtureId),
+              },
+            ]
+          );
+        }
+      } else {
+        console.log('[TeamDashboard] Unknown error type');
+        Alert.alert(
+          'Error',
+          'An unexpected error occurred. Please try again.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Retry',
+              onPress: () => checkLineupsAndStartMatch(fixtureId),
+            },
+          ]
+        );
+      }
     }
   };
 
@@ -347,6 +457,18 @@ export default function TeamDashboardScreen() {
           headerBackTitle: 'Back',
           headerRight: () => (
             <View style={{ flexDirection: 'row', gap: 12, marginRight: 8 }}>
+              <TouchableOpacity onPress={handleRefresh} disabled={refreshing}>
+                {refreshing ? (
+                  <ActivityIndicator size="small" color="#000" />
+                ) : (
+                  <IconSymbol
+                    ios_icon_name="arrow.clockwise"
+                    android_material_icon_name="refresh"
+                    size={24}
+                    color="#000"
+                  />
+                )}
+              </TouchableOpacity>
               {canEdit && (
                 <TouchableOpacity onPress={handleEditTeam}>
                   <IconSymbol
