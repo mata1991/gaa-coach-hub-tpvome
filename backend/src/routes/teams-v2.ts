@@ -355,6 +355,7 @@ export function registerTeamsV2Routes(app: App) {
             club: true,
             players: true,
             fixtures: true,
+            trainingSessions: true,
           },
         });
 
@@ -388,15 +389,41 @@ export function registerTeamsV2Routes(app: App) {
           .sort((a, b) => b.date.getTime() - a.date.getTime())
           .slice(0, 5);
 
+        // Calculate dashboard counters
+        const playerCount = team.players.length;
+        const injuredCount = team.players.filter((p) => p.isInjured).length;
+
+        // Combine fixtures and training sessions for session counts
+        const allSessions = [
+          ...team.fixtures.map((f) => ({ dateTime: f.date, type: 'fixture' })),
+          ...team.trainingSessions.map((ts) => ({ dateTime: ts.date, type: 'training' })),
+        ];
+
+        const upcomingSessionsCount = allSessions.filter((s) => s.dateTime >= now).length;
+        const completedSessionsCount = allSessions.filter((s) => s.dateTime < now).length;
+
         const dashboard = {
           team,
-          playerCount: team.players.length,
+          club: team.club,
+          playerCount,
+          injuredCount,
+          upcomingSessionsCount,
+          completedSessionsCount,
           upcomingFixtures,
           recentFixtures,
           userRole: clubMembership.role,
         };
 
-        app.logger.info({ teamId: id }, 'Team dashboard fetched');
+        app.logger.info(
+          {
+            teamId: id,
+            playerCount,
+            injuredCount,
+            upcomingSessionsCount,
+            completedSessionsCount,
+          },
+          'Team dashboard fetched'
+        );
         return dashboard;
       } catch (error) {
         app.logger.error({ err: error, teamId: id }, 'Failed to fetch team dashboard');

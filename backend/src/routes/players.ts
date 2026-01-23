@@ -68,6 +68,8 @@ export function registerPlayerRoutes(app: App) {
           depthOrder?: number;
           notes?: string;
           injuryStatus?: string;
+          isInjured?: boolean;
+          injuryNote?: string;
         };
       }>,
       reply: FastifyReply
@@ -86,6 +88,8 @@ export function registerPlayerRoutes(app: App) {
         depthOrder,
         notes,
         injuryStatus,
+        isInjured,
+        injuryNote,
       } = request.body;
       app.logger.info(
         { userId: session.user.id, teamId, name, primaryPositionGroup },
@@ -120,6 +124,9 @@ export function registerPlayerRoutes(app: App) {
             depthOrder: assignedDepthOrder,
             notes,
             injuryStatus,
+            isInjured: isInjured ?? false,
+            injuryNote,
+            injuryUpdatedAt: isInjured ? new Date() : undefined,
           })
           .returning();
 
@@ -194,6 +201,8 @@ export function registerPlayerRoutes(app: App) {
           depthOrder?: number;
           notes?: string;
           injuryStatus?: string;
+          isInjured?: boolean;
+          injuryNote?: string;
         };
       }>,
       reply: FastifyReply
@@ -211,10 +220,12 @@ export function registerPlayerRoutes(app: App) {
         depthOrder,
         notes,
         injuryStatus,
+        isInjured,
+        injuryNote,
       } = request.body;
 
       app.logger.info(
-        { userId: session.user.id, playerId: id, primaryPositionGroup, depthOrder },
+        { userId: session.user.id, playerId: id, primaryPositionGroup, depthOrder, isInjured },
         'Updating player'
       );
 
@@ -228,6 +239,11 @@ export function registerPlayerRoutes(app: App) {
         if (depthOrder !== undefined) updateData.depthOrder = depthOrder;
         if (notes !== undefined) updateData.notes = notes;
         if (injuryStatus !== undefined) updateData.injuryStatus = injuryStatus;
+        if (isInjured !== undefined) {
+          updateData.isInjured = isInjured;
+          updateData.injuryUpdatedAt = new Date();
+        }
+        if (injuryNote !== undefined) updateData.injuryNote = injuryNote;
 
         const [updated] = await app.db
           .update(schema.players)
@@ -259,6 +275,8 @@ export function registerPlayerRoutes(app: App) {
           depthOrder?: number;
           notes?: string;
           injuryStatus?: string;
+          isInjured?: boolean;
+          injuryNote?: string;
         };
       }>,
       reply: FastifyReply
@@ -276,9 +294,11 @@ export function registerPlayerRoutes(app: App) {
         depthOrder,
         notes,
         injuryStatus,
+        isInjured,
+        injuryNote,
       } = request.body;
 
-      app.logger.info({ userId: session.user.id, playerId: id }, 'Patching player');
+      app.logger.info({ userId: session.user.id, playerId: id, isInjured }, 'Patching player');
 
       try {
         const updateData: any = {};
@@ -290,6 +310,11 @@ export function registerPlayerRoutes(app: App) {
         if (depthOrder !== undefined) updateData.depthOrder = depthOrder;
         if (notes !== undefined) updateData.notes = notes;
         if (injuryStatus !== undefined) updateData.injuryStatus = injuryStatus;
+        if (isInjured !== undefined) {
+          updateData.isInjured = isInjured;
+          updateData.injuryUpdatedAt = new Date();
+        }
+        if (injuryNote !== undefined) updateData.injuryNote = injuryNote;
 
         const [updated] = await app.db
           .update(schema.players)
