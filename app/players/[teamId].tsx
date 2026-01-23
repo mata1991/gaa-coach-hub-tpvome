@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
-import { authenticatedGet, authenticatedPost, authenticatedPut, authenticatedDelete } from '@/utils/api';
+import { authenticatedGet, authenticatedPost, authenticatedPut, authenticatedDelete, authenticatedPatch } from '@/utils/api';
 import { Player, PositionGroup } from '@/types';
 
 type FilterType = 'ALL' | PositionGroup;
@@ -245,6 +245,31 @@ export default function PlayersListScreen() {
     }
   };
 
+  const handleToggleInjured = async (player: Player) => {
+    console.log('User tapped Injured toggle for player:', player.name);
+    
+    const newInjuredStatus = !player.isInjured;
+    
+    try {
+      // Optimistic update
+      const updatedPlayers = players.map((p) =>
+        p.id === player.id ? { ...p, isInjured: newInjuredStatus } : p
+      );
+      setPlayers(updatedPlayers);
+
+      console.log('Updating player injured status:', { playerId: player.id, isInjured: newInjuredStatus });
+      await authenticatedPatch(`/api/players/${player.id}`, {
+        isInjured: newInjuredStatus,
+      });
+
+      console.log('Player injured status updated successfully');
+    } catch (error) {
+      console.error('Failed to update injured status:', error);
+      Alert.alert('Error', 'Failed to update injured status');
+      fetchPlayers(); // Revert on error
+    }
+  };
+
   const getFilteredPlayers = () => {
     if (filter === 'ALL') {
       return players;
@@ -286,17 +311,36 @@ export default function PlayersListScreen() {
     
     const positionLabel = POSITION_GROUPS.find((g) => g.value === player.primaryPositionGroup)?.label || 'No position';
     const handednessText = player.dominantSide === 'left' ? 'Left-handed' : player.dominantSide === 'right' ? 'Right-handed' : '';
+    const isInjured = player.isInjured || false;
 
     return (
-      <View key={player.id} style={styles.playerCard}>
+      <View key={player.id} style={[styles.playerCard, isInjured && styles.playerCardInjured]}>
         <View style={styles.playerInfo}>
-          <Text style={styles.playerName}>{player.name}</Text>
+          <View style={styles.playerNameRow}>
+            <Text style={styles.playerName}>{player.name}</Text>
+            {isInjured && (
+              <View style={styles.injuredBadge}>
+                <Text style={styles.injuredBadgeText}>Injured</Text>
+              </View>
+            )}
+          </View>
           <Text style={styles.playerPosition}>{positionLabel}</Text>
           {handednessText && (
             <Text style={styles.playerDetail}>{handednessText}</Text>
           )}
         </View>
         <View style={styles.playerActions}>
+          <TouchableOpacity
+            style={[styles.injuredToggle, isInjured && styles.injuredToggleActive]}
+            onPress={() => handleToggleInjured(player)}
+          >
+            <IconSymbol
+              ios_icon_name={isInjured ? 'cross.case.fill' : 'cross.case'}
+              android_material_icon_name="local-hospital"
+              size={20}
+              color={isInjured ? '#fff' : '#dc3545'}
+            />
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.iconButton, isFirst && styles.iconButtonDisabled]}
             onPress={() => !isFirst && handleMoveUp(player, groupPlayers)}
@@ -659,14 +703,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
+  playerCardInjured: {
+    borderColor: '#dc3545',
+    borderWidth: 2,
+    backgroundColor: '#fff5f5',
+  },
   playerInfo: {
     flex: 1,
     gap: 4,
+  },
+  playerNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   playerName: {
     fontSize: 18,
     fontWeight: '600',
     color: '#000',
+  },
+  injuredBadge: {
+    backgroundColor: '#dc3545',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  injuredBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#fff',
   },
   playerPosition: {
     fontSize: 14,
@@ -679,6 +744,17 @@ const styles = StyleSheet.create({
   playerActions: {
     flexDirection: 'row',
     gap: 8,
+  },
+  injuredToggle: {
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#dc3545',
+    backgroundColor: '#fff',
+  },
+  injuredToggleActive: {
+    backgroundColor: '#dc3545',
+    borderColor: '#dc3545',
   },
   iconButton: {
     padding: 8,

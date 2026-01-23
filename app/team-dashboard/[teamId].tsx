@@ -31,6 +31,9 @@ interface TeamDashboardData {
   team: Team;
   club?: Club;
   playerCount: number;
+  injuredCount: number;
+  upcomingSessionsCount: number;
+  completedSessionsCount: number;
   upcomingFixtures: Fixture[];
   recentFixtures: Fixture[];
   userRole: 'CLUB_ADMIN' | 'COACH' | 'STATS_PERSON' | 'PLAYER';
@@ -535,9 +538,10 @@ export default function TeamDashboardScreen() {
     );
   }
 
-  const upcomingCount = data.upcomingFixtures.length.toString();
-  const completedCount = data.recentFixtures.length.toString();
   const playerCountStr = data.playerCount.toString();
+  const injuredCountStr = data.injuredCount.toString();
+  const upcomingSessionsCountStr = data.upcomingSessionsCount.toString();
+  const completedSessionsCountStr = data.completedSessionsCount.toString();
   
   // Determine crest URL (club crest has priority, then team crest)
   const crestUrl = data.club?.crestUrl || data.team.crestUrl;
@@ -628,18 +632,22 @@ export default function TeamDashboardScreen() {
               )}
             </View>
 
-            <View style={styles.statsRow}>
+            <View style={styles.statsGrid}>
               <View style={styles.stat}>
                 <Text style={styles.statValue}>{playerCountStr}</Text>
                 <Text style={styles.statLabel}>Players</Text>
               </View>
               <View style={styles.stat}>
-                <Text style={styles.statValue}>{upcomingCount}</Text>
-                <Text style={styles.statLabel}>Upcoming</Text>
+                <Text style={styles.statValue}>{injuredCountStr}</Text>
+                <Text style={styles.statLabel}>Injured</Text>
               </View>
               <View style={styles.stat}>
-                <Text style={styles.statValue}>{completedCount}</Text>
-                <Text style={styles.statLabel}>Completed</Text>
+                <Text style={styles.statValue}>{upcomingSessionsCountStr}</Text>
+                <Text style={styles.statLabel}>Upcoming Sessions</Text>
+              </View>
+              <View style={styles.stat}>
+                <Text style={styles.statValue}>{completedSessionsCountStr}</Text>
+                <Text style={styles.statLabel}>Completed Sessions</Text>
               </View>
             </View>
           </View>
@@ -651,12 +659,12 @@ export default function TeamDashboardScreen() {
               {canEdit && (
                 <TouchableOpacity style={styles.actionCard} onPress={handleAddPlayers}>
                   <IconSymbol
-                    ios_icon_name="person.badge.plus"
-                    android_material_icon_name="person-add"
+                    ios_icon_name="person.3"
+                    android_material_icon_name="group"
                     size={32}
                     color="#000"
                   />
-                  <Text style={styles.actionText}>Add Players</Text>
+                  <Text style={styles.actionText}>Players</Text>
                 </TouchableOpacity>
               )}
 
@@ -990,13 +998,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#000',
   },
-  statsRow: {
+  statsGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
     marginTop: 8,
+    gap: 12,
   },
   stat: {
     alignItems: 'center',
+    width: '47%',
+    paddingVertical: 8,
   },
   statValue: {
     fontSize: 28,

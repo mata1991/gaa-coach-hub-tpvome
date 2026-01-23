@@ -106,6 +106,9 @@ export interface Player {
   dominantSide?: 'left' | 'right';
   notes?: string;
   injuryStatus?: string;
+  isInjured?: boolean;
+  injuryNote?: string;
+  injuryUpdatedAt?: string;
   createdAt: string;
 }
 
