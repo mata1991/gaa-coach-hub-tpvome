@@ -15,9 +15,24 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { authenticatedGet, authenticatedPost, authenticatedPut, authenticatedDelete } from '@/utils/api';
-import { Player } from '@/types';
+import { Player, PositionGroup } from '@/types';
 
-const PRIMARY_POSITIONS = ['Goalkeeper', 'Back', 'Midfielder', 'Forward'];
+type FilterType = 'ALL' | PositionGroup;
+
+const POSITION_GROUPS: { value: PositionGroup; label: string }[] = [
+  { value: 'GK', label: 'Goalkeeper' },
+  { value: 'BACK', label: 'Backs' },
+  { value: 'MID', label: 'Midfielders' },
+  { value: 'FWD', label: 'Forwards' },
+];
+
+const FILTER_OPTIONS: { value: FilterType; label: string }[] = [
+  { value: 'ALL', label: 'All' },
+  { value: 'GK', label: 'Goalkeepers' },
+  { value: 'BACK', label: 'Backs' },
+  { value: 'MID', label: 'Midfielders' },
+  { value: 'FWD', label: 'Forwards' },
+];
 
 export default function PlayersListScreen() {
   const router = useRouter();
@@ -25,17 +40,18 @@ export default function PlayersListScreen() {
   
   const [loading, setLoading] = useState(true);
   const [players, setPlayers] = useState<Player[]>([]);
+  const [filter, setFilter] = useState<FilterType>('ALL');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   
   // Form state
   const [name, setName] = useState('');
-  const [primaryPosition, setPrimaryPosition] = useState('');
+  const [primaryPositionGroup, setPrimaryPositionGroup] = useState<PositionGroup | ''>('');
   const [dominantSide, setDominantSide] = useState<'left' | 'right' | ''>('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
-  console.log('PlayersListScreen: Rendering players list', { teamId });
+  console.log('PlayersListScreen: Rendering players list', { teamId, filter });
 
   const fetchPlayers = useCallback(async () => {
     console.log('Fetching players for team:', teamId);
@@ -61,7 +77,7 @@ export default function PlayersListScreen() {
     console.log('User tapped Add Player button');
     setEditingPlayer(null);
     setName('');
-    setPrimaryPosition('');
+    setPrimaryPositionGroup('');
     setDominantSide('');
     setNotes('');
     setShowAddModal(true);
@@ -71,7 +87,7 @@ export default function PlayersListScreen() {
     console.log('User tapped Edit Player:', player.name);
     setEditingPlayer(player);
     setName(player.name);
-    setPrimaryPosition(player.positions || '');
+    setPrimaryPositionGroup(player.primaryPositionGroup || '');
     setDominantSide(player.dominantSide || '');
     setNotes(player.notes || '');
     setShowAddModal(true);
@@ -91,7 +107,7 @@ export default function PlayersListScreen() {
       const payload = {
         teamId,
         name: name.trim(),
-        positions: primaryPosition || undefined,
+        primaryPositionGroup: primaryPositionGroup || undefined,
         dominantSide: dominantSide || undefined,
         notes: notes.trim() || undefined,
       };
@@ -99,11 +115,11 @@ export default function PlayersListScreen() {
       if (editingPlayer) {
         console.log('Updating player:', editingPlayer.id, payload);
         await authenticatedPut(`/api/players/${editingPlayer.id}`, payload);
-        Alert.alert('Success', 'Player updated successfully');
+        Alert.alert('Success', 'Player updated');
       } else {
         console.log('Creating new player:', payload);
         await authenticatedPost('/api/players', payload);
-        Alert.alert('Success', 'Player added successfully');
+        Alert.alert('Success', 'Player added');
       }
 
       setShowAddModal(false);
@@ -131,7 +147,7 @@ export default function PlayersListScreen() {
             try {
               console.log('Deleting player:', player.id);
               await authenticatedDelete(`/api/players/${player.id}`);
-              Alert.alert('Success', 'Player deleted successfully');
+              Alert.alert('Success', 'Player deleted');
               fetchPlayers();
             } catch (error) {
               console.error('Failed to delete player:', error);
@@ -143,6 +159,114 @@ export default function PlayersListScreen() {
     );
   };
 
+  const handleMoveUp = async (player: Player, groupPlayers: Player[]) => {
+    console.log('User tapped Move Up for player:', player.name);
+    
+    const currentIndex = groupPlayers.findIndex((p) => p.id === player.id);
+    if (currentIndex <= 0) {
+      console.log('Player is already at the top');
+      return;
+    }
+
+    const playerAbove = groupPlayers[currentIndex - 1];
+    const newOrder = [...groupPlayers];
+    newOrder[currentIndex] = playerAbove;
+    newOrder[currentIndex - 1] = player;
+
+    const orderedPlayerIds = newOrder.map((p) => p.id);
+
+    try {
+      console.log('Reordering players:', { positionGroup: player.primaryPositionGroup, orderedPlayerIds });
+      
+      // Optimistic update
+      const updatedPlayers = players.map((p) => {
+        const newIndex = orderedPlayerIds.indexOf(p.id);
+        if (newIndex !== -1 && p.primaryPositionGroup === player.primaryPositionGroup) {
+          return { ...p, depthOrder: newIndex };
+        }
+        return p;
+      });
+      setPlayers(updatedPlayers);
+
+      await authenticatedPut(`/api/teams/${teamId}/players/reorder`, {
+        positionGroup: player.primaryPositionGroup,
+        orderedPlayerIds,
+      });
+
+      Alert.alert('Success', 'Order updated');
+      fetchPlayers();
+    } catch (error) {
+      console.error('Failed to reorder players:', error);
+      Alert.alert('Error', 'Failed to update order');
+      fetchPlayers(); // Revert on error
+    }
+  };
+
+  const handleMoveDown = async (player: Player, groupPlayers: Player[]) => {
+    console.log('User tapped Move Down for player:', player.name);
+    
+    const currentIndex = groupPlayers.findIndex((p) => p.id === player.id);
+    if (currentIndex >= groupPlayers.length - 1) {
+      console.log('Player is already at the bottom');
+      return;
+    }
+
+    const playerBelow = groupPlayers[currentIndex + 1];
+    const newOrder = [...groupPlayers];
+    newOrder[currentIndex] = playerBelow;
+    newOrder[currentIndex + 1] = player;
+
+    const orderedPlayerIds = newOrder.map((p) => p.id);
+
+    try {
+      console.log('Reordering players:', { positionGroup: player.primaryPositionGroup, orderedPlayerIds });
+      
+      // Optimistic update
+      const updatedPlayers = players.map((p) => {
+        const newIndex = orderedPlayerIds.indexOf(p.id);
+        if (newIndex !== -1 && p.primaryPositionGroup === player.primaryPositionGroup) {
+          return { ...p, depthOrder: newIndex };
+        }
+        return p;
+      });
+      setPlayers(updatedPlayers);
+
+      await authenticatedPut(`/api/teams/${teamId}/players/reorder`, {
+        positionGroup: player.primaryPositionGroup,
+        orderedPlayerIds,
+      });
+
+      Alert.alert('Success', 'Order updated');
+      fetchPlayers();
+    } catch (error) {
+      console.error('Failed to reorder players:', error);
+      Alert.alert('Error', 'Failed to update order');
+      fetchPlayers(); // Revert on error
+    }
+  };
+
+  const getFilteredPlayers = () => {
+    if (filter === 'ALL') {
+      return players;
+    }
+    return players.filter((p) => p.primaryPositionGroup === filter);
+  };
+
+  const getGroupedPlayers = () => {
+    const grouped: { [key in PositionGroup]?: Player[] } = {};
+    
+    players.forEach((player) => {
+      if (player.primaryPositionGroup) {
+        if (!grouped[player.primaryPositionGroup]) {
+          grouped[player.primaryPositionGroup] = [];
+        }
+        grouped[player.primaryPositionGroup]!.push(player);
+      }
+    });
+
+    return grouped;
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -151,6 +275,78 @@ export default function PlayersListScreen() {
       </View>
     );
   }
+
+  const filteredPlayers = getFilteredPlayers();
+  const groupedPlayers = getGroupedPlayers();
+
+  const renderPlayerCard = (player: Player, groupPlayers: Player[]) => {
+    const currentIndex = groupPlayers.findIndex((p) => p.id === player.id);
+    const isFirst = currentIndex === 0;
+    const isLast = currentIndex === groupPlayers.length - 1;
+    
+    const positionLabel = POSITION_GROUPS.find((g) => g.value === player.primaryPositionGroup)?.label || 'No position';
+    const handednessText = player.dominantSide === 'left' ? 'Left-handed' : player.dominantSide === 'right' ? 'Right-handed' : '';
+
+    return (
+      <View key={player.id} style={styles.playerCard}>
+        <View style={styles.playerInfo}>
+          <Text style={styles.playerName}>{player.name}</Text>
+          <Text style={styles.playerPosition}>{positionLabel}</Text>
+          {handednessText && (
+            <Text style={styles.playerDetail}>{handednessText}</Text>
+          )}
+        </View>
+        <View style={styles.playerActions}>
+          <TouchableOpacity
+            style={[styles.iconButton, isFirst && styles.iconButtonDisabled]}
+            onPress={() => !isFirst && handleMoveUp(player, groupPlayers)}
+            disabled={isFirst}
+          >
+            <IconSymbol
+              ios_icon_name="chevron.up"
+              android_material_icon_name="arrow-upward"
+              size={20}
+              color={isFirst ? '#ccc' : '#000'}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.iconButton, isLast && styles.iconButtonDisabled]}
+            onPress={() => !isLast && handleMoveDown(player, groupPlayers)}
+            disabled={isLast}
+          >
+            <IconSymbol
+              ios_icon_name="chevron.down"
+              android_material_icon_name="arrow-downward"
+              size={20}
+              color={isLast ? '#ccc' : '#000'}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => handleEditPlayer(player)}
+          >
+            <IconSymbol
+              ios_icon_name="pencil"
+              android_material_icon_name="edit"
+              size={20}
+              color="#000"
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => handleDeletePlayer(player)}
+          >
+            <IconSymbol
+              ios_icon_name="trash"
+              android_material_icon_name="delete"
+              size={20}
+              color="#000"
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
 
   return (
     <>
@@ -181,49 +377,50 @@ export default function PlayersListScreen() {
             </View>
           ) : (
             <>
-              <View style={styles.playersList}>
-                {players.map((player) => {
-                  const positionsText = player.positions || 'No position';
-                  
+              {/* Filter Pills */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.filterContainer}
+              >
+                {FILTER_OPTIONS.map((option) => {
+                  const isActive = filter === option.value;
                   return (
-                    <View key={player.id} style={styles.playerCard}>
-                      <View style={styles.playerInfo}>
-                        <Text style={styles.playerName}>{player.name}</Text>
-                        <Text style={styles.playerPosition}>{positionsText}</Text>
-                        {player.dominantSide && (
-                          <Text style={styles.playerDetail}>
-                            {player.dominantSide === 'left' ? 'Left-handed' : 'Right-handed'}
-                          </Text>
-                        )}
-                      </View>
-                      <View style={styles.playerActions}>
-                        <TouchableOpacity
-                          style={styles.iconButton}
-                          onPress={() => handleEditPlayer(player)}
-                        >
-                          <IconSymbol
-                            ios_icon_name="pencil"
-                            android_material_icon_name="edit"
-                            size={20}
-                            color="#000"
-                          />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.iconButton}
-                          onPress={() => handleDeletePlayer(player)}
-                        >
-                          <IconSymbol
-                            ios_icon_name="trash"
-                            android_material_icon_name="delete"
-                            size={20}
-                            color="#000"
-                          />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[styles.filterPill, isActive && styles.filterPillActive]}
+                      onPress={() => setFilter(option.value)}
+                    >
+                      <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
                   );
                 })}
-              </View>
+              </ScrollView>
+
+              {/* Players List */}
+              {filter === 'ALL' ? (
+                <View style={styles.playersList}>
+                  {POSITION_GROUPS.map((group) => {
+                    const groupPlayersList = groupedPlayers[group.value] || [];
+                    if (groupPlayersList.length === 0) {
+                      return null;
+                    }
+
+                    return (
+                      <View key={group.value} style={styles.groupSection}>
+                        <Text style={styles.groupHeader}>{group.label}</Text>
+                        {groupPlayersList.map((player) => renderPlayerCard(player, groupPlayersList))}
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : (
+                <View style={styles.playersList}>
+                  {filteredPlayers.map((player) => renderPlayerCard(player, filteredPlayers))}
+                </View>
+              )}
 
               <TouchableOpacity style={styles.fabButton} onPress={handleAddPlayer}>
                 <IconSymbol
@@ -274,18 +471,18 @@ export default function PlayersListScreen() {
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Primary Position</Text>
+                <Text style={styles.label}>Primary Position Group</Text>
                 <View style={styles.positionGrid}>
-                  {PRIMARY_POSITIONS.map((position) => {
-                    const isSelected = primaryPosition === position;
+                  {POSITION_GROUPS.map((group) => {
+                    const isSelected = primaryPositionGroup === group.value;
                     return (
                       <TouchableOpacity
-                        key={position}
+                        key={group.value}
                         style={[
                           styles.positionChip,
                           isSelected && styles.positionChipActive,
                         ]}
-                        onPress={() => setPrimaryPosition(position)}
+                        onPress={() => setPrimaryPositionGroup(group.value)}
                       >
                         <Text
                           style={[
@@ -293,7 +490,7 @@ export default function PlayersListScreen() {
                             isSelected && styles.positionChipTextActive,
                           ]}
                         >
-                          {position}
+                          {group.label}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -412,8 +609,44 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  filterContainer: {
+    paddingBottom: 16,
+    gap: 8,
+  },
+  filterPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    backgroundColor: '#fff',
+    marginRight: 8,
+  },
+  filterPillActive: {
+    backgroundColor: '#000',
+    borderColor: '#000',
+  },
+  filterPillText: {
+    fontSize: 14,
+    color: '#000',
+    fontWeight: '500',
+  },
+  filterPillTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
   playersList: {
     gap: 12,
+  },
+  groupSection: {
+    marginBottom: 24,
+  },
+  groupHeader: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#000',
+    marginBottom: 12,
+    paddingLeft: 4,
   },
   playerCard: {
     backgroundColor: '#fff',
@@ -424,6 +657,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 8,
   },
   playerInfo: {
     flex: 1,
@@ -448,6 +682,9 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     padding: 8,
+  },
+  iconButtonDisabled: {
+    opacity: 0.3,
   },
   fabButton: {
     position: 'absolute',

@@ -92,12 +92,16 @@ export interface Fixture {
   createdAt: string;
 }
 
+export type PositionGroup = 'GK' | 'BACK' | 'MID' | 'FWD';
+
 export interface Player {
   id: string;
   teamId: string;
   name: string;
   dob?: string;
   positions?: string;
+  primaryPositionGroup?: PositionGroup;
+  depthOrder?: number;
   jerseyNo?: number;
   dominantSide?: 'left' | 'right';
   notes?: string;
