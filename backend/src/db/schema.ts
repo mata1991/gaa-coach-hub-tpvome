@@ -28,6 +28,7 @@ export const playerAvailabilityEnum = pgEnum('player_availability', ['available'
 export const attendanceStatusEnum = pgEnum('attendance_status', ['present', 'late', 'absent']);
 export const trainingAttendanceStatusEnum = pgEnum('training_attendance_status', ['TRAINED', 'INJURED', 'EXCUSED', 'NO_CONTACT']);
 export const dominantSideEnum = pgEnum('dominant_side', ['left', 'right']);
+export const primaryPositionGroupEnum = pgEnum('primary_position_group', ['GK', 'BACK', 'MID', 'FWD']);
 export const eventCategoryEnum = pgEnum('event_category', [
   'Scoring',
   'Puckouts',
@@ -170,11 +171,14 @@ export const players = pgTable('players', {
   positions: text('positions'),
   jerseyNo: integer('jersey_no'),
   dominantSide: dominantSideEnum('dominant_side'),
+  primaryPositionGroup: primaryPositionGroupEnum('primary_position_group'),
+  depthOrder: integer('depth_order').default(0).notNull(),
   notes: text('notes'),
   injuryStatus: text('injury_status'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   index('players_team_id_idx').on(table.teamId),
+  index('players_position_group_depth_idx').on(table.primaryPositionGroup, table.depthOrder),
   uniqueIndex('players_team_jersey_unique_idx').on(table.teamId, table.jerseyNo),
 ]);
 
