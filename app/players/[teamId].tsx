@@ -12,7 +12,7 @@ import {
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { authenticatedGet, authenticatedPost, authenticatedPut, authenticatedDelete, authenticatedPatch } from '@/utils/api';
 import { Player, PositionGroup } from '@/types';
@@ -36,9 +36,13 @@ const FILTER_OPTIONS: { value: FilterType; label: string }[] = [
 
 export default function PlayersListScreen() {
   const router = useRouter();
-  const { teamId } = useLocalSearchParams<{ teamId: string }>();
+  const params = useLocalSearchParams<{ teamId: string }>();
+  
+  // Source of truth: route params (teamId)
+  const teamId = params.teamId;
   
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [filter, setFilter] = useState<FilterType>('ALL');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -51,19 +55,31 @@ export default function PlayersListScreen() {
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
-  console.log('PlayersListScreen: Rendering players list', { teamId, filter });
+  console.log('PlayersListScreen: Rendering players list', { teamId, filter, playerCount: players.length });
 
   const fetchPlayers = useCallback(async () => {
-    console.log('Fetching players for team:', teamId);
+    if (!teamId) {
+      console.log('PlayersListScreen: No teamId provided');
+      setError('No team selected');
+      setLoading(false);
+      return;
+    }
+
+    console.log('PlayersListScreen: Fetching players for team:', teamId);
     setLoading(true);
+    setError(null);
 
     try {
       const data = await authenticatedGet(`/api/players?teamId=${teamId}`);
-      console.log('Players fetched:', data);
+      console.log('PlayersListScreen: Players fetched successfully:', data.length, 'players');
       setPlayers(data);
-    } catch (error) {
-      console.error('Failed to fetch players:', error);
-      Alert.alert('Error', 'Failed to load players');
+      setError(null);
+    } catch (err: any) {
+      console.error('PlayersListScreen: Failed to fetch players:', err);
+      console.error('PlayersListScreen: Error status:', err?.status);
+      console.error('PlayersListScreen: Error message:', err?.message);
+      setError('Failed to load players');
+      setPlayers([]);
     } finally {
       setLoading(false);
     }
@@ -73,8 +89,16 @@ export default function PlayersListScreen() {
     fetchPlayers();
   }, [fetchPlayers]);
 
+  // Auto-refresh on screen focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log('PlayersListScreen: Screen focused, refreshing players');
+      fetchPlayers();
+    }, [fetchPlayers])
+  );
+
   const handleAddPlayer = () => {
-    console.log('User tapped Add Player button');
+    console.log('PlayersListScreen: User tapped Add Player button');
     setEditingPlayer(null);
     setName('');
     setPrimaryPositionGroup('');
@@ -84,7 +108,7 @@ export default function PlayersListScreen() {
   };
 
   const handleEditPlayer = (player: Player) => {
-    console.log('User tapped Edit Player:', player.name);
+    console.log('PlayersListScreen: User tapped Edit Player:', player.name);
     setEditingPlayer(player);
     setName(player.name);
     setPrimaryPositionGroup(player.primaryPositionGroup || '');
@@ -94,7 +118,7 @@ export default function PlayersListScreen() {
   };
 
   const handleSavePlayer = async () => {
-    console.log('User tapped Save Player');
+    console.log('PlayersListScreen: User tapped Save Player');
 
     if (!name.trim()) {
       Alert.alert('Validation Error', 'Player name is required');
@@ -113,19 +137,19 @@ export default function PlayersListScreen() {
       };
 
       if (editingPlayer) {
-        console.log('Updating player:', editingPlayer.id, payload);
+        console.log('PlayersListScreen: Updating player:', editingPlayer.id, payload);
         await authenticatedPut(`/api/players/${editingPlayer.id}`, payload);
         Alert.alert('Success', 'Player updated');
       } else {
-        console.log('Creating new player:', payload);
+        console.log('PlayersListScreen: Creating new player:', payload);
         await authenticatedPost('/api/players', payload);
         Alert.alert('Success', 'Player added');
       }
 
       setShowAddModal(false);
       fetchPlayers();
-    } catch (error) {
-      console.error('Failed to save player:', error);
+    } catch (err) {
+      console.error('PlayersListScreen: Failed to save player:', err);
       Alert.alert('Error', 'Failed to save player');
     } finally {
       setSaving(false);
@@ -133,7 +157,7 @@ export default function PlayersListScreen() {
   };
 
   const handleDeletePlayer = (player: Player) => {
-    console.log('User tapped Delete Player:', player.name);
+    console.log('PlayersListScreen: User tapped Delete Player:', player.name);
     
     Alert.alert(
       'Delete Player',
@@ -145,12 +169,12 @@ export default function PlayersListScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              console.log('Deleting player:', player.id);
+              console.log('PlayersListScreen: Deleting player:', player.id);
               await authenticatedDelete(`/api/players/${player.id}`);
               Alert.alert('Success', 'Player deleted');
               fetchPlayers();
-            } catch (error) {
-              console.error('Failed to delete player:', error);
+            } catch (err) {
+              console.error('PlayersListScreen: Failed to delete player:', err);
               Alert.alert('Error', 'Failed to delete player');
             }
           },
@@ -160,11 +184,11 @@ export default function PlayersListScreen() {
   };
 
   const handleMoveUp = async (player: Player, groupPlayers: Player[]) => {
-    console.log('User tapped Move Up for player:', player.name);
+    console.log('PlayersListScreen: User tapped Move Up for player:', player.name);
     
     const currentIndex = groupPlayers.findIndex((p) => p.id === player.id);
     if (currentIndex <= 0) {
-      console.log('Player is already at the top');
+      console.log('PlayersListScreen: Player is already at the top');
       return;
     }
 
@@ -176,7 +200,7 @@ export default function PlayersListScreen() {
     const orderedPlayerIds = newOrder.map((p) => p.id);
 
     try {
-      console.log('Reordering players:', { positionGroup: player.primaryPositionGroup, orderedPlayerIds });
+      console.log('PlayersListScreen: Reordering players:', { positionGroup: player.primaryPositionGroup, orderedPlayerIds });
       
       // Optimistic update
       const updatedPlayers = players.map((p) => {
@@ -193,21 +217,21 @@ export default function PlayersListScreen() {
         orderedPlayerIds,
       });
 
-      Alert.alert('Success', 'Order updated');
+      console.log('PlayersListScreen: Order updated successfully');
       fetchPlayers();
-    } catch (error) {
-      console.error('Failed to reorder players:', error);
+    } catch (err) {
+      console.error('PlayersListScreen: Failed to reorder players:', err);
       Alert.alert('Error', 'Failed to update order');
       fetchPlayers(); // Revert on error
     }
   };
 
   const handleMoveDown = async (player: Player, groupPlayers: Player[]) => {
-    console.log('User tapped Move Down for player:', player.name);
+    console.log('PlayersListScreen: User tapped Move Down for player:', player.name);
     
     const currentIndex = groupPlayers.findIndex((p) => p.id === player.id);
     if (currentIndex >= groupPlayers.length - 1) {
-      console.log('Player is already at the bottom');
+      console.log('PlayersListScreen: Player is already at the bottom');
       return;
     }
 
@@ -219,7 +243,7 @@ export default function PlayersListScreen() {
     const orderedPlayerIds = newOrder.map((p) => p.id);
 
     try {
-      console.log('Reordering players:', { positionGroup: player.primaryPositionGroup, orderedPlayerIds });
+      console.log('PlayersListScreen: Reordering players:', { positionGroup: player.primaryPositionGroup, orderedPlayerIds });
       
       // Optimistic update
       const updatedPlayers = players.map((p) => {
@@ -236,17 +260,17 @@ export default function PlayersListScreen() {
         orderedPlayerIds,
       });
 
-      Alert.alert('Success', 'Order updated');
+      console.log('PlayersListScreen: Order updated successfully');
       fetchPlayers();
-    } catch (error) {
-      console.error('Failed to reorder players:', error);
+    } catch (err) {
+      console.error('PlayersListScreen: Failed to reorder players:', err);
       Alert.alert('Error', 'Failed to update order');
       fetchPlayers(); // Revert on error
     }
   };
 
   const handleToggleInjured = async (player: Player) => {
-    console.log('User tapped Injured toggle for player:', player.name);
+    console.log('PlayersListScreen: User tapped Injured toggle for player:', player.name);
     
     const newInjuredStatus = !player.isInjured;
     
@@ -257,14 +281,14 @@ export default function PlayersListScreen() {
       );
       setPlayers(updatedPlayers);
 
-      console.log('Updating player injured status:', { playerId: player.id, isInjured: newInjuredStatus });
+      console.log('PlayersListScreen: Updating player injured status:', { playerId: player.id, isInjured: newInjuredStatus });
       await authenticatedPatch(`/api/players/${player.id}`, {
         isInjured: newInjuredStatus,
       });
 
-      console.log('Player injured status updated successfully');
-    } catch (error) {
-      console.error('Failed to update injured status:', error);
+      console.log('PlayersListScreen: Player injured status updated successfully');
+    } catch (err) {
+      console.error('PlayersListScreen: Failed to update injured status:', err);
       Alert.alert('Error', 'Failed to update injured status');
       fetchPlayers(); // Revert on error
     }
@@ -274,6 +298,7 @@ export default function PlayersListScreen() {
     if (filter === 'ALL') {
       return players;
     }
+    // Filter by primaryPositionGroup enum value
     return players.filter((p) => p.primaryPositionGroup === filter);
   };
 
@@ -289,15 +314,101 @@ export default function PlayersListScreen() {
       }
     });
 
+    // Sort each group by depthOrder
+    Object.keys(grouped).forEach((key) => {
+      const posKey = key as PositionGroup;
+      grouped[posKey]!.sort((a, b) => (a.depthOrder || 0) - (b.depthOrder || 0));
+    });
+
     return grouped;
   };
 
+  // Show "Select a team" state if teamId is missing
+  if (!teamId) {
+    return (
+      <>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Players',
+            headerBackTitle: 'Back',
+          }}
+        />
+        <SafeAreaView style={styles.container} edges={['bottom']}>
+          <View style={styles.errorContainer}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle"
+              android_material_icon_name="warning"
+              size={64}
+              color="#dc3545"
+            />
+            <Text style={styles.errorTitle}>Select a Team</Text>
+            <Text style={styles.errorText}>
+              Please select a team to view players
+            </Text>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={() => router.push('/select-team')}
+            >
+              <Text style={styles.primaryButtonText}>Go to Select Team</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </>
+    );
+  }
+
+  // Loading state
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#000" />
-        <Text style={styles.loadingText}>Loading players...</Text>
-      </View>
+      <>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Players',
+            headerBackTitle: 'Back',
+          }}
+        />
+        <SafeAreaView style={styles.container} edges={['bottom']}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#000" />
+            <Text style={styles.loadingText}>Loading players...</Text>
+          </View>
+        </SafeAreaView>
+      </>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Players',
+            headerBackTitle: 'Back',
+          }}
+        />
+        <SafeAreaView style={styles.container} edges={['bottom']}>
+          <View style={styles.errorContainer}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle"
+              android_material_icon_name="error"
+              size={64}
+              color="#dc3545"
+            />
+            <Text style={styles.errorTitle}>Failed to Load Players</Text>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={fetchPlayers}
+            >
+              <Text style={styles.primaryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </>
     );
   }
 
@@ -341,30 +452,34 @@ export default function PlayersListScreen() {
               color={isInjured ? '#fff' : '#dc3545'}
             />
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.iconButton, isFirst && styles.iconButtonDisabled]}
-            onPress={() => !isFirst && handleMoveUp(player, groupPlayers)}
-            disabled={isFirst}
-          >
-            <IconSymbol
-              ios_icon_name="chevron.up"
-              android_material_icon_name="arrow-upward"
-              size={20}
-              color={isFirst ? '#ccc' : '#000'}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.iconButton, isLast && styles.iconButtonDisabled]}
-            onPress={() => !isLast && handleMoveDown(player, groupPlayers)}
-            disabled={isLast}
-          >
-            <IconSymbol
-              ios_icon_name="chevron.down"
-              android_material_icon_name="arrow-downward"
-              size={20}
-              color={isLast ? '#ccc' : '#000'}
-            />
-          </TouchableOpacity>
+          {player.primaryPositionGroup && (
+            <>
+              <TouchableOpacity
+                style={[styles.iconButton, isFirst && styles.iconButtonDisabled]}
+                onPress={() => !isFirst && handleMoveUp(player, groupPlayers)}
+                disabled={isFirst}
+              >
+                <IconSymbol
+                  ios_icon_name="chevron.up"
+                  android_material_icon_name="arrow-upward"
+                  size={20}
+                  color={isFirst ? '#ccc' : '#000'}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.iconButton, isLast && styles.iconButtonDisabled]}
+                onPress={() => !isLast && handleMoveDown(player, groupPlayers)}
+                disabled={isLast}
+              >
+                <IconSymbol
+                  ios_icon_name="chevron.down"
+                  android_material_icon_name="arrow-downward"
+                  size={20}
+                  color={isLast ? '#ccc' : '#000'}
+                />
+              </TouchableOpacity>
+            </>
+          )}
           <TouchableOpacity
             style={styles.iconButton}
             onPress={() => handleEditPlayer(player)}
@@ -433,7 +548,10 @@ export default function PlayersListScreen() {
                     <TouchableOpacity
                       key={option.value}
                       style={[styles.filterPill, isActive && styles.filterPillActive]}
-                      onPress={() => setFilter(option.value)}
+                      onPress={() => {
+                        console.log('PlayersListScreen: User selected filter:', option.value);
+                        setFilter(option.value);
+                      }}
                     >
                       <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
                         {option.label}
@@ -459,10 +577,32 @@ export default function PlayersListScreen() {
                       </View>
                     );
                   })}
+                  
+                  {/* Show players without position group */}
+                  {players.filter(p => !p.primaryPositionGroup).length > 0 && (
+                    <View style={styles.groupSection}>
+                      <Text style={styles.groupHeader}>Unassigned Position</Text>
+                      {players.filter(p => !p.primaryPositionGroup).map((player) => renderPlayerCard(player, players.filter(p => !p.primaryPositionGroup)))}
+                    </View>
+                  )}
                 </View>
               ) : (
                 <View style={styles.playersList}>
-                  {filteredPlayers.map((player) => renderPlayerCard(player, filteredPlayers))}
+                  {filteredPlayers.length > 0 ? (
+                    filteredPlayers.map((player) => renderPlayerCard(player, filteredPlayers))
+                  ) : (
+                    <View style={styles.emptyFilterState}>
+                      <IconSymbol
+                        ios_icon_name="person.3"
+                        android_material_icon_name="group"
+                        size={48}
+                        color="#999"
+                      />
+                      <Text style={styles.emptyFilterText}>
+                        No players in this position
+                      </Text>
+                    </View>
+                  )}
                 </View>
               )}
 
@@ -623,6 +763,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
   },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 24,
+    gap: 16,
+  },
+  errorTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+  },
   emptyState: {
     flex: 1,
     justifyContent: 'center',
@@ -640,6 +798,15 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     paddingHorizontal: 40,
+  },
+  emptyFilterState: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyFilterText: {
+    fontSize: 16,
+    color: '#999',
   },
   primaryButton: {
     backgroundColor: '#000',

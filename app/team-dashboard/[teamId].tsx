@@ -554,6 +554,7 @@ export default function TeamDashboardScreen() {
           headerShown: true,
           title: data.team.name,
           headerBackTitle: 'Back',
+          headerTitleAlign: 'center',
           headerRight: () => (
             <View style={{ flexDirection: 'row', gap: 12, marginRight: 8 }}>
               <TouchableOpacity onPress={handleRefresh} disabled={refreshing}>
@@ -588,12 +589,15 @@ export default function TeamDashboardScreen() {
               </TouchableOpacity>
             </View>
           ),
+          headerLeft: () => (
+            <View style={{ width: 120 }} />
+          ),
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
         <ScrollView contentContainerStyle={styles.content}>
-          {/* Team Info */}
-          <View style={styles.teamInfo}>
+          {/* Team Info - Centered Summary Card */}
+          <View style={styles.teamInfoCard}>
             <View style={styles.teamHeader}>
               <View style={styles.teamCrestContainer}>
                 {hasCrest ? (
@@ -614,7 +618,8 @@ export default function TeamDashboardScreen() {
               </View>
               <Text style={styles.teamName}>{data.team.name}</Text>
             </View>
-            <View style={styles.teamMeta}>
+            
+            <View style={styles.teamMetaRow}>
               {data.team.sport && (
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>{getSportDisplayName(data.team.sport)}</Text>
@@ -948,16 +953,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  teamInfo: {
+  teamInfoCard: {
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#e0e0e0',
     padding: 20,
     borderRadius: 12,
+    alignSelf: 'center',
+    width: '92%',
+    maxWidth: 420,
     gap: 16,
   },
   teamHeader: {
-    flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
@@ -978,12 +985,13 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#000',
-    flex: 1,
+    textAlign: 'center',
   },
-  teamMeta: {
+  teamMetaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+    justifyContent: 'center',
   },
   badge: {
     backgroundColor: '#f5f5f5',
@@ -1001,7 +1009,7 @@ const styles = StyleSheet.create({
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     marginTop: 8,
     gap: 12,
   },
@@ -1019,6 +1027,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginTop: 4,
+    textAlign: 'center',
   },
   section: {
     gap: 12,
@@ -1049,71 +1058,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#000',
     textAlign: 'center',
-  },
-  fixturesList: {
-    gap: 12,
-  },
-  fixtureCard: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  fixtureCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    gap: 12,
-  },
-  deleteFixtureButton: {
-    padding: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-  },
-  fixtureInfo: {
-    flex: 1,
-    gap: 4,
-  },
-  fixtureOpponent: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#000',
-  },
-  fixtureDate: {
-    fontSize: 14,
-    color: '#666',
-  },
-  fixtureVenue: {
-    fontSize: 14,
-    color: '#666',
-  },
-  emptyState: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    padding: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    gap: 12,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#666',
-  },
-  emptyButton: {
-    backgroundColor: '#000',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  emptyButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
   },
   scheduleCard: {
     backgroundColor: '#fff',
