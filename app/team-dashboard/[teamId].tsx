@@ -45,6 +45,12 @@ export default function TeamDashboardScreen() {
   const [data, setData] = useState<TeamDashboardData | null>(null);
   const [showFixturePicker, setShowFixturePicker] = useState(false);
   const [fixturePickerMode, setFixturePickerMode] = useState<'build' | 'start'>('build');
+  
+  // Upcoming schedule state
+  const [scheduleTab, setScheduleTab] = useState<'fixtures' | 'training'>('fixtures');
+  const [upcomingFixturesData, setUpcomingFixturesData] = useState<Fixture[]>([]);
+  const [upcomingTrainingData, setUpcomingTrainingData] = useState<any[]>([]);
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
 
   console.log('TeamDashboardScreen: Rendering team dashboard', { teamId });
 
@@ -61,6 +67,9 @@ export default function TeamDashboardScreen() {
       const dashboardData = await authenticatedGet(`/api/teams/${teamId}/dashboard`);
       console.log('Team dashboard data fetched:', dashboardData);
       setData(dashboardData);
+      
+      // Fetch upcoming schedule data
+      await fetchUpcomingSchedule();
     } catch (error) {
       console.error('Failed to fetch team dashboard:', error);
       Alert.alert('Error', 'Failed to load team dashboard');
@@ -70,6 +79,30 @@ export default function TeamDashboardScreen() {
       } else {
         setLoading(false);
       }
+    }
+  }, [teamId]);
+
+  const fetchUpcomingSchedule = React.useCallback(async () => {
+    console.log('[TeamDashboard] Fetching upcoming schedule data');
+    setLoadingSchedule(true);
+
+    try {
+      // Fetch upcoming fixtures
+      const fixturesResponse = await authenticatedGet<Fixture[]>(`/api/teams/${teamId}/fixtures?from=now&limit=5`);
+      console.log('[TeamDashboard] Upcoming fixtures fetched:', fixturesResponse.length);
+      setUpcomingFixturesData(fixturesResponse || []);
+
+      // Fetch upcoming training sessions
+      const trainingResponse = await authenticatedGet<any[]>(`/api/teams/${teamId}/training-sessions?from=now&limit=5`);
+      console.log('[TeamDashboard] Upcoming training sessions fetched:', trainingResponse.length);
+      setUpcomingTrainingData(trainingResponse || []);
+    } catch (error) {
+      console.error('[TeamDashboard] Failed to fetch upcoming schedule:', error);
+      // Don't show error alert, just log it - the dashboard can still work without this data
+      setUpcomingFixturesData([]);
+      setUpcomingTrainingData([]);
+    } finally {
+      setLoadingSchedule(false);
     }
   }, [teamId]);
 
@@ -683,86 +716,171 @@ export default function TeamDashboardScreen() {
             </View>
           </View>
 
-          {/* Upcoming Fixtures */}
-          {data.upcomingFixtures.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Upcoming Fixtures</Text>
-              <View style={styles.fixturesList}>
-                {data.upcomingFixtures.map((fixture) => {
-                  const fixtureDate = new Date(fixture.date);
-                  const dateStr = fixtureDate.toLocaleDateString();
-                  const timeStr = fixtureDate.toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  });
+          {/* Upcoming Schedule */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Upcoming Schedule</Text>
+            <View style={styles.scheduleCard}>
+              {/* Tab Selector */}
+              <View style={styles.tabSelector}>
+                <TouchableOpacity
+                  style={[styles.tab, scheduleTab === 'fixtures' && styles.tabActive]}
+                  onPress={() => setScheduleTab('fixtures')}
+                >
+                  <Text style={[styles.tabText, scheduleTab === 'fixtures' && styles.tabTextActive]}>
+                    Fixtures
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.tab, scheduleTab === 'training' && styles.tabActive]}
+                  onPress={() => setScheduleTab('training')}
+                >
+                  <Text style={[styles.tabText, scheduleTab === 'training' && styles.tabTextActive]}>
+                    Training
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
-                  return (
-                    <View key={fixture.id} style={styles.fixtureCard}>
-                      <TouchableOpacity
-                        style={styles.fixtureCardContent}
-                        onPress={() => {
-                          console.log('[TeamDashboard] User tapped fixture:', fixture.id);
-                          router.push({
-                            pathname: '/edit-fixture/[fixtureId]',
-                            params: { fixtureId: fixture.id, teamId },
-                          });
-                        }}
-                      >
-                        <View style={styles.fixtureInfo}>
-                          <Text style={styles.fixtureOpponent}>{fixture.opponent}</Text>
-                          <Text style={styles.fixtureDate}>{dateStr}</Text>
-                          <Text style={styles.fixtureDate}>{timeStr}</Text>
-                          {fixture.venue && (
-                            <Text style={styles.fixtureVenue}>{fixture.venue}</Text>
+              {/* Tab Content */}
+              {loadingSchedule ? (
+                <View style={styles.scheduleLoading}>
+                  <ActivityIndicator size="small" color="#000" />
+                </View>
+              ) : (
+                <>
+                  {scheduleTab === 'fixtures' && (
+                    <>
+                      {upcomingFixturesData.length > 0 ? (
+                        <View style={styles.scheduleList}>
+                          {upcomingFixturesData.map((fixture) => {
+                            const fixtureDate = new Date(fixture.date);
+                            const dateStr = fixtureDate.toLocaleDateString();
+                            const timeStr = fixtureDate.toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            });
+
+                            return (
+                              <TouchableOpacity
+                                key={fixture.id}
+                                style={styles.scheduleItem}
+                                onPress={() => {
+                                  console.log('[TeamDashboard] User tapped fixture:', fixture.id);
+                                  router.push({
+                                    pathname: '/edit-fixture/[fixtureId]',
+                                    params: { fixtureId: fixture.id, teamId },
+                                  });
+                                }}
+                              >
+                                <View style={styles.scheduleItemInfo}>
+                                  <Text style={styles.scheduleItemTitle}>{fixture.opponent}</Text>
+                                  <Text style={styles.scheduleItemSubtitle}>{dateStr}</Text>
+                                  <Text style={styles.scheduleItemSubtitle}>{timeStr}</Text>
+                                  {fixture.venue && (
+                                    <Text style={styles.scheduleItemSubtitle}>{fixture.venue}</Text>
+                                  )}
+                                </View>
+                                <IconSymbol
+                                  ios_icon_name="chevron.right"
+                                  android_material_icon_name="chevron-right"
+                                  size={20}
+                                  color="#666"
+                                />
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      ) : (
+                        <View style={styles.scheduleEmpty}>
+                          <IconSymbol
+                            ios_icon_name="calendar"
+                            android_material_icon_name="event"
+                            size={32}
+                            color="#999"
+                          />
+                          <Text style={styles.scheduleEmptyText}>No upcoming fixtures</Text>
+                          {canEdit && (
+                            <TouchableOpacity
+                              style={styles.scheduleEmptyButton}
+                              onPress={handleCreateFixture}
+                            >
+                              <Text style={styles.scheduleEmptyButtonText}>Create Schedule</Text>
+                            </TouchableOpacity>
                           )}
                         </View>
-                        <IconSymbol
-                          ios_icon_name="chevron.right"
-                          android_material_icon_name="chevron-right"
-                          size={20}
-                          color="#666"
-                        />
-                      </TouchableOpacity>
-                      {canEdit && (
-                        <TouchableOpacity
-                          style={styles.deleteFixtureButton}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            handleDeleteFixture(fixture);
-                          }}
-                        >
-                          <IconSymbol
-                            ios_icon_name="trash"
-                            android_material_icon_name="delete"
-                            size={20}
-                            color="#dc3545"
-                          />
-                        </TouchableOpacity>
                       )}
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-          )}
+                    </>
+                  )}
 
-          {/* Empty State */}
-          {data.upcomingFixtures.length === 0 && (
-            <View style={styles.emptyState}>
-              <IconSymbol
-                ios_icon_name="calendar"
-                android_material_icon_name="event"
-                size={48}
-                color="#666"
-              />
-              <Text style={styles.emptyText}>No upcoming fixtures</Text>
-              {canEdit && (
-                <TouchableOpacity style={styles.emptyButton} onPress={handleCreateFixture}>
-                  <Text style={styles.emptyButtonText}>Create your first fixture</Text>
-                </TouchableOpacity>
+                  {scheduleTab === 'training' && (
+                    <>
+                      {upcomingTrainingData.length > 0 ? (
+                        <View style={styles.scheduleList}>
+                          {upcomingTrainingData.map((session) => {
+                            const sessionDate = new Date(session.dateTime);
+                            const dateStr = sessionDate.toLocaleDateString();
+                            const timeStr = sessionDate.toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            });
+
+                            return (
+                              <TouchableOpacity
+                                key={session.id}
+                                style={styles.scheduleItem}
+                                onPress={() => {
+                                  console.log('[TeamDashboard] User tapped training session:', session.id);
+                                  router.push({
+                                    pathname: '/training-attendance/[sessionId]',
+                                    params: { sessionId: session.id, teamId },
+                                  });
+                                }}
+                              >
+                                <View style={styles.scheduleItemInfo}>
+                                  <Text style={styles.scheduleItemTitle}>Training Session</Text>
+                                  <Text style={styles.scheduleItemSubtitle}>{dateStr}</Text>
+                                  <Text style={styles.scheduleItemSubtitle}>{timeStr}</Text>
+                                  {session.location && (
+                                    <Text style={styles.scheduleItemSubtitle}>{session.location}</Text>
+                                  )}
+                                  {session.focus && (
+                                    <Text style={styles.scheduleItemSubtitle}>{session.focus}</Text>
+                                  )}
+                                </View>
+                                <IconSymbol
+                                  ios_icon_name="chevron.right"
+                                  android_material_icon_name="chevron-right"
+                                  size={20}
+                                  color="#666"
+                                />
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      ) : (
+                        <View style={styles.scheduleEmpty}>
+                          <IconSymbol
+                            ios_icon_name="figure.run"
+                            android_material_icon_name="directions-run"
+                            size={32}
+                            color="#999"
+                          />
+                          <Text style={styles.scheduleEmptyText}>No upcoming trainings</Text>
+                          {canEdit && (
+                            <TouchableOpacity
+                              style={styles.scheduleEmptyButton}
+                              onPress={handleTrainingSessions}
+                            >
+                              <Text style={styles.scheduleEmptyButtonText}>Create Schedule</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      )}
+                    </>
+                  )}
+                </>
               )}
             </View>
-          )}
+          </View>
         </ScrollView>
 
         {/* Fixture Picker Modal */}
@@ -981,6 +1099,87 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   emptyButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  scheduleCard: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  tabSelector: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+  tabActive: {
+    backgroundColor: '#fff',
+    borderBottomWidth: 2,
+    borderBottomColor: '#000',
+  },
+  tabText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  tabTextActive: {
+    color: '#000',
+  },
+  scheduleLoading: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  scheduleList: {
+    padding: 12,
+    gap: 8,
+  },
+  scheduleItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    gap: 12,
+  },
+  scheduleItemInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  scheduleItemTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
+  },
+  scheduleItemSubtitle: {
+    fontSize: 14,
+    color: '#666',
+  },
+  scheduleEmpty: {
+    padding: 40,
+    alignItems: 'center',
+    gap: 12,
+  },
+  scheduleEmptyText: {
+    fontSize: 16,
+    color: '#999',
+  },
+  scheduleEmptyButton: {
+    backgroundColor: '#000',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  scheduleEmptyButtonText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
