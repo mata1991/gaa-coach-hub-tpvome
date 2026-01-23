@@ -296,4 +296,62 @@ export function registerTrainingSessionRoutes(app: App) {
       }
     }
   );
+
+  // GET /api/teams/:teamId/training-sessions - Get upcoming training sessions for a team
+  app.fastify.get(
+    '/api/teams/:teamId/training-sessions',
+    async (
+      request: FastifyRequest<{
+        Params: { teamId: string };
+        Querystring: { from?: string; limit?: string };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { teamId } = request.params;
+      const { from, limit } = request.query;
+      const parsedLimit = limit ? Math.min(parseInt(limit), 100) : 5;
+
+      app.logger.info(
+        { userId: session.user.id, teamId, from, limit: parsedLimit },
+        'Fetching upcoming training sessions'
+      );
+
+      try {
+        let sessions = await app.db.query.trainingSessions.findMany({
+          where: eq(schema.trainingSessions.teamId, teamId),
+          orderBy: (sessions, { asc }) => [asc(sessions.date)],
+        });
+
+        // Filter for upcoming sessions if from=now
+        if (from === 'now') {
+          const now = new Date();
+          sessions = sessions.filter((s) => s.date >= now);
+        }
+
+        // Apply limit
+        sessions = sessions.slice(0, parsedLimit);
+
+        // Format response
+        const formattedSessions = sessions.map((s) => ({
+          id: s.id,
+          teamId: s.teamId,
+          dateTime: s.date,
+          location: s.location,
+          focus: s.focus,
+          notes: s.notes,
+          createdBy: s.createdBy,
+          createdAt: s.createdAt,
+        }));
+
+        app.logger.info({ teamId, sessionCount: sessions.length }, 'Upcoming training sessions fetched');
+        return formattedSessions;
+      } catch (error) {
+        app.logger.error({ err: error, teamId }, 'Failed to fetch upcoming training sessions');
+        throw error;
+      }
+    }
+  );
 }

@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, gte } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import type { App } from '../index.js';
 
@@ -348,6 +348,52 @@ export function registerFixtureRoutes(app: App) {
         return stats;
       } catch (error) {
         app.logger.error({ err: error, fixtureId: id }, 'Failed to fetch fixture stats');
+        throw error;
+      }
+    }
+  );
+
+  // GET /api/teams/:teamId/fixtures - Get upcoming fixtures for a team
+  app.fastify.get(
+    '/api/teams/:teamId/fixtures',
+    async (
+      request: FastifyRequest<{
+        Params: { teamId: string };
+        Querystring: { from?: string; limit?: string };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { teamId } = request.params;
+      const { from, limit } = request.query;
+      const parsedLimit = limit ? Math.min(parseInt(limit), 100) : 5;
+
+      app.logger.info(
+        { userId: session.user.id, teamId, from, limit: parsedLimit },
+        'Fetching upcoming fixtures'
+      );
+
+      try {
+        let fixtures = await app.db.query.fixtures.findMany({
+          where: eq(schema.fixtures.teamId, teamId),
+          orderBy: (fixtures, { asc }) => [asc(fixtures.date)],
+        });
+
+        // Filter for upcoming fixtures if from=now
+        if (from === 'now') {
+          const now = new Date();
+          fixtures = fixtures.filter((f) => f.date >= now);
+        }
+
+        // Apply limit
+        fixtures = fixtures.slice(0, parsedLimit);
+
+        app.logger.info({ teamId, fixtureCount: fixtures.length }, 'Upcoming fixtures fetched');
+        return fixtures;
+      } catch (error) {
+        app.logger.error({ err: error, teamId }, 'Failed to fetch upcoming fixtures');
         throw error;
       }
     }
