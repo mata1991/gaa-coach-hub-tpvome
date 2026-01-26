@@ -82,36 +82,95 @@ interface MatchReport {
   };
 }
 
+// Default report to prevent crashes when data is undefined
+const DEFAULT_REPORT: MatchReport = {
+  fixture: {
+    id: '',
+    opponent: 'Unknown',
+    venue: 'Unknown',
+    date: new Date().toISOString(),
+    competition: 'Unknown',
+  },
+  teamStats: {
+    totalPoints: 0,
+    totalGoals: 0,
+    totalWides: 0,
+    conversionRate: 0,
+    scoringEfficiency: 0,
+    puckoutWinPercentage: 0,
+    puckoutDirectionBreakdown: {
+      left: 0,
+      centre: 0,
+      right: 0,
+      short: 0,
+      long: 0,
+    },
+    turnoverDifferential: 0,
+    freesFor: 0,
+    freesAgainst: 0,
+    freeConversionRate: 0,
+  },
+  playerStats: [],
+  halfBreakdown: [],
+  heatmaps: {
+    shots: [],
+    puckouts: [],
+  },
+};
+
 export default function MatchReportScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
-  const fixtureId = params.fixtureId as string;
+  
+  // Robustly read fixtureId - handle string | string[] | undefined
+  const rawFixtureId = params.fixtureId;
+  const fixtureId = Array.isArray(rawFixtureId) ? rawFixtureId[0] : rawFixtureId;
 
   const [report, setReport] = useState<MatchReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<'overview' | 'players' | 'halves' | 'heatmaps'>('overview');
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    fetchReport();
+    // Only fetch if fixtureId exists
+    if (fixtureId) {
+      fetchReport();
+    } else {
+      setLoading(false);
+      setError('Missing fixture ID');
+    }
   }, [fixtureId]);
 
   const fetchReport = async () => {
+    if (!fixtureId) {
+      console.log('[MatchReport] No fixtureId provided, skipping fetch');
+      return;
+    }
+
     try {
       console.log('[MatchReport] Fetching report for fixture:', fixtureId);
       setLoading(true);
+      setError(null);
       const data = await authenticatedGet<MatchReport>(`/api/fixtures/${fixtureId}/report`);
       console.log('[MatchReport] Fetched report:', data);
       setReport(data);
-    } catch (error) {
-      console.error('[MatchReport] Error fetching report:', error);
-      Alert.alert('Error', 'Failed to load match report');
+    } catch (err: any) {
+      console.error('[MatchReport] Error fetching report:', err);
+      const errorMessage = err?.message || 'Failed to load match report';
+      const statusCode = err?.status || '';
+      setError(`${errorMessage}${statusCode ? ` (${statusCode})` : ''}`);
     } finally {
       setLoading(false);
     }
   };
 
   const handleExportWhatsApp = async () => {
+    if (!fixtureId) {
+      Alert.alert('Error', 'Missing fixture ID');
+      return;
+    }
+    
     try {
       console.log('[MatchReport] User tapped WhatsApp export');
       setExporting(true);
@@ -134,6 +193,11 @@ export default function MatchReportScreen() {
   };
 
   const handleExportPDF = async () => {
+    if (!fixtureId) {
+      Alert.alert('Error', 'Missing fixture ID');
+      return;
+    }
+    
     try {
       console.log('[MatchReport] User tapped PDF export');
       setExporting(true);
@@ -156,6 +220,11 @@ export default function MatchReportScreen() {
   };
 
   const handleExportCSV = async () => {
+    if (!fixtureId) {
+      Alert.alert('Error', 'Missing fixture ID');
+      return;
+    }
+    
     try {
       console.log('[MatchReport] User tapped CSV export');
       setExporting(true);
@@ -203,7 +272,7 @@ export default function MatchReportScreen() {
         const { Share } = await import('react-native');
         await Share.share({
           message: csvText,
-          title: `Match Events - ${report?.fixture.opponent || 'Match'}`,
+          title: `Match Events - ${safeReport?.fixture?.opponent ?? 'Match'}`,
         });
       }
     } catch (error) {
@@ -214,6 +283,34 @@ export default function MatchReportScreen() {
     }
   };
 
+  // Missing fixture ID - blocking state
+  if (!fixtureId) {
+    return (
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Match Report',
+            headerBackTitle: 'Back',
+          }}
+        />
+        <View style={styles.loadingContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="warning"
+            size={48}
+            color={colors.danger}
+          />
+          <Text style={styles.errorText}>Missing fixture ID</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={() => router.back()}>
+            <Text style={styles.retryButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Loading state
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -232,6 +329,34 @@ export default function MatchReportScreen() {
     );
   }
 
+  // Error state
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Match Report',
+            headerBackTitle: 'Back',
+          }}
+        />
+        <View style={styles.loadingContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.circle"
+            android_material_icon_name="error"
+            size={48}
+            color={colors.danger}
+          />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={fetchReport}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // No report data after successful load
   if (!report) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -243,9 +368,18 @@ export default function MatchReportScreen() {
           }}
         />
         <View style={styles.loadingContainer}>
-          <Text style={styles.errorText}>No report data available</Text>
+          <IconSymbol
+            ios_icon_name="doc.text"
+            android_material_icon_name="description"
+            size={48}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.loadingText}>No report data yet</Text>
+          <Text style={styles.emptyStateSubtext}>
+            Match events will appear here once the match has started
+          </Text>
           <TouchableOpacity style={styles.retryButton} onPress={fetchReport}>
-            <Text style={styles.retryButtonText}>Retry</Text>
+            <Text style={styles.retryButtonText}>Refresh</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -259,9 +393,19 @@ export default function MatchReportScreen() {
     return `${goalsStr}-${pointsStr}`;
   };
 
-  const scoreDisplay = formatScore(report.teamStats.totalGoals, report.teamStats.totalPoints);
-  const totalPoints = report.teamStats.totalGoals * 3 + report.teamStats.totalPoints;
+  // Use safe defaults to prevent crashes
+  const safeReport = report ?? DEFAULT_REPORT;
+  
+  // Safe access with fallbacks
+  const totalGoals = safeReport.teamStats?.totalGoals ?? 0;
+  const totalPointsValue = safeReport.teamStats?.totalPoints ?? 0;
+  const scoreDisplay = formatScore(totalGoals, totalPointsValue);
+  const totalPoints = totalGoals * 3 + totalPointsValue;
   const totalPointsText = `${totalPoints} points`;
+  
+  const opponent = safeReport.fixture?.opponent ?? 'Unknown';
+  const venue = safeReport.fixture?.venue ?? 'Unknown';
+  const fixtureDate = safeReport.fixture?.date ?? new Date().toISOString();
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -285,9 +429,9 @@ export default function MatchReportScreen() {
 
       {/* Match header */}
       <View style={styles.header}>
-        <Text style={styles.opponent}>{report.fixture.opponent}</Text>
-        <Text style={styles.venue}>{report.fixture.venue}</Text>
-        <Text style={styles.date}>{new Date(report.fixture.date).toLocaleDateString()}</Text>
+        <Text style={styles.opponent}>{opponent}</Text>
+        <Text style={styles.venue}>{venue}</Text>
+        <Text style={styles.date}>{new Date(fixtureDate).toLocaleDateString()}</Text>
         <View style={styles.scoreContainer}>
           <Text style={styles.score}>{scoreDisplay}</Text>
           <Text style={styles.scoreLabel}>({totalPointsText})</Text>
@@ -317,57 +461,57 @@ export default function MatchReportScreen() {
         {selectedTab === 'overview' && (
           <View>
             <StatCard title="Scoring">
-              <StatRow label="Goals" value={report.teamStats.totalGoals} />
-              <StatRow label="Points" value={report.teamStats.totalPoints} />
-              <StatRow label="Wides" value={report.teamStats.totalWides} />
+              <StatRow label="Goals" value={safeReport.teamStats?.totalGoals ?? 0} />
+              <StatRow label="Points" value={safeReport.teamStats?.totalPoints ?? 0} />
+              <StatRow label="Wides" value={safeReport.teamStats?.totalWides ?? 0} />
               <StatRow
                 label="Conversion Rate"
-                value={`${(report.teamStats.conversionRate * 100).toFixed(1)}%`}
+                value={`${((safeReport.teamStats?.conversionRate ?? 0) * 100).toFixed(1)}%`}
               />
               <StatRow
                 label="Scoring Efficiency"
-                value={report.teamStats.scoringEfficiency.toFixed(2)}
+                value={(safeReport.teamStats?.scoringEfficiency ?? 0).toFixed(2)}
               />
             </StatCard>
 
             <StatCard title="Puckouts">
               <StatRow
                 label="Win Percentage"
-                value={`${(report.teamStats.puckoutWinPercentage * 100).toFixed(1)}%`}
+                value={`${((safeReport.teamStats?.puckoutWinPercentage ?? 0) * 100).toFixed(1)}%`}
               />
               <StatRow
                 label="Left"
-                value={report.teamStats.puckoutDirectionBreakdown.left}
+                value={safeReport.teamStats?.puckoutDirectionBreakdown?.left ?? 0}
               />
               <StatRow
                 label="Centre"
-                value={report.teamStats.puckoutDirectionBreakdown.centre}
+                value={safeReport.teamStats?.puckoutDirectionBreakdown?.centre ?? 0}
               />
               <StatRow
                 label="Right"
-                value={report.teamStats.puckoutDirectionBreakdown.right}
+                value={safeReport.teamStats?.puckoutDirectionBreakdown?.right ?? 0}
               />
               <StatRow
                 label="Short"
-                value={report.teamStats.puckoutDirectionBreakdown.short}
+                value={safeReport.teamStats?.puckoutDirectionBreakdown?.short ?? 0}
               />
               <StatRow
                 label="Long"
-                value={report.teamStats.puckoutDirectionBreakdown.long}
+                value={safeReport.teamStats?.puckoutDirectionBreakdown?.long ?? 0}
               />
             </StatCard>
 
             <StatCard title="Possession & Discipline">
               <StatRow
                 label="Turnover Differential"
-                value={report.teamStats.turnoverDifferential}
-                highlight={report.teamStats.turnoverDifferential > 0}
+                value={safeReport.teamStats?.turnoverDifferential ?? 0}
+                highlight={(safeReport.teamStats?.turnoverDifferential ?? 0) > 0}
               />
-              <StatRow label="Frees For" value={report.teamStats.freesFor} />
-              <StatRow label="Frees Against" value={report.teamStats.freesAgainst} />
+              <StatRow label="Frees For" value={safeReport.teamStats?.freesFor ?? 0} />
+              <StatRow label="Frees Against" value={safeReport.teamStats?.freesAgainst ?? 0} />
               <StatRow
                 label="Free Conversion"
-                value={`${(report.teamStats.freeConversionRate * 100).toFixed(1)}%`}
+                value={`${((safeReport.teamStats?.freeConversionRate ?? 0) * 100).toFixed(1)}%`}
               />
             </StatCard>
           </View>
@@ -375,138 +519,184 @@ export default function MatchReportScreen() {
 
         {selectedTab === 'players' && (
           <View>
-            {report.playerStats.map((player) => (
-              <View key={player.playerId} style={styles.playerCard}>
-                <View style={styles.playerHeader}>
-                  <Text style={styles.playerNumber}>#{player.jerseyNo}</Text>
-                  <Text style={styles.playerName}>{player.playerName}</Text>
-                  <Text style={styles.playerEfficiency}>
-                    {(player.efficiency * 100).toFixed(0)}%
-                  </Text>
-                </View>
-                <View style={styles.playerStats}>
-                  <PlayerStat
-                    label="Goals"
-                    value={player.contributions.goals}
-                    icon="sports-soccer"
-                  />
-                  <PlayerStat
-                    label="Points"
-                    value={player.contributions.points}
-                    icon="flag"
-                  />
-                  <PlayerStat
-                    label="Wides"
-                    value={player.contributions.wides}
-                    icon="close"
-                  />
-                  <PlayerStat
-                    label="Turnovers +"
-                    value={player.contributions.turnoversWon}
-                    icon="trending-up"
-                  />
-                  <PlayerStat
-                    label="Turnovers -"
-                    value={player.contributions.turnoversLost}
-                    icon="trending-down"
-                  />
-                  <PlayerStat
-                    label="Frees Won"
-                    value={player.contributions.freesWon}
-                    icon="add-circle"
-                  />
-                </View>
-                {(player.discipline.yellowCards > 0 || player.discipline.redCards > 0) && (
-                  <View style={styles.disciplineRow}>
-                    {player.discipline.yellowCards > 0 && (
-                      <View style={styles.card}>
-                        <View style={[styles.cardIcon, { backgroundColor: '#FFC107' }]} />
-                        <Text style={styles.cardText}>{player.discipline.yellowCards}</Text>
-                      </View>
-                    )}
-                    {player.discipline.redCards > 0 && (
-                      <View style={styles.card}>
-                        <View style={[styles.cardIcon, { backgroundColor: '#F44336' }]} />
-                        <Text style={styles.cardText}>{player.discipline.redCards}</Text>
+            {(safeReport.playerStats ?? []).length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>No player stats yet</Text>
+              </View>
+            ) : (
+              (safeReport.playerStats ?? []).map((player) => {
+                const jerseyNo = player?.jerseyNo ?? 0;
+                const playerName = player?.playerName ?? 'Unknown';
+                const efficiency = player?.efficiency ?? 0;
+                const contributions = player?.contributions ?? {};
+                const discipline = player?.discipline ?? {};
+                
+                return (
+                  <View key={player.playerId} style={styles.playerCard}>
+                    <View style={styles.playerHeader}>
+                      <Text style={styles.playerNumber}>#{jerseyNo}</Text>
+                      <Text style={styles.playerName}>{playerName}</Text>
+                      <Text style={styles.playerEfficiency}>
+                        {(efficiency * 100).toFixed(0)}%
+                      </Text>
+                    </View>
+                    <View style={styles.playerStats}>
+                      <PlayerStat
+                        label="Goals"
+                        value={contributions.goals ?? 0}
+                        icon="sports-soccer"
+                      />
+                      <PlayerStat
+                        label="Points"
+                        value={contributions.points ?? 0}
+                        icon="flag"
+                      />
+                      <PlayerStat
+                        label="Wides"
+                        value={contributions.wides ?? 0}
+                        icon="close"
+                      />
+                      <PlayerStat
+                        label="Turnovers +"
+                        value={contributions.turnoversWon ?? 0}
+                        icon="trending-up"
+                      />
+                      <PlayerStat
+                        label="Turnovers -"
+                        value={contributions.turnoversLost ?? 0}
+                        icon="trending-down"
+                      />
+                      <PlayerStat
+                        label="Frees Won"
+                        value={contributions.freesWon ?? 0}
+                        icon="add-circle"
+                      />
+                    </View>
+                    {((discipline.yellowCards ?? 0) > 0 || (discipline.redCards ?? 0) > 0) && (
+                      <View style={styles.disciplineRow}>
+                        {(discipline.yellowCards ?? 0) > 0 && (
+                          <View style={styles.card}>
+                            <View style={[styles.cardIcon, { backgroundColor: '#FFC107' }]} />
+                            <Text style={styles.cardText}>{discipline.yellowCards}</Text>
+                          </View>
+                        )}
+                        {(discipline.redCards ?? 0) > 0 && (
+                          <View style={styles.card}>
+                            <View style={[styles.cardIcon, { backgroundColor: '#F44336' }]} />
+                            <Text style={styles.cardText}>{discipline.redCards}</Text>
+                          </View>
+                        )}
                       </View>
                     )}
                   </View>
-                )}
-              </View>
-            ))}
+                );
+              })
+            )}
           </View>
         )}
 
         {selectedTab === 'halves' && (
           <View>
-            {report.halfBreakdown.map((half) => {
-              const halfTitle = half.half === 'H1' ? '1st Half' : '2nd Half';
-              return (
-                <StatCard key={half.half} title={halfTitle}>
-                  <StatRow label="Goals" value={half.stats.goals} />
-                  <StatRow label="Points" value={half.stats.points} />
-                  <StatRow label="Wides" value={half.stats.wides} />
-                  <StatRow label="Turnovers" value={half.stats.turnovers} />
-                  <StatRow label="Puckouts" value={half.stats.puckouts} />
-                </StatCard>
-              );
-            })}
+            {(safeReport.halfBreakdown ?? []).length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>No half breakdown yet</Text>
+              </View>
+            ) : (
+              (safeReport.halfBreakdown ?? []).map((half) => {
+                const halfTitle = half.half === 'H1' ? '1st Half' : '2nd Half';
+                const stats = half?.stats ?? {};
+                return (
+                  <StatCard key={half.half} title={halfTitle}>
+                    <StatRow label="Goals" value={stats.goals ?? 0} />
+                    <StatRow label="Points" value={stats.points ?? 0} />
+                    <StatRow label="Wides" value={stats.wides ?? 0} />
+                    <StatRow label="Turnovers" value={stats.turnovers ?? 0} />
+                    <StatRow label="Puckouts" value={stats.puckouts ?? 0} />
+                  </StatCard>
+                );
+              })
+            )}
           </View>
         )}
 
         {selectedTab === 'heatmaps' && (
           <View>
             <StatCard title="Shot Heatmap">
-              {report.heatmaps.shots.map((zone) => (
-                <View key={zone.zone} style={styles.heatmapRow}>
-                  <Text style={styles.heatmapZone}>{zone.zone}</Text>
-                  <View style={styles.heatmapBar}>
-                    <View
-                      style={[
-                        styles.heatmapBarFill,
-                        {
-                          width: `${(zone.successful / zone.count) * 100}%`,
-                          backgroundColor: colors.success,
-                        },
-                      ]}
-                    />
-                    <View
-                      style={[
-                        styles.heatmapBarFill,
-                        {
-                          width: `${((zone.count - zone.successful) / zone.count) * 100}%`,
-                          backgroundColor: colors.danger,
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.heatmapCount}>
-                    {zone.successful}/{zone.count}
-                  </Text>
+              {(safeReport.heatmaps?.shots ?? []).length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateText}>No shot data yet</Text>
                 </View>
-              ))}
+              ) : (
+                (safeReport.heatmaps?.shots ?? []).map((zone) => {
+                  const zoneCount = zone?.count ?? 1;
+                  const zoneSuccessful = zone?.successful ?? 0;
+                  const successPercent = (zoneSuccessful / zoneCount) * 100;
+                  const failPercent = ((zoneCount - zoneSuccessful) / zoneCount) * 100;
+                  
+                  return (
+                    <View key={zone.zone} style={styles.heatmapRow}>
+                      <Text style={styles.heatmapZone}>{zone.zone ?? 'Unknown'}</Text>
+                      <View style={styles.heatmapBar}>
+                        <View
+                          style={[
+                            styles.heatmapBarFill,
+                            {
+                              width: `${successPercent}%`,
+                              backgroundColor: colors.success,
+                            },
+                          ]}
+                        />
+                        <View
+                          style={[
+                            styles.heatmapBarFill,
+                            {
+                              width: `${failPercent}%`,
+                              backgroundColor: colors.danger,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.heatmapCount}>
+                        {zoneSuccessful}/{zoneCount}
+                      </Text>
+                    </View>
+                  );
+                })
+              )}
             </StatCard>
 
             <StatCard title="Puckout Heatmap">
-              {report.heatmaps.puckouts.map((zone) => (
-                <View key={zone.zone} style={styles.heatmapRow}>
-                  <Text style={styles.heatmapZone}>{zone.zone}</Text>
-                  <View style={styles.heatmapBar}>
-                    <View
-                      style={[
-                        styles.heatmapBarFill,
-                        {
-                          width: `${(zone.won / zone.count) * 100}%`,
-                          backgroundColor: colors.primary,
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.heatmapCount}>
-                    {zone.won}/{zone.count}
-                  </Text>
+              {(safeReport.heatmaps?.puckouts ?? []).length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateText}>No puckout data yet</Text>
                 </View>
-              ))}
+              ) : (
+                (safeReport.heatmaps?.puckouts ?? []).map((zone) => {
+                  const zoneCount = zone?.count ?? 1;
+                  const zoneWon = zone?.won ?? 0;
+                  const wonPercent = (zoneWon / zoneCount) * 100;
+                  
+                  return (
+                    <View key={zone.zone} style={styles.heatmapRow}>
+                      <Text style={styles.heatmapZone}>{zone.zone ?? 'Unknown'}</Text>
+                      <View style={styles.heatmapBar}>
+                        <View
+                          style={[
+                            styles.heatmapBarFill,
+                            {
+                              width: `${wonPercent}%`,
+                              backgroundColor: colors.primary,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.heatmapCount}>
+                        {zoneWon}/{zoneCount}
+                      </Text>
+                    </View>
+                  );
+                })
+              )}
             </StatCard>
           </View>
         )}
@@ -618,6 +808,15 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 16,
     color: colors.danger,
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: 20,
+    marginTop: 8,
   },
   retryButton: {
     backgroundColor: colors.primary,
@@ -630,6 +829,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  emptyState: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
   header: {
     backgroundColor: colors.primary,
