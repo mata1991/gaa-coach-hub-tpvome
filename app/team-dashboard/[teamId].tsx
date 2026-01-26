@@ -147,8 +147,31 @@ export default function TeamDashboardScreen() {
     });
   };
 
-  const handleTeamLineOut = () => {
-    console.log('User tapped Team Line Out button');
+  const handleTeamLineOut = async () => {
+    console.log('[TeamDashboard] User tapped Team Line Out button');
+    
+    if (!teamId) {
+      console.error('[TeamDashboard] ERROR: teamId is missing!');
+      Alert.alert('Error', 'Select a team first');
+      return;
+    }
+
+    // Check if team has players
+    if (data && data.playerCount === 0) {
+      console.log('[TeamDashboard] No players available, showing alert');
+      Alert.alert(
+        'Add Players First',
+        'You need to add players to your team before creating a lineup.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Add Players',
+            onPress: handleAddPlayers,
+          },
+        ]
+      );
+      return;
+    }
     
     // Include both upcoming and draft fixtures for team line out
     const availableFixtures = data?.upcomingFixtures || [];
@@ -156,7 +179,7 @@ export default function TeamDashboardScreen() {
     if (availableFixtures.length === 0) {
       console.log('[TeamDashboard] No fixtures available, showing alert');
       Alert.alert(
-        'No Fixtures',
+        'Create a Fixture First',
         'You need to create a fixture before setting up your team line out.',
         [
           { text: 'Cancel', style: 'cancel' },
@@ -171,7 +194,7 @@ export default function TeamDashboardScreen() {
 
     if (availableFixtures.length === 1) {
       const fixture = availableFixtures[0];
-      console.log('[TeamDashboard] Navigating to lineups for fixture:', fixture.id);
+      console.log('[TeamDashboard] Single fixture found, navigating to lineups for:', fixture.id);
       router.push({
         pathname: '/lineups/[fixtureId]',
         params: { fixtureId: fixture.id, teamId },

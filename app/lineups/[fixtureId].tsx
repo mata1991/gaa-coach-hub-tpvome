@@ -96,14 +96,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 4,
+    overflow: 'hidden',
   },
   filledSlot: {
     backgroundColor: colors.primary,
+  },
+  jerseyImage: {
+    width: 50,
+    height: 50,
+    position: 'absolute',
+    top: 10,
   },
   positionNumber: {
     fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
   },
   playerName: {
     fontSize: 10,
@@ -111,6 +122,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     textAlign: 'center',
     marginTop: 2,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
   },
   jerseyNumber: {
     fontSize: 8,
@@ -399,19 +414,24 @@ export default function LineupsScreen() {
   }, [fixtureId]);
 
   const fetchData = async () => {
-    console.log('Fetching lineups data for fixture:', fixtureId);
+    console.log('[Lineups] Fetching lineups data for fixture:', fixtureId);
     try {
       setLoading(true);
 
       const fixtureResponse = await authenticatedGet(`/api/fixtures/${fixtureId}`);
+      console.log('[Lineups] Fixture data:', fixtureResponse);
       setFixture(fixtureResponse);
 
       const squadsResponse = await authenticatedGet(`/api/fixtures/${fixtureId}/squads`);
+      console.log('[Lineups] Squads response:', squadsResponse);
       
       // squadsResponse is an array of squads, not an object with home/away keys
       const squadsArray = Array.isArray(squadsResponse) ? squadsResponse : [];
       const homeSquadData = squadsArray.find((s: any) => s.side === 'HOME');
       const awaySquadData = squadsArray.find((s: any) => s.side === 'AWAY');
+      
+      console.log('[Lineups] Home squad:', homeSquadData ? 'Found' : 'Not found');
+      console.log('[Lineups] Away squad:', awaySquadData ? 'Found' : 'Not found');
       
       setHomeSquad(homeSquadData || createEmptySquad('HOME'));
       setAwaySquad(awaySquadData || createEmptySquad('AWAY'));
@@ -422,10 +442,11 @@ export default function LineupsScreen() {
       console.log('[Lineups] Cached squads for offline use');
 
       const playersResponse = await authenticatedGet(`/api/players?teamId=${fixtureResponse.teamId}`);
+      console.log('[Lineups] Players fetched:', playersResponse.length);
       setPlayers(playersResponse);
     } catch (error) {
-      console.error('Error fetching lineups data:', error);
-      Alert.alert('Error', 'Failed to load lineups data');
+      console.error('[Lineups] Error fetching lineups data:', error);
+      Alert.alert('Error', 'Failed to load lineups data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -468,16 +489,19 @@ export default function LineupsScreen() {
       Alert.alert('Lineup Locked', 'This lineup is locked because the match has started.');
       return;
     }
-    console.log('Slot pressed:', type, index);
+    console.log('[Lineups] Slot pressed:', type, index);
     
     const slots = type === 'starting' ? currentSquad?.startingSlots : currentSquad?.bench;
     const slot = slots?.[index];
     
     // If slot has a player, show options to change player or edit jersey number
     if (slot?.playerId) {
+      const slotPlayerName = slot.playerName || 'Unknown';
+      const slotJerseyNo = slot.jerseyNo || 'None';
+      
       Alert.alert(
         'Edit Slot',
-        `${slot.playerName} - Jersey #${slot.jerseyNo || 'None'}`,
+        `${slotPlayerName} - Jersey #${slotJerseyNo}`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -553,7 +577,7 @@ export default function LineupsScreen() {
   };
 
   const handlePlayerSelect = async (player: Player) => {
-    console.log('Player selected:', player.name);
+    console.log('[Lineups] Player selected:', player.name);
     if (!currentSquad || selectedSlotIndex === null) return;
 
     const slots = selectedSlotType === 'starting' ? currentSquad.startingSlots : currentSquad.bench;
@@ -568,7 +592,7 @@ export default function LineupsScreen() {
     );
 
     if (isDuplicate) {
-      Alert.alert('Duplicate Player', 'This player is already in the lineup.');
+      Alert.alert('Duplicate Player', 'This player is already in the lineup. Remove them from their current position first.');
       return;
     }
 
@@ -602,7 +626,7 @@ export default function LineupsScreen() {
       return;
     }
 
-    console.log('Quick adding player:', quickAddName);
+    console.log('[Lineups] Quick adding player:', quickAddName);
     try {
       const newPlayer = await authenticatedPost(`/api/players`, {
         teamId: fixture.teamId,
@@ -614,7 +638,7 @@ export default function LineupsScreen() {
       
       await handlePlayerSelect(newPlayer);
     } catch (error) {
-      console.error('Error quick adding player:', error);
+      console.error('[Lineups] Error quick adding player:', error);
       Alert.alert('Error', 'Failed to add player');
     }
   };
@@ -654,7 +678,7 @@ export default function LineupsScreen() {
   };
 
   const saveSquad = async (startingSlots: LineupSlot[], bench: LineupSlot[]) => {
-    console.log('Saving squad for side:', selectedSide);
+    console.log('[Lineups] Saving squad for side:', selectedSide);
     try {
       setSaving(true);
       
@@ -663,6 +687,8 @@ export default function LineupsScreen() {
         startingSlots,
         bench,
       });
+
+      console.log('[Lineups] Squad saved successfully');
 
       if (selectedSide === 'HOME') {
         setHomeSquad(response);
@@ -684,8 +710,8 @@ export default function LineupsScreen() {
       await AsyncStorage.setItem(cachedSquadsKey, JSON.stringify(squadsData));
       console.log('[Lineups] Updated cached squads after save');
     } catch (error) {
-      console.error('Error saving squad:', error);
-      Alert.alert('Error', 'Failed to save lineup');
+      console.error('[Lineups] Error saving squad:', error);
+      Alert.alert('Error', 'Failed to save lineup. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -728,10 +754,10 @@ export default function LineupsScreen() {
       const homeStartingCount = homeSquad?.startingSlots.filter(s => s.playerId).length || 0;
       const awayStartingCount = awaySquad?.startingSlots.filter(s => s.playerId).length || 0;
 
+      const homeCountText = homeStartingCount.toString();
+      const awayCountText = awayStartingCount.toString();
+
       if (homeStartingCount < 15 || awayStartingCount < 15) {
-        const homeCountText = homeStartingCount.toString();
-        const awayCountText = awayStartingCount.toString();
-        
         Alert.alert(
           'Incomplete Lineups',
           `Home: ${homeCountText}/15, Away: ${awayCountText}/15. Start anyway?`,
@@ -799,6 +825,11 @@ export default function LineupsScreen() {
   const renderPitchLayout = () => {
     if (!currentSquad) return null;
 
+    // Get the jersey image URL for the current side
+    const jerseyImageUrl = selectedSide === 'HOME' 
+      ? fixture?.homeJerseyImageUrl 
+      : fixture?.awayJerseyImageUrl;
+
     const rows = [
       [13, 14, 15],
       [10, 11, 12],
@@ -819,6 +850,7 @@ export default function LineupsScreen() {
               const hasPlayer = !!slot.playerId;
               const displayName = slot.playerName || '';
               const displayJersey = slot.jerseyNo || '';
+              const posNoText = posNo.toString();
 
               return (
                 <TouchableOpacity
@@ -826,7 +858,17 @@ export default function LineupsScreen() {
                   style={[styles.positionSlot, hasPlayer && styles.filledSlot]}
                   onPress={() => handleSlotPress(posNo - 1, 'starting')}
                 >
-                  <Text style={styles.positionNumber}>{posNo}</Text>
+                  {/* Jersey image as background if available */}
+                  {hasPlayer && jerseyImageUrl && (
+                    <Image
+                      source={resolveImageSource(jerseyImageUrl)}
+                      style={styles.jerseyImage}
+                      resizeMode="contain"
+                      onError={() => console.log('[Lineups] Failed to load jersey image')}
+                    />
+                  )}
+                  
+                  <Text style={styles.positionNumber}>{posNoText}</Text>
                   {hasPlayer && (
                     <>
                       <Text style={styles.playerName} numberOfLines={1}>
@@ -856,6 +898,7 @@ export default function LineupsScreen() {
           const displayPosition = slot.positionName;
           const displayPlayer = slot.playerName || 'Tap to add player';
           const displayJersey = slot.jerseyNo ? `#${slot.jerseyNo}` : '';
+          const posNoText = slot.positionNo.toString();
 
           return (
             <TouchableOpacity
@@ -864,7 +907,7 @@ export default function LineupsScreen() {
               onPress={() => handleSlotPress(index, 'starting')}
             >
               <View style={styles.slotNumber}>
-                <Text style={styles.slotNumberText}>{slot.positionNo}</Text>
+                <Text style={styles.slotNumberText}>{posNoText}</Text>
               </View>
               <View style={styles.slotInfo}>
                 <Text style={styles.slotPosition}>{displayPosition}</Text>
@@ -894,7 +937,7 @@ export default function LineupsScreen() {
           const hasPlayer = !!slot.playerId;
           const displayPlayer = slot.playerName || 'Tap to add player';
           const displayJersey = slot.jerseyNo ? `#${slot.jerseyNo}` : '';
-          const benchNumber = index + 16;
+          const benchNumber = (index + 16).toString();
 
           return (
             <TouchableOpacity
