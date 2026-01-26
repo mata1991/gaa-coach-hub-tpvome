@@ -3,6 +3,14 @@ import { eq, and } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import type { App } from '../index.js';
 
+// UUID v4 validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isValidUUID(value: any): boolean {
+  if (typeof value !== 'string' || !value) return false;
+  return UUID_REGEX.test(value);
+}
+
 interface LineupSlot {
   positionNo: number;
   positionName: string;
@@ -49,6 +57,16 @@ export function registerMatchSquadRoutes(app: App) {
       if (!session) return;
 
       const { fixtureId } = request.params;
+
+      // Validate fixtureId is a valid UUID
+      if (!isValidUUID(fixtureId)) {
+        app.logger.warn({ userId: session.user.id, fixtureId }, 'Invalid fixtureId format');
+        return reply.status(400).send({
+          error: 'Invalid fixtureId',
+          message: 'fixtureId must be a valid UUID',
+        });
+      }
+
       app.logger.info({ userId: session.user.id, fixtureId }, 'Fetching match squads');
 
       try {
@@ -83,6 +101,16 @@ export function registerMatchSquadRoutes(app: App) {
       if (!session) return;
 
       const { fixtureId } = request.params;
+
+      // Validate fixtureId is a valid UUID
+      if (!isValidUUID(fixtureId)) {
+        app.logger.warn({ userId: session.user.id, fixtureId }, 'Invalid fixtureId format');
+        return reply.status(400).send({
+          error: 'Invalid fixtureId',
+          message: 'fixtureId must be a valid UUID',
+        });
+      }
+
       const { side, startingSlots, bench } = request.body;
 
       app.logger.info(
@@ -150,6 +178,16 @@ export function registerMatchSquadRoutes(app: App) {
       if (!session) return;
 
       const { fixtureId, side } = request.params;
+
+      // Validate fixtureId is a valid UUID
+      if (!isValidUUID(fixtureId)) {
+        app.logger.warn({ userId: session.user.id, fixtureId }, 'Invalid fixtureId format');
+        return reply.status(400).send({
+          error: 'Invalid fixtureId',
+          message: 'fixtureId must be a valid UUID',
+        });
+      }
+
       const { startingSlots, bench } = request.body;
 
       app.logger.info({ userId: session.user.id, fixtureId, side }, 'Updating squad');
@@ -212,6 +250,16 @@ export function registerMatchSquadRoutes(app: App) {
       if (!session) return;
 
       const { fixtureId, side } = request.params;
+
+      // Validate fixtureId is a valid UUID
+      if (!isValidUUID(fixtureId)) {
+        app.logger.warn({ userId: session.user.id, fixtureId }, 'Invalid fixtureId format');
+        return reply.status(400).send({
+          error: 'Invalid fixtureId',
+          message: 'fixtureId must be a valid UUID',
+        });
+      }
+
       const { playerOffId, playerOffName, playerOnId, playerOnName, matchTime } = request.body;
 
       app.logger.info(
@@ -348,6 +396,16 @@ export function registerMatchSquadRoutes(app: App) {
       if (!session) return;
 
       const { fixtureId } = request.params;
+
+      // Validate fixtureId is a valid UUID
+      if (!isValidUUID(fixtureId)) {
+        app.logger.warn({ userId: session.user.id, fixtureId }, 'Invalid fixtureId format');
+        return reply.status(400).send({
+          error: 'Invalid fixtureId',
+          message: 'fixtureId must be a valid UUID',
+        });
+      }
+
       app.logger.info({ userId: session.user.id, fixtureId }, 'Checking lineup status');
 
       try {
@@ -385,6 +443,16 @@ export function registerMatchSquadRoutes(app: App) {
       if (!session) return;
 
       const { fixtureId } = request.params;
+
+      // Validate fixtureId is a valid UUID
+      if (!isValidUUID(fixtureId)) {
+        app.logger.warn({ userId: session.user.id, fixtureId }, 'Invalid fixtureId format');
+        return reply.status(400).send({
+          error: 'Invalid fixtureId',
+          message: 'fixtureId must be a valid UUID',
+        });
+      }
+
       app.logger.info({ userId: session.user.id, fixtureId }, 'Checking squad status');
 
       try {
@@ -438,6 +506,16 @@ export function registerMatchSquadRoutes(app: App) {
       if (!session) return;
 
       const { fixtureId } = request.params;
+
+      // Validate fixtureId is a valid UUID
+      if (!isValidUUID(fixtureId)) {
+        app.logger.warn({ userId: session.user.id, fixtureId }, 'Invalid fixtureId format');
+        return reply.status(400).send({
+          error: 'Invalid fixtureId',
+          message: 'fixtureId must be a valid UUID',
+        });
+      }
+
       app.logger.info({ userId: session.user.id, fixtureId }, 'Creating placeholder away squad');
 
       try {

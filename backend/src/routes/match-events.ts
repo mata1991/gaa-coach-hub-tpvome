@@ -3,6 +3,14 @@ import { eq, and } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import type { App } from '../index.js';
 
+// UUID v4 validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isValidUUID(value: any): boolean {
+  if (typeof value !== 'string' || !value) return false;
+  return UUID_REGEX.test(value);
+}
+
 export function registerMatchEventRoutes(app: App) {
   const requireAuth = app.requireAuth();
 
@@ -17,6 +25,16 @@ export function registerMatchEventRoutes(app: App) {
       if (!session) return;
 
       const { fixtureId } = request.params;
+
+      // Validate fixtureId is a valid UUID
+      if (!isValidUUID(fixtureId)) {
+        app.logger.warn({ userId: session.user.id, fixtureId }, 'Invalid fixtureId format');
+        return reply.status(400).send({
+          error: 'Invalid fixtureId',
+          message: 'fixtureId must be a valid UUID',
+        });
+      }
+
       app.logger.info({ userId: session.user.id, fixtureId }, 'Fetching match events');
 
       try {
@@ -59,6 +77,16 @@ export function registerMatchEventRoutes(app: App) {
       if (!session) return;
 
       const { fixtureId } = request.params;
+
+      // Validate fixtureId is a valid UUID
+      if (!isValidUUID(fixtureId)) {
+        app.logger.warn({ userId: session.user.id, fixtureId }, 'Invalid fixtureId format');
+        return reply.status(400).send({
+          error: 'Invalid fixtureId',
+          message: 'fixtureId must be a valid UUID',
+        });
+      }
+
       const { playerId, side, timestamp, eventType, eventCategory, half, outcome, zone, notes, clientId } =
         request.body;
 

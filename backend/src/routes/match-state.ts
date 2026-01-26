@@ -3,10 +3,18 @@ import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import type { App } from '../index.js';
 
+// UUID v4 validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isValidUUID(value: any): boolean {
+  if (typeof value !== 'string' || !value) return false;
+  return UUID_REGEX.test(value);
+}
+
 export function registerMatchStateRoutes(app: App) {
   const requireAuth = app.requireAuth();
 
-  // GET /api/fixtures/:fixtureId/match-state - Get or create match state
+  // GET /api/fixtures/:fixtureId/match-state - Get match state
   app.fastify.get(
     '/api/fixtures/:fixtureId/match-state',
     async (request: FastifyRequest<{ Params: { fixtureId: string } }>, reply: FastifyReply) => {
@@ -14,23 +22,39 @@ export function registerMatchStateRoutes(app: App) {
       if (!session) return;
 
       const { fixtureId } = request.params;
+
+      // Validate fixtureId is a valid UUID
+      if (!isValidUUID(fixtureId)) {
+        app.logger.warn({ userId: session.user.id, fixtureId }, 'Invalid fixtureId format');
+        return reply.status(400).send({
+          error: 'Invalid fixtureId',
+          message: 'fixtureId must be a valid UUID',
+        });
+      }
+
       app.logger.info({ userId: session.user.id, fixtureId }, 'Fetching match state');
 
       try {
-        let matchState = await app.db.query.matchState.findFirst({
+        const matchState = await app.db.query.matchState.findFirst({
           where: eq(schema.matchState.fixtureId, fixtureId),
         });
 
-        // Create default if doesn't exist
+        // Return default match state if doesn't exist
         if (!matchState) {
-          app.logger.info({ fixtureId }, 'Creating default match state');
-          [matchState] = await app.db
-            .insert(schema.matchState)
-            .values({
-              fixtureId,
-              status: 'NOT_STARTED',
-            })
-            .returning();
+          app.logger.info({ fixtureId }, 'Match state not found, returning default');
+          return {
+            id: null,
+            fixtureId,
+            status: 'NOT_STARTED',
+            homeGoals: 0,
+            homePoints: 0,
+            awayGoals: 0,
+            awayPoints: 0,
+            matchClock: 0,
+            half: 'H1',
+            startedAt: null,
+            completedAt: null,
+          };
         }
 
         app.logger.info({ fixtureId, status: matchState.status }, 'Match state fetched');
@@ -50,9 +74,29 @@ export function registerMatchStateRoutes(app: App) {
       if (!session) return;
 
       const { fixtureId } = request.params;
+
+      // Validate fixtureId is a valid UUID
+      if (!isValidUUID(fixtureId)) {
+        app.logger.warn({ userId: session.user.id, fixtureId }, 'Invalid fixtureId format');
+        return reply.status(400).send({
+          error: 'Invalid fixtureId',
+          message: 'fixtureId must be a valid UUID',
+        });
+      }
+
       app.logger.info({ userId: session.user.id, fixtureId }, 'Starting match');
 
       try {
+        // Verify fixture exists
+        const fixture = await app.db.query.fixtures.findFirst({
+          where: eq(schema.fixtures.id, fixtureId),
+        });
+
+        if (!fixture) {
+          app.logger.warn({ fixtureId }, 'Fixture not found');
+          return reply.status(404).send({ error: 'Fixture not found' });
+        }
+
         // Verify both squads exist and have 15 starting players
         const squads = await app.db.query.matchSquads.findMany({
           where: eq(schema.matchSquads.fixtureId, fixtureId),
@@ -144,6 +188,16 @@ export function registerMatchStateRoutes(app: App) {
       if (!session) return;
 
       const { fixtureId } = request.params;
+
+      // Validate fixtureId is a valid UUID
+      if (!isValidUUID(fixtureId)) {
+        app.logger.warn({ userId: session.user.id, fixtureId }, 'Invalid fixtureId format');
+        return reply.status(400).send({
+          error: 'Invalid fixtureId',
+          message: 'fixtureId must be a valid UUID',
+        });
+      }
+
       const { status, homeGoals, homePoints, awayGoals, awayPoints, matchClock, half } =
         request.body;
 
@@ -197,6 +251,16 @@ export function registerMatchStateRoutes(app: App) {
       if (!session) return;
 
       const { fixtureId } = request.params;
+
+      // Validate fixtureId is a valid UUID
+      if (!isValidUUID(fixtureId)) {
+        app.logger.warn({ userId: session.user.id, fixtureId }, 'Invalid fixtureId format');
+        return reply.status(400).send({
+          error: 'Invalid fixtureId',
+          message: 'fixtureId must be a valid UUID',
+        });
+      }
+
       app.logger.info({ userId: session.user.id, fixtureId }, 'Completing match');
 
       try {
@@ -242,6 +306,16 @@ export function registerMatchStateRoutes(app: App) {
       if (!session) return;
 
       const { fixtureId } = request.params;
+
+      // Validate fixtureId is a valid UUID
+      if (!isValidUUID(fixtureId)) {
+        app.logger.warn({ userId: session.user.id, fixtureId }, 'Invalid fixtureId format');
+        return reply.status(400).send({
+          error: 'Invalid fixtureId',
+          message: 'fixtureId must be a valid UUID',
+        });
+      }
+
       app.logger.info({ userId: session.user.id, fixtureId }, 'Fetching match summary');
 
       try {
