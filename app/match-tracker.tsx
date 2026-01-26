@@ -35,8 +35,9 @@ const getIconForEvent = (eventName: string): { ios: string; android: string } =>
 };
 
 export default function MatchTrackerScreen() {
-  const params = useLocalSearchParams();
+  const params = useLocalSearchParams<{ fixtureId?: string }>();
   const router = useRouter();
+  const fixtureId = params.fixtureId;
   const networkState = useNetworkState();
   const { addToQueue, hasQueuedEvents, queuedEvents, syncQueue, isSyncing } = useOfflineSync();
 
@@ -50,14 +51,25 @@ export default function MatchTrackerScreen() {
   const [pendingEvent, setPendingEvent] = useState<Partial<MatchEvent> | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [loadingPlayers, setLoadingPlayers] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [fixture, setFixture] = useState<any>(null);
 
   // Fetch fixture and players
   useEffect(() => {
+    console.log('[MatchTracker] Component mounted, fixtureId:', fixtureId);
+    
+    // Validate fixtureId exists
+    if (!fixtureId) {
+      console.error('[MatchTracker] ERROR: fixtureId is missing from route params!');
+      setError('No fixture selected');
+      setLoadingPlayers(false);
+      return;
+    }
+    
     const fetchData = async () => {
       try {
         setLoadingPlayers(true);
-        const fixtureId = params.fixtureId as string;
+        setError(null);
         
         if (!fixtureId) {
           console.warn('[MatchTracker] No fixtureId provided, using mock data');
@@ -106,7 +118,7 @@ export default function MatchTrackerScreen() {
     };
     
     fetchData();
-  }, [params.fixtureId]);
+  }, [fixtureId]);
 
   // Match clock timer
   useEffect(() => {
@@ -196,6 +208,41 @@ export default function MatchTrackerScreen() {
   };
 
   const currentPreset = EVENT_PRESETS.find(p => p.category === selectedCategory);
+
+  // Show error screen if fixtureId is missing
+  if (!fixtureId) {
+    return (
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Match Tracker',
+            headerBackTitle: 'Back',
+          }}
+        />
+        <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 24, gap: 16 }]}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="error"
+            size={48}
+            color="#FF0000"
+          />
+          <Text style={{ fontSize: 20, fontWeight: 'bold', color: colors.text, textAlign: 'center' }}>
+            No Fixture Selected
+          </Text>
+          <Text style={{ fontSize: 16, color: colors.textSecondary, textAlign: 'center' }}>
+            Please select a fixture before accessing the match tracker.
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: '#FF0000', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8, marginTop: 8 }}
+            onPress={() => router.back()}
+          >
+            <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '600' }}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (loadingPlayers) {
     return (

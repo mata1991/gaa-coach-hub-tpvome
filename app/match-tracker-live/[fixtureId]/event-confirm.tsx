@@ -6,7 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
+  Modal,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +15,7 @@ import { authenticatedGet, authenticatedPost, authenticatedPut } from '@/utils/a
 import { MatchState, MatchEvent, TeamSide } from '@/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNetworkState } from 'expo-network';
+import { IconSymbol } from '@/components/IconSymbol';
 
 const styles = StyleSheet.create({
   container: {
@@ -76,44 +77,161 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+    gap: 16,
+  },
+  errorIcon: {
+    marginBottom: 8,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  errorButton: {
+    backgroundColor: '#FF0000',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  errorButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 24,
+    width: '80%',
+    maxWidth: 400,
+    gap: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  modalButton: {
+    backgroundColor: '#FF0000',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });
 
 export default function EventConfirmScreen() {
-  const params = useLocalSearchParams();
+  const params = useLocalSearchParams<{
+    fixtureId?: string;
+    eventType?: string;
+    eventCategory?: string;
+    side?: string;
+    playerId?: string;
+    playerName?: string;
+  }>();
   const router = useRouter();
-  const fixtureId = params.fixtureId as string;
-  const eventType = params.eventType as string;
-  const eventCategory = params.eventCategory as string;
+  
+  const fixtureId = params.fixtureId;
+  const eventType = params.eventType;
+  const eventCategory = params.eventCategory;
   const side = params.side as TeamSide;
-  const playerId = params.playerId as string;
-  const playerName = params.playerName as string;
+  const playerId = params.playerId;
+  const playerName = params.playerName;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showErrorModal, setShowErrorModal] = useState(false);
   const [matchState, setMatchState] = useState<MatchState | null>(null);
 
   const networkState = useNetworkState();
 
   useEffect(() => {
+    console.log('[EventConfirm] Component mounted, fixtureId:', fixtureId);
+    
+    // Validate fixtureId exists
+    if (!fixtureId) {
+      console.error('[EventConfirm] ERROR: fixtureId is missing from route params!');
+      setError('No fixture selected');
+      setLoading(false);
+      return;
+    }
+
     fetchData();
   }, [fixtureId]);
 
   const fetchData = async () => {
-    console.log('[EventConfirm] Fetching match state');
+    console.log('[EventConfirm] Fetching match state for fixtureId:', fixtureId);
+    
+    // Double-check fixtureId before making API calls
+    if (!fixtureId) {
+      console.error('[EventConfirm] Cannot fetch data: fixtureId is undefined');
+      setError('No fixture selected');
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
+      setError(null);
+
       const stateResponse = await authenticatedGet(`/api/fixtures/${fixtureId}/match-state`);
+      console.log('[EventConfirm] Match state fetched:', stateResponse);
       setMatchState(stateResponse);
-    } catch (error) {
+    } catch (error: any) {
       console.error('[EventConfirm] Error fetching match state:', error);
-      Alert.alert('Error', 'Failed to load match state');
+      console.error('[EventConfirm] Error message:', error?.message);
+      console.error('[EventConfirm] Error status:', error?.status);
+      
+      const errorMessage = error?.message || 'Failed to load match state';
+      setError(errorMessage);
+      setShowErrorModal(true);
     } finally {
       setLoading(false);
     }
   };
 
   const handleConfirm = async () => {
-    if (!matchState) return;
+    if (!matchState) {
+      console.error('[EventConfirm] Cannot confirm: matchState is null');
+      return;
+    }
+
+    if (!fixtureId) {
+      console.error('[EventConfirm] Cannot confirm: fixtureId is undefined');
+      setError('No fixture selected');
+      setShowErrorModal(true);
+      return;
+    }
 
     console.log('[EventConfirm] User confirmed event:', eventType);
     setSaving(true);
@@ -126,7 +244,7 @@ export default function EventConfirmScreen() {
         playerId: playerId || undefined as any,
         side,
         timestamp: matchState.matchClock,
-        eventType,
+        eventType: eventType || '',
         eventCategory: eventCategory as any,
         half: currentHalf,
         clientId: `${Date.now()}_${Math.random()}`,
@@ -160,21 +278,56 @@ export default function EventConfirmScreen() {
       const displayPlayer = playerName === 'Skipped' ? 'Skipped' : playerName;
       const toastMessage = `Recorded: ${side} ${eventType} (${displayPlayer})`;
       
-      Alert.alert('Event Recorded', toastMessage, [
-        {
-          text: 'OK',
-          onPress: () => {
-            router.back();
-            router.back();
-          },
-        },
-      ]);
-    } catch (error) {
+      console.log('[EventConfirm] Event saved successfully, navigating back');
+      router.back();
+      router.back();
+    } catch (error: any) {
       console.error('[EventConfirm] Error saving event:', error);
-      Alert.alert('Error', 'Failed to save event');
+      console.error('[EventConfirm] Error message:', error?.message);
+      
+      const errorMessage = error?.message || 'Failed to save event';
+      setError(errorMessage);
+      setShowErrorModal(true);
       setSaving(false);
     }
   };
+
+  const handleBackToFixtures = () => {
+    console.log('[EventConfirm] User tapped Back to Fixtures');
+    router.back();
+    router.back();
+  };
+
+  const handleRetry = () => {
+    console.log('[EventConfirm] User tapped Retry');
+    setShowErrorModal(false);
+    fetchData();
+  };
+
+  // Show error screen if fixtureId is missing
+  if (!fixtureId) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ title: 'Confirm Event', headerShown: true }} />
+        <View style={styles.errorContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="error"
+            size={48}
+            color="#FF0000"
+            style={styles.errorIcon}
+          />
+          <Text style={styles.errorTitle}>No Fixture Selected</Text>
+          <Text style={styles.errorMessage}>
+            Please select a fixture before confirming events.
+          </Text>
+          <TouchableOpacity style={styles.errorButton} onPress={handleBackToFixtures}>
+            <Text style={styles.errorButtonText}>Back to Fixtures</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (loading) {
     return (
@@ -182,12 +335,13 @@ export default function EventConfirmScreen() {
         <Stack.Screen options={{ title: 'Confirm Event', headerShown: true }} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={{ marginTop: 12, color: colors.textSecondary }}>Loading match state...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  const displayPlayer = playerName === 'Skipped' ? 'Skipped' : playerName;
+  const displayPlayer = playerName === 'Skipped' ? 'Skipped' : playerName || 'Unknown';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -199,11 +353,11 @@ export default function EventConfirmScreen() {
         <View style={styles.summaryCard}>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Event:</Text>
-            <Text style={styles.summaryValue}>{eventType}</Text>
+            <Text style={styles.summaryValue}>{eventType || 'Unknown'}</Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Team:</Text>
-            <Text style={styles.summaryValue}>{side}</Text>
+            <Text style={styles.summaryValue}>{side || 'Unknown'}</Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Player:</Text>
@@ -223,6 +377,35 @@ export default function EventConfirmScreen() {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Error Modal */}
+      <Modal
+        visible={showErrorModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowErrorModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Error</Text>
+            <Text style={styles.modalMessage}>
+              {error || 'An error occurred. Please try again.'}
+            </Text>
+            <TouchableOpacity style={styles.modalButton} onPress={handleRetry}>
+              <Text style={styles.modalButtonText}>Retry</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: '#666' }]}
+              onPress={() => {
+                setShowErrorModal(false);
+                router.back();
+              }}
+            >
+              <Text style={styles.modalButtonText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

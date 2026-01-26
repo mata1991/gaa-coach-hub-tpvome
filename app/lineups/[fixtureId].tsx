@@ -389,12 +389,13 @@ const styles = StyleSheet.create({
 });
 
 export default function LineupsScreen() {
-  const params = useLocalSearchParams();
+  const params = useLocalSearchParams<{ fixtureId?: string }>();
   const router = useRouter();
-  const fixtureId = params.fixtureId as string;
+  const fixtureId = params.fixtureId;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [selectedSide, setSelectedSide] = useState<TeamSide>('HOME');
   const [fixture, setFixture] = useState<Fixture | null>(null);
   const [homeSquad, setHomeSquad] = useState<MatchSquad | null>(null);
@@ -410,13 +411,33 @@ export default function LineupsScreen() {
   const [editJerseyNumber, setEditJerseyNumber] = useState('');
 
   useEffect(() => {
+    console.log('[Lineups] Component mounted, fixtureId:', fixtureId);
+    
+    // Validate fixtureId exists
+    if (!fixtureId) {
+      console.error('[Lineups] ERROR: fixtureId is missing from route params!');
+      setError('No fixture selected');
+      setLoading(false);
+      return;
+    }
+    
     fetchData();
   }, [fixtureId]);
 
   const fetchData = async () => {
     console.log('[Lineups] Fetching lineups data for fixture:', fixtureId);
+    
+    // Double-check fixtureId before making API calls
+    if (!fixtureId) {
+      console.error('[Lineups] Cannot fetch data: fixtureId is undefined');
+      setError('No fixture selected');
+      setLoading(false);
+      return;
+    }
+    
     try {
       setLoading(true);
+      setError(null);
 
       const fixtureResponse = await authenticatedGet(`/api/fixtures/${fixtureId}`);
       console.log('[Lineups] Fixture data:', fixtureResponse);
@@ -1069,12 +1090,42 @@ export default function LineupsScreen() {
     );
   };
 
+  // Show error screen if fixtureId is missing
+  if (!fixtureId) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ title: 'Team Line Out', headerShown: true }} />
+        <View style={styles.loadingContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="error"
+            size={48}
+            color="#FF0000"
+          />
+          <Text style={{ fontSize: 20, fontWeight: 'bold', color: colors.text, marginTop: 16, textAlign: 'center' }}>
+            No Fixture Selected
+          </Text>
+          <Text style={{ fontSize: 16, color: colors.textSecondary, marginTop: 8, textAlign: 'center', paddingHorizontal: 24 }}>
+            Please select a fixture before accessing the team line out.
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: '#FF0000', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8, marginTop: 16 }}
+            onPress={() => router.back()}
+          >
+            <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '600' }}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
         <Stack.Screen options={{ title: 'Lineups', headerShown: true }} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={{ marginTop: 12, color: colors.textSecondary }}>Loading lineup data...</Text>
         </View>
       </SafeAreaView>
     );

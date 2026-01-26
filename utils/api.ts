@@ -1,3 +1,4 @@
+
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
@@ -44,6 +45,22 @@ export const getBearerToken = async (): Promise<string | null> => {
 };
 
 /**
+ * Validate fixtureId parameter
+ * Throws an error if fixtureId is undefined, null, or 'undefined' string
+ * 
+ * @param fixtureId - The fixture ID to validate
+ * @param context - Context for error message (e.g., 'match-state', 'squads')
+ * @throws Error if fixtureId is invalid
+ */
+const validateFixtureId = (fixtureId: string | undefined, context: string): void => {
+  if (!fixtureId || fixtureId === 'undefined' || fixtureId === 'null') {
+    const error = new Error(`[API] Invalid fixtureId for ${context}: fixtureId is ${fixtureId}. Cannot make API request.`);
+    console.error(error.message);
+    throw error;
+  }
+};
+
+/**
  * Generic API call helper with error handling
  *
  * @param endpoint - API endpoint path (e.g., '/users', '/auth/login')
@@ -57,6 +74,14 @@ export const apiCall = async <T = any>(
 ): Promise<T> => {
   if (!isBackendConfigured()) {
     throw new Error("Backend URL not configured. Please rebuild the app.");
+  }
+
+  // Validate fixtureId in endpoint if present
+  const fixtureIdMatch = endpoint.match(/\/fixtures\/([^\/]+)\//);
+  if (fixtureIdMatch) {
+    const fixtureId = fixtureIdMatch[1];
+    const context = endpoint.split('/').pop() || 'unknown';
+    validateFixtureId(fixtureId, context);
   }
 
   const method = options?.method || "GET";
