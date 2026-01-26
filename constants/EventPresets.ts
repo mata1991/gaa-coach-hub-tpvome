@@ -33,11 +33,19 @@ export const EVENT_PRESETS: EventPreset[] = [
       { name: 'Goal', requiresOutcome: false },
       { name: 'Point', requiresOutcome: false },
       { name: 'Wide', requiresOutcome: false },
+      { name: 'Free Converted', requiresOutcome: false },
+      { name: 'Free Missed', requiresOutcome: false },
+    ],
+  },
+  {
+    category: 'Shot Attempts',
+    types: [
       { name: 'Saved', requiresOutcome: false },
       { name: 'Dropped Short', requiresOutcome: false },
       { name: 'Blocked', requiresOutcome: false },
-      { name: 'Free Converted', requiresOutcome: false },
-      { name: 'Free Missed', requiresOutcome: false },
+      { name: '45 Won', requiresOutcome: false },
+      { name: '65 Won', requiresOutcome: false },
+      { name: 'Possession Lost', requiresOutcome: false },
     ],
   },
   {

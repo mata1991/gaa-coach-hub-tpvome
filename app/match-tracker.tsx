@@ -20,6 +20,20 @@ import { EVENT_PRESETS, PITCH_ZONES } from '@/constants/EventPresets';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { useNetworkState } from 'expo-network';
 
+// Helper function to get icons for events
+const getIconForEvent = (eventName: string): { ios: string; android: string } => {
+  const iconMap: Record<string, { ios: string; android: string }> = {
+    'Saved': { ios: 'shield.fill', android: 'shield' },
+    'Dropped Short': { ios: 'arrow.down', android: 'arrow-downward' },
+    'Blocked': { ios: 'xmark', android: 'close' },
+    '45 Won': { ios: 'flag.fill', android: 'flag' },
+    '65 Won': { ios: 'flag', android: 'outlined-flag' },
+    'Possession Lost': { ios: 'arrow.counterclockwise', android: 'refresh' },
+  };
+  
+  return iconMap[eventName] || { ios: 'circle', android: 'circle' };
+};
+
 export default function MatchTrackerScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
@@ -329,17 +343,35 @@ export default function MatchTrackerScreen() {
 
       {/* Event buttons */}
       <ScrollView style={styles.eventsContainer} contentContainerStyle={styles.eventsContent}>
-        <View style={styles.eventGrid}>
-          {currentPreset?.types.map((type) => (
-            <TouchableOpacity
-              key={type.name}
-              style={styles.eventButton}
-              onPress={() => handleEventPress(type.name, selectedCategory)}
-              disabled={!selectedPlayer}
-            >
-              <Text style={styles.eventButtonText}>{type.name}</Text>
-            </TouchableOpacity>
-          ))}
+        {selectedCategory === 'Shot Attempts' && (
+          <Text style={styles.sectionHeader}>Shot Attempts</Text>
+        )}
+        <View style={selectedCategory === 'Shot Attempts' ? styles.grid : styles.eventGrid}>
+          {currentPreset?.types.map((type) => {
+            const iconName = getIconForEvent(type.name);
+            const isCompactLayout = selectedCategory === 'Shot Attempts';
+            
+            return (
+              <TouchableOpacity
+                key={type.name}
+                style={isCompactLayout ? styles.compactEventButton : styles.eventButton}
+                onPress={() => handleEventPress(type.name, selectedCategory)}
+                disabled={!selectedPlayer}
+              >
+                {isCompactLayout && (
+                  <IconSymbol
+                    ios_icon_name={iconName.ios}
+                    android_material_icon_name={iconName.android}
+                    size={18}
+                    color="#fff"
+                  />
+                )}
+                <Text style={isCompactLayout ? styles.compactEventText : styles.eventButtonText}>
+                  {type.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* Recent events */}
@@ -554,6 +586,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 100,
   },
+  sectionHeader: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginVertical: 8,
+    color: colors.text,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
   eventGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -574,6 +617,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  compactEventButton: {
+    width: '48%',
+    height: 48,
+    marginBottom: 8,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: 'red',
+    backgroundColor: '#000',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  compactEventText: {
+    fontSize: 13,
+    color: '#fff',
   },
   recentEvents: {
     marginTop: 24,
