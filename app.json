@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "GAA Coach Hub",
@@ -36,7 +37,7 @@
       "expo-router",
       "expo-web-browser"
     ],
-    "scheme": "natively",
+    "scheme": "GAA Coach Hub",
     "experiments": {
       "typedRoutes": true
     },
@@ -44,6 +45,5 @@
       "router": {},
       "backendUrl": "https://8wja63artu7vtupgg8ypqsaw65kcpgay.app.specular.dev"
     }
-  },
-  "scheme": "GAA Coach Hub"
+  }
 }
