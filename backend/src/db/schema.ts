@@ -80,6 +80,8 @@ export const teams = pgTable('teams', {
   ageGroup: text('age_group'),
   homeVenue: text('home_venue'),
   crestUrl: text('crest_url'),
+  crestImageUrl: text('crest_image_url'),
+  jerseyImageUrl: text('jersey_image_url'),
   colours: text('colours'),
   ageGrade: text('age_grade'),
   level: text('level'),

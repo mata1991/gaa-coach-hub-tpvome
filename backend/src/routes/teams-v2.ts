@@ -624,4 +624,286 @@ export function registerTeamsV2Routes(app: App) {
       }
     }
   );
+
+  // POST /api/teams/:teamId/crest - Upload team crest image
+  app.fastify.post(
+    '/api/teams/:teamId/crest',
+    async (request: FastifyRequest<{ Params: { teamId: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { teamId } = request.params;
+      app.logger.info({ userId: session.user.id, teamId }, 'Uploading team crest');
+
+      try {
+        // Verify team exists
+        const team = await app.db.query.teams.findFirst({
+          where: eq(schema.teams.id, teamId),
+          with: {
+            club: true,
+          },
+        });
+
+        if (!team) {
+          app.logger.warn({ teamId }, 'Team not found');
+          return reply.status(404).send({ error: 'Team not found' });
+        }
+
+        // Check permissions: user must be COACH or CLUB_ADMIN
+        const membership = await app.db.query.memberships.findFirst({
+          where: and(
+            eq(schema.memberships.clubId, team.clubId),
+            eq(schema.memberships.userId, session.user.id)
+          ),
+        });
+
+        if (!membership || !['COACH', 'CLUB_ADMIN'].includes(membership.role)) {
+          app.logger.warn({ teamId, userId: session.user.id }, 'Unauthorized crest upload');
+          return reply.status(403).send({ error: 'Only COACH or CLUB_ADMIN can upload team crest' });
+        }
+
+        // Get the file from the request with 5MB size limit
+        const data = await request.file({
+          limits: { fileSize: 5 * 1024 * 1024 },
+        });
+
+        if (!data) {
+          app.logger.warn({ userId: session.user.id, teamId }, 'No file provided');
+          return reply.status(400).send({ error: 'No file provided' });
+        }
+
+        // Validate file type - only jpg, jpeg, png, webp
+        const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowedMimeTypes.includes(data.mimetype)) {
+          app.logger.warn({ userId: session.user.id, teamId, mimeType: data.mimetype }, 'Invalid file type');
+          return reply.status(400).send({ error: 'Only JPG, PNG, and WebP images are allowed' });
+        }
+
+        let buffer: Buffer;
+        try {
+          buffer = await data.toBuffer();
+        } catch (err) {
+          app.logger.error({ err, userId: session.user.id, teamId }, 'File size limit exceeded');
+          return reply.status(413).send({ error: 'File too large. Maximum size is 5MB' });
+        }
+
+        // Generate a unique key for the file
+        const timestamp = Date.now();
+        const randomSuffix = Math.random().toString(36).substring(2, 8);
+        const key = `teams/${teamId}/crest/${timestamp}-${randomSuffix}-${data.filename}`;
+
+        // Upload the file to storage
+        const uploadedKey = await app.storage.upload(key, buffer);
+
+        // Generate a signed URL for client access
+        const { url } = await app.storage.getSignedUrl(uploadedKey);
+
+        // Update team with new crest URL
+        const [updated] = await app.db
+          .update(schema.teams)
+          .set({ crestImageUrl: url })
+          .where(eq(schema.teams.id, teamId))
+          .returning();
+
+        app.logger.info({ teamId, url }, 'Team crest uploaded successfully');
+        return { crestImageUrl: updated.crestImageUrl };
+      } catch (error) {
+        app.logger.error({ err: error, teamId }, 'Failed to upload team crest');
+        throw error;
+      }
+    }
+  );
+
+  // POST /api/teams/:teamId/jersey - Upload team jersey image
+  app.fastify.post(
+    '/api/teams/:teamId/jersey',
+    async (request: FastifyRequest<{ Params: { teamId: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { teamId } = request.params;
+      app.logger.info({ userId: session.user.id, teamId }, 'Uploading team jersey');
+
+      try {
+        // Verify team exists
+        const team = await app.db.query.teams.findFirst({
+          where: eq(schema.teams.id, teamId),
+          with: {
+            club: true,
+          },
+        });
+
+        if (!team) {
+          app.logger.warn({ teamId }, 'Team not found');
+          return reply.status(404).send({ error: 'Team not found' });
+        }
+
+        // Check permissions: user must be COACH or CLUB_ADMIN
+        const membership = await app.db.query.memberships.findFirst({
+          where: and(
+            eq(schema.memberships.clubId, team.clubId),
+            eq(schema.memberships.userId, session.user.id)
+          ),
+        });
+
+        if (!membership || !['COACH', 'CLUB_ADMIN'].includes(membership.role)) {
+          app.logger.warn({ teamId, userId: session.user.id }, 'Unauthorized jersey upload');
+          return reply.status(403).send({ error: 'Only COACH or CLUB_ADMIN can upload team jersey' });
+        }
+
+        // Get the file from the request with 5MB size limit
+        const data = await request.file({
+          limits: { fileSize: 5 * 1024 * 1024 },
+        });
+
+        if (!data) {
+          app.logger.warn({ userId: session.user.id, teamId }, 'No file provided');
+          return reply.status(400).send({ error: 'No file provided' });
+        }
+
+        // Validate file type - only jpg, jpeg, png, webp
+        const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowedMimeTypes.includes(data.mimetype)) {
+          app.logger.warn({ userId: session.user.id, teamId, mimeType: data.mimetype }, 'Invalid file type');
+          return reply.status(400).send({ error: 'Only JPG, PNG, and WebP images are allowed' });
+        }
+
+        let buffer: Buffer;
+        try {
+          buffer = await data.toBuffer();
+        } catch (err) {
+          app.logger.error({ err, userId: session.user.id, teamId }, 'File size limit exceeded');
+          return reply.status(413).send({ error: 'File too large. Maximum size is 5MB' });
+        }
+
+        // Generate a unique key for the file
+        const timestamp = Date.now();
+        const randomSuffix = Math.random().toString(36).substring(2, 8);
+        const key = `teams/${teamId}/jersey/${timestamp}-${randomSuffix}-${data.filename}`;
+
+        // Upload the file to storage
+        const uploadedKey = await app.storage.upload(key, buffer);
+
+        // Generate a signed URL for client access
+        const { url } = await app.storage.getSignedUrl(uploadedKey);
+
+        // Update team with new jersey URL
+        const [updated] = await app.db
+          .update(schema.teams)
+          .set({ jerseyImageUrl: url })
+          .where(eq(schema.teams.id, teamId))
+          .returning();
+
+        app.logger.info({ teamId, url }, 'Team jersey uploaded successfully');
+        return { jerseyImageUrl: updated.jerseyImageUrl };
+      } catch (error) {
+        app.logger.error({ err: error, teamId }, 'Failed to upload team jersey');
+        throw error;
+      }
+    }
+  );
+
+  // DELETE /api/teams/:teamId/crest - Remove team crest image
+  app.fastify.delete(
+    '/api/teams/:teamId/crest',
+    async (request: FastifyRequest<{ Params: { teamId: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { teamId } = request.params;
+      app.logger.info({ userId: session.user.id, teamId }, 'Removing team crest');
+
+      try {
+        // Verify team exists and get club info
+        const team = await app.db.query.teams.findFirst({
+          where: eq(schema.teams.id, teamId),
+          with: {
+            club: true,
+          },
+        });
+
+        if (!team) {
+          app.logger.warn({ teamId }, 'Team not found');
+          return reply.status(404).send({ error: 'Team not found' });
+        }
+
+        // Check permissions: user must be COACH or CLUB_ADMIN
+        const membership = await app.db.query.memberships.findFirst({
+          where: and(
+            eq(schema.memberships.clubId, team.clubId),
+            eq(schema.memberships.userId, session.user.id)
+          ),
+        });
+
+        if (!membership || !['COACH', 'CLUB_ADMIN'].includes(membership.role)) {
+          app.logger.warn({ teamId, userId: session.user.id }, 'Unauthorized crest deletion');
+          return reply.status(403).send({ error: 'Only COACH or CLUB_ADMIN can delete team crest' });
+        }
+
+        // Remove crest URL
+        await app.db
+          .update(schema.teams)
+          .set({ crestImageUrl: null })
+          .where(eq(schema.teams.id, teamId));
+
+        app.logger.info({ teamId }, 'Team crest removed successfully');
+        return { success: true };
+      } catch (error) {
+        app.logger.error({ err: error, teamId }, 'Failed to remove team crest');
+        throw error;
+      }
+    }
+  );
+
+  // DELETE /api/teams/:teamId/jersey - Remove team jersey image
+  app.fastify.delete(
+    '/api/teams/:teamId/jersey',
+    async (request: FastifyRequest<{ Params: { teamId: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { teamId } = request.params;
+      app.logger.info({ userId: session.user.id, teamId }, 'Removing team jersey');
+
+      try {
+        // Verify team exists and get club info
+        const team = await app.db.query.teams.findFirst({
+          where: eq(schema.teams.id, teamId),
+          with: {
+            club: true,
+          },
+        });
+
+        if (!team) {
+          app.logger.warn({ teamId }, 'Team not found');
+          return reply.status(404).send({ error: 'Team not found' });
+        }
+
+        // Check permissions: user must be COACH or CLUB_ADMIN
+        const membership = await app.db.query.memberships.findFirst({
+          where: and(
+            eq(schema.memberships.clubId, team.clubId),
+            eq(schema.memberships.userId, session.user.id)
+          ),
+        });
+
+        if (!membership || !['COACH', 'CLUB_ADMIN'].includes(membership.role)) {
+          app.logger.warn({ teamId, userId: session.user.id }, 'Unauthorized jersey deletion');
+          return reply.status(403).send({ error: 'Only COACH or CLUB_ADMIN can delete team jersey' });
+        }
+
+        // Remove jersey URL
+        await app.db
+          .update(schema.teams)
+          .set({ jerseyImageUrl: null })
+          .where(eq(schema.teams.id, teamId));
+
+        app.logger.info({ teamId }, 'Team jersey removed successfully');
+        return { success: true };
+      } catch (error) {
+        app.logger.error({ err: error, teamId }, 'Failed to remove team jersey');
+        throw error;
+      }
+    }
+  );
 }
