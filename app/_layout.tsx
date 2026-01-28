@@ -1,12 +1,12 @@
 
 import "react-native-reanimated";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { useColorScheme, Alert } from "react-native";
+import { useColorScheme, View, Text, StyleSheet, Modal, TouchableOpacity } from "react-native";
 import { useNetworkState } from "expo-network";
 import {
   DarkTheme,
@@ -37,6 +37,7 @@ export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
+  const [showOfflineModal, setShowOfflineModal] = useState(false);
 
   useEffect(() => {
     if (loaded) {
@@ -49,10 +50,7 @@ export default function RootLayout() {
       !networkState.isConnected &&
       networkState.isInternetReachable === false
     ) {
-      Alert.alert(
-        "🔌 You are offline",
-        "You can keep using the app! Your changes will be saved locally and synced when you are back online."
-      );
+      setShowOfflineModal(true);
     }
   }, [networkState.isConnected, networkState.isInternetReachable]);
 
@@ -123,6 +121,69 @@ export default function RootLayout() {
             </AuthProvider>
           </CustomThemeProvider>
         </ThemeProvider>
+
+        {/* Offline Modal */}
+        <Modal
+          visible={showOfflineModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowOfflineModal(false)}
+        >
+          <View style={layoutStyles.modalOverlay}>
+            <View style={layoutStyles.offlineModal}>
+              <Text style={layoutStyles.offlineTitle}>🔌 You are offline</Text>
+              <Text style={layoutStyles.offlineMessage}>
+                You can keep using the app! Your changes will be saved locally and synced when you are back online.
+              </Text>
+              <TouchableOpacity
+                style={layoutStyles.offlineButton}
+                onPress={() => setShowOfflineModal(false)}
+              >
+                <Text style={layoutStyles.offlineButtonText}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
     </>
   );
 }
+
+const layoutStyles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  offlineModal: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
+    gap: 16,
+  },
+  offlineTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#000",
+    textAlign: "center",
+  },
+  offlineMessage: {
+    fontSize: 16,
+    color: "#666",
+    textAlign: "center",
+  },
+  offlineButton: {
+    backgroundColor: "#007AFF",
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  offlineButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+});

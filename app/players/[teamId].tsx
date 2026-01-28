@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Alert,
   TextInput,
   Modal,
 } from 'react-native';
@@ -54,6 +53,21 @@ export default function PlayersListScreen() {
   const [dominantSide, setDominantSide] = useState<'left' | 'right' | ''>('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  
+  // Custom modal state
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmModalConfig, setConfirmModalConfig] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmText?: string;
+    confirmStyle?: 'default' | 'destructive';
+  } | null>(null);
+  const [showAlertModal, setShowAlertModal] = useState(false);
+  const [alertModalConfig, setAlertModalConfig] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
 
   console.log('PlayersListScreen: Rendering players list', { teamId, filter, playerCount: players.length });
 
@@ -117,11 +131,27 @@ export default function PlayersListScreen() {
     setShowAddModal(true);
   };
 
+  const showAlert = (title: string, message: string) => {
+    setAlertModalConfig({ title, message });
+    setShowAlertModal(true);
+  };
+
+  const showConfirm = (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    confirmText: string = 'Confirm',
+    confirmStyle: 'default' | 'destructive' = 'default'
+  ) => {
+    setConfirmModalConfig({ title, message, onConfirm, confirmText, confirmStyle });
+    setShowConfirmModal(true);
+  };
+
   const handleSavePlayer = async () => {
     console.log('PlayersListScreen: User tapped Save Player');
 
     if (!name.trim()) {
-      Alert.alert('Validation Error', 'Player name is required');
+      showAlert('Validation Error', 'Player name is required');
       return;
     }
 
@@ -139,18 +169,18 @@ export default function PlayersListScreen() {
       if (editingPlayer) {
         console.log('PlayersListScreen: Updating player:', editingPlayer.id, payload);
         await authenticatedPut(`/api/players/${editingPlayer.id}`, payload);
-        Alert.alert('Success', 'Player updated');
+        showAlert('Success', 'Player updated');
       } else {
         console.log('PlayersListScreen: Creating new player:', payload);
         await authenticatedPost('/api/players', payload);
-        Alert.alert('Success', 'Player added');
+        showAlert('Success', 'Player added');
       }
 
       setShowAddModal(false);
       fetchPlayers();
     } catch (err) {
       console.error('PlayersListScreen: Failed to save player:', err);
-      Alert.alert('Error', 'Failed to save player');
+      showAlert('Error', 'Failed to save player');
     } finally {
       setSaving(false);
     }
@@ -159,27 +189,22 @@ export default function PlayersListScreen() {
   const handleDeletePlayer = (player: Player) => {
     console.log('PlayersListScreen: User tapped Delete Player:', player.name);
     
-    Alert.alert(
+    showConfirm(
       'Delete Player',
       `Are you sure you want to delete ${player.name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('PlayersListScreen: Deleting player:', player.id);
-              await authenticatedDelete(`/api/players/${player.id}`);
-              Alert.alert('Success', 'Player deleted');
-              fetchPlayers();
-            } catch (err) {
-              console.error('PlayersListScreen: Failed to delete player:', err);
-              Alert.alert('Error', 'Failed to delete player');
-            }
-          },
-        },
-      ]
+      async () => {
+        try {
+          console.log('PlayersListScreen: Deleting player:', player.id);
+          await authenticatedDelete(`/api/players/${player.id}`);
+          showAlert('Success', 'Player deleted');
+          fetchPlayers();
+        } catch (err) {
+          console.error('PlayersListScreen: Failed to delete player:', err);
+          showAlert('Error', 'Failed to delete player');
+        }
+      },
+      'Delete',
+      'destructive'
     );
   };
 
@@ -221,7 +246,7 @@ export default function PlayersListScreen() {
       fetchPlayers();
     } catch (err) {
       console.error('PlayersListScreen: Failed to reorder players:', err);
-      Alert.alert('Error', 'Failed to update order');
+      showAlert('Error', 'Failed to update order');
       fetchPlayers(); // Revert on error
     }
   };
@@ -264,7 +289,7 @@ export default function PlayersListScreen() {
       fetchPlayers();
     } catch (err) {
       console.error('PlayersListScreen: Failed to reorder players:', err);
-      Alert.alert('Error', 'Failed to update order');
+      showAlert('Error', 'Failed to update order');
       fetchPlayers(); // Revert on error
     }
   };
@@ -275,7 +300,7 @@ export default function PlayersListScreen() {
     const newInjuredStatus = !player.isInjured;
     
     try {
-      // Optimistic update
+      // Optimistic update with immediate re-sort
       const updatedPlayers = players.map((p) =>
         p.id === player.id ? { ...p, isInjured: newInjuredStatus } : p
       );
@@ -287,19 +312,47 @@ export default function PlayersListScreen() {
       });
 
       console.log('PlayersListScreen: Player injured status updated successfully');
+      // Refetch to confirm backend state
+      fetchPlayers();
     } catch (err) {
       console.error('PlayersListScreen: Failed to update injured status:', err);
-      Alert.alert('Error', 'Failed to update injured status');
+      showAlert('Error', 'Failed to update injured status');
       fetchPlayers(); // Revert on error
     }
   };
 
+  const sortPlayers = (playersList: Player[]) => {
+    // Sort: non-injured first, then injured, preserving depthOrder and name within each group
+    return [...playersList].sort((a, b) => {
+      const aInjured = a.isInjured ? 1 : 0;
+      const bInjured = b.isInjured ? 1 : 0;
+      
+      if (aInjured !== bInjured) {
+        return aInjured - bInjured; // Non-injured (0) before injured (1)
+      }
+      
+      // Within same injury status, sort by depthOrder
+      const aDepth = a.depthOrder || 999;
+      const bDepth = b.depthOrder || 999;
+      
+      if (aDepth !== bDepth) {
+        return aDepth - bDepth;
+      }
+      
+      // Finally by name
+      return a.name.localeCompare(b.name);
+    });
+  };
+
   const getFilteredPlayers = () => {
+    let filtered: Player[];
     if (filter === 'ALL') {
-      return players;
+      filtered = players;
+    } else {
+      // Filter by primaryPositionGroup enum value
+      filtered = players.filter((p) => p.primaryPositionGroup === filter);
     }
-    // Filter by primaryPositionGroup enum value
-    return players.filter((p) => p.primaryPositionGroup === filter);
+    return sortPlayers(filtered);
   };
 
   const getGroupedPlayers = () => {
@@ -314,10 +367,10 @@ export default function PlayersListScreen() {
       }
     });
 
-    // Sort each group by depthOrder
+    // Sort each group with injury-aware sorting
     Object.keys(grouped).forEach((key) => {
       const posKey = key as PositionGroup;
-      grouped[posKey]!.sort((a, b) => (a.depthOrder || 0) - (b.depthOrder || 0));
+      grouped[posKey] = sortPlayers(grouped[posKey]!);
     });
 
     return grouped;
@@ -425,16 +478,9 @@ export default function PlayersListScreen() {
     const isInjured = player.isInjured || false;
 
     return (
-      <View key={player.id} style={[styles.playerCard, isInjured && styles.playerCardInjured]}>
+      <View key={player.id} style={styles.playerCard}>
         <View style={styles.playerInfo}>
-          <View style={styles.playerNameRow}>
-            <Text style={styles.playerName}>{player.name}</Text>
-            {isInjured && (
-              <View style={styles.injuredBadge}>
-                <Text style={styles.injuredBadgeText}>Injured</Text>
-              </View>
-            )}
-          </View>
+          <Text style={styles.playerName}>{player.name}</Text>
           <Text style={styles.playerPosition}>{positionLabel}</Text>
           {handednessText && (
             <Text style={styles.playerDetail}>{handednessText}</Text>
@@ -738,6 +784,64 @@ export default function PlayersListScreen() {
             </ScrollView>
           </SafeAreaView>
         </Modal>
+
+        {/* Custom Alert Modal */}
+        <Modal
+          visible={showAlertModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowAlertModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.alertModal}>
+              <Text style={styles.alertTitle}>{alertModalConfig?.title}</Text>
+              <Text style={styles.alertMessage}>{alertModalConfig?.message}</Text>
+              <TouchableOpacity
+                style={styles.alertButton}
+                onPress={() => setShowAlertModal(false)}
+              >
+                <Text style={styles.alertButtonText}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Custom Confirm Modal */}
+        <Modal
+          visible={showConfirmModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowConfirmModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.alertModal}>
+              <Text style={styles.alertTitle}>{confirmModalConfig?.title}</Text>
+              <Text style={styles.alertMessage}>{confirmModalConfig?.message}</Text>
+              <View style={styles.confirmButtons}>
+                <TouchableOpacity
+                  style={styles.confirmCancelButton}
+                  onPress={() => setShowConfirmModal(false)}
+                >
+                  <Text style={styles.confirmCancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.confirmActionButton,
+                    confirmModalConfig?.confirmStyle === 'destructive' && styles.confirmDestructiveButton,
+                  ]}
+                  onPress={() => {
+                    setShowConfirmModal(false);
+                    confirmModalConfig?.onConfirm();
+                  }}
+                >
+                  <Text style={styles.confirmActionButtonText}>
+                    {confirmModalConfig?.confirmText || 'Confirm'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </>
   );
@@ -870,35 +974,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
-  playerCardInjured: {
-    borderColor: '#dc3545',
-    borderWidth: 2,
-    backgroundColor: '#fff5f5',
-  },
   playerInfo: {
     flex: 1,
     gap: 4,
-  },
-  playerNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
   },
   playerName: {
     fontSize: 18,
     fontWeight: '600',
     color: '#000',
-  },
-  injuredBadge: {
-    backgroundColor: '#dc3545',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  injuredBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#fff',
   },
   playerPosition: {
     fontSize: 14,
@@ -1059,6 +1142,74 @@ const styles = StyleSheet.create({
   },
   segmentTextActive: {
     color: '#fff',
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  alertModal: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    gap: 16,
+  },
+  alertTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#000',
+    textAlign: 'center',
+  },
+  alertMessage: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+  },
+  alertButton: {
+    backgroundColor: '#000',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  alertButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  confirmButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  confirmCancelButton: {
+    flex: 1,
+    backgroundColor: '#f0f0f0',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  confirmCancelButtonText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  confirmActionButton: {
+    flex: 1,
+    backgroundColor: '#000',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  confirmDestructiveButton: {
+    backgroundColor: '#dc3545',
+  },
+  confirmActionButtonText: {
+    color: '#fff',
+    fontSize: 16,
     fontWeight: '600',
   },
 });

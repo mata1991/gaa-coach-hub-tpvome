@@ -6,10 +6,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   Platform,
   KeyboardAvoidingView,
   ScrollView,
+  Modal,
 } from "react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "expo-router";
@@ -26,6 +26,16 @@ export default function AuthScreen() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showAlertModal, setShowAlertModal] = useState(false);
+  const [alertModalConfig, setAlertModalConfig] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
+
+  const showAlert = (title: string, message: string) => {
+    setAlertModalConfig({ title, message });
+    setShowAlertModal(true);
+  };
 
   if (authLoading) {
     return (
@@ -37,7 +47,7 @@ export default function AuthScreen() {
 
   const handleEmailAuth = async () => {
     if (!email || !password) {
-      Alert.alert("Error", "Please enter email and password");
+      showAlert("Error", "Please enter email and password");
       return;
     }
 
@@ -48,14 +58,14 @@ export default function AuthScreen() {
         router.replace("/");
       } else {
         await signUpWithEmail(email, password, name);
-        Alert.alert(
+        showAlert(
           "Success",
           "Account created! Please check your email to verify your account."
         );
         router.replace("/");
       }
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Authentication failed");
+      showAlert("Error", error.message || "Authentication failed");
     } finally {
       setLoading(false);
     }
@@ -73,7 +83,7 @@ export default function AuthScreen() {
       }
       router.replace("/");
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Authentication failed");
+      showAlert("Error", error.message || "Authentication failed");
     } finally {
       setLoading(false);
     }
@@ -171,6 +181,27 @@ export default function AuthScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Custom Alert Modal */}
+      <Modal
+        visible={showAlertModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAlertModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.alertModal}>
+            <Text style={styles.alertTitle}>{alertModalConfig?.title}</Text>
+            <Text style={styles.alertMessage}>{alertModalConfig?.message}</Text>
+            <TouchableOpacity
+              style={styles.alertButton}
+              onPress={() => setShowAlertModal(false)}
+            >
+              <Text style={styles.alertButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -271,5 +302,42 @@ const styles = StyleSheet.create({
   },
   appleButtonText: {
     color: "#fff",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  alertModal: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
+    gap: 16,
+  },
+  alertTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#000",
+    textAlign: "center",
+  },
+  alertMessage: {
+    fontSize: 16,
+    color: "#666",
+    textAlign: "center",
+  },
+  alertButton: {
+    backgroundColor: "#007AFF",
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  alertButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

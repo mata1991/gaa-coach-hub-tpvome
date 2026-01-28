@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,10 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Alert,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { authenticatedGet } from '@/utils/api';
 import { Fixture } from '@/types';
@@ -21,20 +21,23 @@ export default function ReportsScreen() {
   
   const [loading, setLoading] = useState(true);
   const [completedFixtures, setCompletedFixtures] = useState<Fixture[]>([]);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   console.log('ReportsScreen: Rendering reports', { teamId });
 
-  const fetchCompletedFixtures = React.useCallback(async () => {
-    console.log('Fetching completed fixtures for team:', teamId);
+  const fetchCompletedFixtures = useCallback(async () => {
+    console.log('ReportsScreen: Fetching completed fixtures for team:', teamId);
     setLoading(true);
 
     try {
       const data = await authenticatedGet(`/api/fixtures?teamId=${teamId}&status=completed`);
-      console.log('Completed fixtures fetched:', data);
+      console.log('ReportsScreen: Completed fixtures fetched:', data);
       setCompletedFixtures(data);
     } catch (error) {
-      console.error('Failed to fetch completed fixtures:', error);
-      Alert.alert('Error', 'Failed to load completed fixtures');
+      console.error('ReportsScreen: Failed to fetch completed fixtures:', error);
+      setErrorMessage('Failed to load completed fixtures');
+      setShowErrorModal(true);
     } finally {
       setLoading(false);
     }
@@ -43,6 +46,14 @@ export default function ReportsScreen() {
   useEffect(() => {
     fetchCompletedFixtures();
   }, [fetchCompletedFixtures]);
+
+  // Auto-refresh on screen focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log('ReportsScreen: Screen focused, refreshing data');
+      fetchCompletedFixtures();
+    }, [fetchCompletedFixtures])
+  );
 
   const handleViewReport = (fixtureId: string) => {
     console.log('User tapped View Report for fixture:', fixtureId);
@@ -61,9 +72,17 @@ export default function ReportsScreen() {
   };
 
   const handleViewSeasonDashboard = () => {
-    console.log('User tapped View Season Dashboard');
+    console.log('ReportsScreen: User tapped View Season Dashboard');
     router.push({
       pathname: '/season-dashboard/[teamId]',
+      params: { teamId },
+    });
+  };
+
+  const handleViewTrainingReport = () => {
+    console.log('ReportsScreen: User tapped View Training Report');
+    router.push({
+      pathname: '/training-report/[teamId]',
       params: { teamId },
     });
   };
@@ -124,6 +143,27 @@ export default function ReportsScreen() {
                 />
               </TouchableOpacity>
 
+              <TouchableOpacity
+                style={styles.trainingButton}
+                onPress={handleViewTrainingReport}
+              >
+                <View style={styles.trainingButtonContent}>
+                  <IconSymbol
+                    ios_icon_name="figure.run"
+                    android_material_icon_name="directions-run"
+                    size={24}
+                    color="#fff"
+                  />
+                  <Text style={styles.trainingButtonText}>Training Report</Text>
+                </View>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="arrow-forward"
+                  size={20}
+                  color="#fff"
+                />
+              </TouchableOpacity>
+
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Match Reports</Text>
                 <View style={styles.fixturesList}>
@@ -162,6 +202,27 @@ export default function ReportsScreen() {
             </>
           )}
         </ScrollView>
+
+        {/* Error Modal */}
+        <Modal
+          visible={showErrorModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowErrorModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.errorModal}>
+              <Text style={styles.errorModalTitle}>Error</Text>
+              <Text style={styles.errorModalMessage}>{errorMessage}</Text>
+              <TouchableOpacity
+                style={styles.errorModalButton}
+                onPress={() => setShowErrorModal(false)}
+              >
+                <Text style={styles.errorModalButtonText}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </>
   );
@@ -230,6 +291,25 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
+  trainingButton: {
+    backgroundColor: '#28a745',
+    padding: 20,
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  trainingButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  trainingButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
   section: {
     gap: 12,
   },
@@ -294,6 +374,43 @@ const styles = StyleSheet.create({
   secondaryActionButtonText: {
     color: '#000',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  errorModal: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    gap: 16,
+  },
+  errorModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#000',
+    textAlign: 'center',
+  },
+  errorModalMessage: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+  },
+  errorModalButton: {
+    backgroundColor: '#000',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  errorModalButtonText: {
+    color: '#fff',
+    fontSize: 16,
     fontWeight: '600',
   },
 });
