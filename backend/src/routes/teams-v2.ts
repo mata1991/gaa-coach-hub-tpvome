@@ -31,6 +31,13 @@ function normalizeSport(sport: string | undefined): string | undefined {
   return SPORT_MAP[lower] || undefined;
 }
 
+// Hex color validation - accepts #RRGGBB or #RGB format
+function isValidHexColor(color: string): boolean {
+  if (!color) return false;
+  // Match #RGB or #RRGGBB format
+  return /^#([A-Fa-f0-9]{3}){1,2}$/.test(color);
+}
+
 export function registerTeamsV2Routes(app: App) {
   const requireAuth = app.requireAuth();
 
@@ -274,6 +281,9 @@ export function registerTeamsV2Routes(app: App) {
           homeVenue?: string;
           crestUrl?: string;
           colours?: string;
+          primaryColor?: string;
+          secondaryColor?: string;
+          accentColor?: string;
           isArchived?: boolean;
         };
       }>,
@@ -283,7 +293,7 @@ export function registerTeamsV2Routes(app: App) {
       if (!session) return;
 
       const { id } = request.params;
-      const { name, shortName, sport, grade, ageGroup, homeVenue, crestUrl, colours, isArchived } = request.body;
+      const { name, shortName, sport, grade, ageGroup, homeVenue, crestUrl, colours, primaryColor, secondaryColor, accentColor, isArchived } = request.body;
 
       app.logger.info({ userId: session.user.id, teamId: id }, 'Updating team');
 
@@ -312,6 +322,22 @@ export function registerTeamsV2Routes(app: App) {
             .send({ error: 'Only CLUB_ADMIN or COACH can update teams' });
         }
 
+        // Validate hex colors if provided
+        if (primaryColor !== undefined && primaryColor && !isValidHexColor(primaryColor)) {
+          app.logger.warn({ teamId: id, primaryColor }, 'Invalid primaryColor format');
+          return reply.status(400).send({ error: 'primaryColor must be a valid hex color (#RGB or #RRGGBB)' });
+        }
+
+        if (secondaryColor !== undefined && secondaryColor && !isValidHexColor(secondaryColor)) {
+          app.logger.warn({ teamId: id, secondaryColor }, 'Invalid secondaryColor format');
+          return reply.status(400).send({ error: 'secondaryColor must be a valid hex color (#RGB or #RRGGBB)' });
+        }
+
+        if (accentColor !== undefined && accentColor && !isValidHexColor(accentColor)) {
+          app.logger.warn({ teamId: id, accentColor }, 'Invalid accentColor format');
+          return reply.status(400).send({ error: 'accentColor must be a valid hex color (#RGB or #RRGGBB)' });
+        }
+
         const updateData: any = {};
         if (name) updateData.name = name.trim();
         if (shortName !== undefined) updateData.shortName = shortName;
@@ -321,6 +347,9 @@ export function registerTeamsV2Routes(app: App) {
         if (homeVenue !== undefined) updateData.homeVenue = homeVenue;
         if (crestUrl !== undefined) updateData.crestUrl = crestUrl;
         if (colours !== undefined) updateData.colours = colours;
+        if (primaryColor !== undefined) updateData.primaryColor = primaryColor;
+        if (secondaryColor !== undefined) updateData.secondaryColor = secondaryColor;
+        if (accentColor !== undefined) updateData.accentColor = accentColor;
         if (isArchived !== undefined) updateData.isArchived = isArchived;
 
         const [updated] = await app.db
