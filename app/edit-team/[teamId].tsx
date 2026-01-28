@@ -9,16 +9,38 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Image,
+  ImageSourcePropType,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import { authenticatedGet, authenticatedPut } from '@/utils/api';
+import { authenticatedGet, authenticatedPut, authenticatedUpload, authenticatedDelete } from '@/utils/api';
 import { Team } from '@/types';
+import { validateHexColor } from '@/utils/colorParser';
+
+// Helper to resolve image sources (handles both local and remote)
+function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
+  if (!source) return { uri: '' };
+  if (typeof source === 'string') return { uri: source };
+  return source as ImageSourcePropType;
+}
 
 const SPORTS = ['Hurling', 'Camogie', 'Gaelic Football', 'Ladies Gaelic Football'];
 const GRADES = ['Senior', 'Intermediate', 'Junior', 'Youth'];
+
+// Common GAA club color presets
+const COLOR_PRESETS = [
+  { name: 'Green & Gold', primary: '#0F8A3B', secondary: '#F4C542' },
+  { name: 'Blue & Gold', primary: '#0047AB', secondary: '#FFD700' },
+  { name: 'Red & White', primary: '#DC143C', secondary: '#FFFFFF' },
+  { name: 'Black & Amber', primary: '#000000', secondary: '#FFBF00' },
+  { name: 'Maroon & White', primary: '#800000', secondary: '#FFFFFF' },
+  { name: 'Navy & Sky', primary: '#000080', secondary: '#87CEEB' },
+];
 
 export default function EditTeamScreen() {
   const router = useRouter();
@@ -34,8 +56,21 @@ export default function EditTeamScreen() {
   const [grade, setGrade] = useState('');
   const [ageGroup, setAgeGroup] = useState('');
   const [homeVenue, setHomeVenue] = useState('');
-  const [crestUrl, setCrestUrl] = useState('');
-  const [colours, setColours] = useState('');
+  
+  // Image uploads
+  const [crestImageUrl, setCrestImageUrl] = useState('');
+  const [jerseyImageUrl, setJerseyImageUrl] = useState('');
+  const [uploadingCrest, setUploadingCrest] = useState(false);
+  const [uploadingJersey, setUploadingJersey] = useState(false);
+  
+  // Color inputs
+  const [primaryColor, setPrimaryColor] = useState('');
+  const [secondaryColor, setSecondaryColor] = useState('');
+  const [accentColor, setAccentColor] = useState('');
+  
+  // Confirmation modals
+  const [showRemoveCrestModal, setShowRemoveCrestModal] = useState(false);
+  const [showRemoveJerseyModal, setShowRemoveJerseyModal] = useState(false);
   
   const [errorMessage, setErrorMessage] = useState('');
   const [nameError, setNameError] = useState('');
@@ -60,8 +95,11 @@ export default function EditTeamScreen() {
       setGrade(teamData.grade || '');
       setAgeGroup(teamData.ageGroup || '');
       setHomeVenue(teamData.homeVenue || '');
-      setCrestUrl(teamData.crestUrl || '');
-      setColours(teamData.colours || '');
+      setCrestImageUrl(teamData.crestImageUrl || '');
+      setJerseyImageUrl(teamData.jerseyImageUrl || '');
+      setPrimaryColor(teamData.primaryColor || '');
+      setSecondaryColor(teamData.secondaryColor || '');
+      setAccentColor(teamData.accentColor || '');
     } catch (error: any) {
       console.error('[EditTeam] Failed to fetch team:', error);
       console.error('[EditTeam] Error message:', error?.message);
@@ -107,7 +145,179 @@ export default function EditTeamScreen() {
       setNameError('');
     }
     
+    // Validate color formats if provided
+    if (primaryColor && !validateHexColor(primaryColor)) {
+      setErrorMessage('Primary color must be a valid hex color (e.g., #FF0000)');
+      isValid = false;
+    }
+    if (secondaryColor && !validateHexColor(secondaryColor)) {
+      setErrorMessage('Secondary color must be a valid hex color (e.g., #0000FF)');
+      isValid = false;
+    }
+    if (accentColor && !validateHexColor(accentColor)) {
+      setErrorMessage('Accent color must be a valid hex color (e.g., #00FF00)');
+      isValid = false;
+    }
+    
     return isValid;
+  };
+
+  const handlePickCrestImage = async () => {
+    console.log('[EditTeam] User tapped Pick Crest Photo');
+    
+    try {
+      // Request permission
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'Please allow access to your photo library to upload a crest image.');
+        return;
+      }
+
+      // Launch image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1], // Square crop for crest
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        console.log('[EditTeam] Image selected:', asset.uri);
+        
+        // Upload image
+        setUploadingCrest(true);
+        setErrorMessage('');
+        
+        try {
+          const fileName = `crest_${Date.now()}.jpg`;
+          const fileType = asset.mimeType || 'image/jpeg';
+          
+          const uploadResult = await authenticatedUpload(
+            `/api/teams/${teamId}/crest`,
+            {
+              uri: asset.uri,
+              name: fileName,
+              type: fileType,
+            },
+            'file'
+          );
+          
+          console.log('[EditTeam] Crest uploaded successfully:', uploadResult);
+          setCrestImageUrl(uploadResult.crestImageUrl);
+          Alert.alert('Success', 'Crest image uploaded successfully');
+        } catch (error: any) {
+          console.error('[EditTeam] Failed to upload crest:', error);
+          
+          if (error?.code === 'AUTH_EXPIRED') {
+            Alert.alert('Session Expired', 'Please log in again to upload images.');
+          } else {
+            const errorMsg = error?.message || 'Failed to upload crest image';
+            setErrorMessage(errorMsg);
+            Alert.alert('Upload Failed', errorMsg);
+          }
+        } finally {
+          setUploadingCrest(false);
+        }
+      }
+    } catch (error) {
+      console.error('[EditTeam] Image picker error:', error);
+      Alert.alert('Error', 'Failed to open image picker');
+    }
+  };
+
+  const handlePickJerseyImage = async () => {
+    console.log('[EditTeam] User tapped Pick Jersey Photo');
+    
+    try {
+      // Request permission
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'Please allow access to your photo library to upload a jersey image.');
+        return;
+      }
+
+      // Launch image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [3, 4], // Portrait aspect for jersey
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        console.log('[EditTeam] Image selected:', asset.uri);
+        
+        // Upload image
+        setUploadingJersey(true);
+        setErrorMessage('');
+        
+        try {
+          const fileName = `jersey_${Date.now()}.jpg`;
+          const fileType = asset.mimeType || 'image/jpeg';
+          
+          const uploadResult = await authenticatedUpload(
+            `/api/teams/${teamId}/jersey`,
+            {
+              uri: asset.uri,
+              name: fileName,
+              type: fileType,
+            },
+            'file'
+          );
+          
+          console.log('[EditTeam] Jersey uploaded successfully:', uploadResult);
+          setJerseyImageUrl(uploadResult.jerseyImageUrl);
+          Alert.alert('Success', 'Jersey image uploaded successfully');
+        } catch (error: any) {
+          console.error('[EditTeam] Failed to upload jersey:', error);
+          
+          if (error?.code === 'AUTH_EXPIRED') {
+            Alert.alert('Session Expired', 'Please log in again to upload images.');
+          } else {
+            const errorMsg = error?.message || 'Failed to upload jersey image';
+            setErrorMessage(errorMsg);
+            Alert.alert('Upload Failed', errorMsg);
+          }
+        } finally {
+          setUploadingJersey(false);
+        }
+      }
+    } catch (error) {
+      console.error('[EditTeam] Image picker error:', error);
+      Alert.alert('Error', 'Failed to open image picker');
+    }
+  };
+
+  const handleRemoveCrest = async () => {
+    console.log('[EditTeam] User confirmed remove crest');
+    setShowRemoveCrestModal(false);
+    
+    try {
+      await authenticatedDelete(`/api/teams/${teamId}/crest`);
+      setCrestImageUrl('');
+      console.log('[EditTeam] Crest removed successfully');
+    } catch (error) {
+      console.error('[EditTeam] Failed to remove crest:', error);
+      Alert.alert('Error', 'Failed to remove crest image');
+    }
+  };
+
+  const handleRemoveJersey = async () => {
+    console.log('[EditTeam] User confirmed remove jersey');
+    setShowRemoveJerseyModal(false);
+    
+    try {
+      await authenticatedDelete(`/api/teams/${teamId}/jersey`);
+      setJerseyImageUrl('');
+      console.log('[EditTeam] Jersey removed successfully');
+    } catch (error) {
+      console.error('[EditTeam] Failed to remove jersey:', error);
+      Alert.alert('Error', 'Failed to remove jersey image');
+    }
   };
 
   const handleSaveTeam = async () => {
@@ -142,8 +352,9 @@ export default function EditTeamScreen() {
         grade: grade || undefined,
         ageGroup: ageGroup.trim() || undefined,
         homeVenue: homeVenue.trim() || undefined,
-        crestUrl: crestUrl.trim() || undefined,
-        colours: colours.trim() || undefined,
+        primaryColor: primaryColor.trim() || undefined,
+        secondaryColor: secondaryColor.trim() || undefined,
+        accentColor: accentColor.trim() || undefined,
       };
       
       console.log('[EditTeam] Request payload:', requestPayload);
@@ -328,31 +539,209 @@ export default function EditTeamScreen() {
               />
             </View>
 
+            {/* Crest Image Upload */}
             <View style={styles.field}>
-              <Text style={styles.label}>Crest URL (Optional)</Text>
-              <TextInput
-                style={styles.input}
-                value={crestUrl}
-                onChangeText={setCrestUrl}
-                placeholder="https://example.com/crest.png"
-                placeholderTextColor={colors.textSecondary}
-                autoCapitalize="none"
-                keyboardType="url"
-                editable={!saving}
-              />
+              <Text style={styles.label}>Crest Image (Optional)</Text>
+              {crestImageUrl ? (
+                <View style={styles.imagePreviewContainer}>
+                  <Image
+                    source={resolveImageSource(crestImageUrl)}
+                    style={styles.crestPreview}
+                    resizeMode="contain"
+                  />
+                  <View style={styles.imageActions}>
+                    <TouchableOpacity
+                      style={styles.imageActionButton}
+                      onPress={handlePickCrestImage}
+                      disabled={uploadingCrest || saving}
+                    >
+                      <IconSymbol
+                        ios_icon_name="arrow.triangle.2.circlepath"
+                        android_material_icon_name="refresh"
+                        size={20}
+                        color={colors.primary}
+                      />
+                      <Text style={styles.imageActionText}>Replace</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.imageActionButton, styles.imageActionButtonDanger]}
+                      onPress={() => setShowRemoveCrestModal(true)}
+                      disabled={uploadingCrest || saving}
+                    >
+                      <IconSymbol
+                        ios_icon_name="trash"
+                        android_material_icon_name="delete"
+                        size={20}
+                        color={colors.error}
+                      />
+                      <Text style={[styles.imageActionText, styles.imageActionTextDanger]}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.uploadButton}
+                  onPress={handlePickCrestImage}
+                  disabled={uploadingCrest || saving}
+                >
+                  {uploadingCrest ? (
+                    <ActivityIndicator color={colors.primary} />
+                  ) : (
+                    <>
+                      <IconSymbol
+                        ios_icon_name="photo"
+                        android_material_icon_name="photo"
+                        size={24}
+                        color={colors.primary}
+                      />
+                      <Text style={styles.uploadButtonText}>Pick Crest Photo</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Jersey Image Upload */}
+            <View style={styles.field}>
+              <Text style={styles.label}>Jersey Image (Optional)</Text>
+              {jerseyImageUrl ? (
+                <View style={styles.imagePreviewContainer}>
+                  <Image
+                    source={resolveImageSource(jerseyImageUrl)}
+                    style={styles.jerseyPreview}
+                    resizeMode="contain"
+                  />
+                  <View style={styles.imageActions}>
+                    <TouchableOpacity
+                      style={styles.imageActionButton}
+                      onPress={handlePickJerseyImage}
+                      disabled={uploadingJersey || saving}
+                    >
+                      <IconSymbol
+                        ios_icon_name="arrow.triangle.2.circlepath"
+                        android_material_icon_name="refresh"
+                        size={20}
+                        color={colors.primary}
+                      />
+                      <Text style={styles.imageActionText}>Replace</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.imageActionButton, styles.imageActionButtonDanger]}
+                      onPress={() => setShowRemoveJerseyModal(true)}
+                      disabled={uploadingJersey || saving}
+                    >
+                      <IconSymbol
+                        ios_icon_name="trash"
+                        android_material_icon_name="delete"
+                        size={20}
+                        color={colors.error}
+                      />
+                      <Text style={[styles.imageActionText, styles.imageActionTextDanger]}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.uploadButton}
+                  onPress={handlePickJerseyImage}
+                  disabled={uploadingJersey || saving}
+                >
+                  {uploadingJersey ? (
+                    <ActivityIndicator color={colors.primary} />
+                  ) : (
+                    <>
+                      <IconSymbol
+                        ios_icon_name="photo"
+                        android_material_icon_name="photo"
+                        size={24}
+                        color={colors.primary}
+                      />
+                      <Text style={styles.uploadButtonText}>Pick Jersey Photo</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Team Colors */}
+            <View style={styles.field}>
+              <Text style={styles.label}>Team Colors (Optional)</Text>
+              <Text style={styles.fieldHint}>Choose a preset or enter custom hex colors</Text>
+              
+              {/* Color Presets */}
+              <View style={styles.colorPresetsContainer}>
+                {COLOR_PRESETS.map((preset) => (
+                  <TouchableOpacity
+                    key={preset.name}
+                    style={styles.colorPreset}
+                    onPress={() => {
+                      setPrimaryColor(preset.primary);
+                      setSecondaryColor(preset.secondary);
+                    }}
+                    disabled={saving}
+                  >
+                    <View style={styles.colorPresetColors}>
+                      <View style={[styles.colorPresetSwatch, { backgroundColor: preset.primary }]} />
+                      <View style={[styles.colorPresetSwatch, { backgroundColor: preset.secondary }]} />
+                    </View>
+                    <Text style={styles.colorPresetName}>{preset.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>Team Colours (Optional)</Text>
-              <TextInput
-                style={styles.input}
-                value={colours}
-                onChangeText={setColours}
-                placeholder="e.g., Blue and Gold"
-                placeholderTextColor={colors.textSecondary}
-                autoCapitalize="words"
-                editable={!saving}
-              />
+              <Text style={styles.label}>Primary Color</Text>
+              <View style={styles.colorInputContainer}>
+                <TextInput
+                  style={[styles.input, styles.colorInput]}
+                  value={primaryColor}
+                  onChangeText={setPrimaryColor}
+                  placeholder="#FF0000"
+                  placeholderTextColor={colors.textSecondary}
+                  autoCapitalize="none"
+                  editable={!saving}
+                />
+                {primaryColor && validateHexColor(primaryColor) && (
+                  <View style={[styles.colorPreview, { backgroundColor: primaryColor }]} />
+                )}
+              </View>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Secondary Color</Text>
+              <View style={styles.colorInputContainer}>
+                <TextInput
+                  style={[styles.input, styles.colorInput]}
+                  value={secondaryColor}
+                  onChangeText={setSecondaryColor}
+                  placeholder="#0000FF"
+                  placeholderTextColor={colors.textSecondary}
+                  autoCapitalize="none"
+                  editable={!saving}
+                />
+                {secondaryColor && validateHexColor(secondaryColor) && (
+                  <View style={[styles.colorPreview, { backgroundColor: secondaryColor }]} />
+                )}
+              </View>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Accent Color (Optional)</Text>
+              <View style={styles.colorInputContainer}>
+                <TextInput
+                  style={[styles.input, styles.colorInput]}
+                  value={accentColor}
+                  onChangeText={setAccentColor}
+                  placeholder="#00FF00"
+                  placeholderTextColor={colors.textSecondary}
+                  autoCapitalize="none"
+                  editable={!saving}
+                />
+                {accentColor && validateHexColor(accentColor) && (
+                  <View style={[styles.colorPreview, { backgroundColor: accentColor }]} />
+                )}
+              </View>
             </View>
           </View>
 
@@ -379,6 +768,68 @@ export default function EditTeamScreen() {
             )}
           </TouchableOpacity>
         </ScrollView>
+
+        {/* Remove Crest Confirmation Modal */}
+        <Modal
+          visible={showRemoveCrestModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowRemoveCrestModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Remove Crest Image?</Text>
+              <Text style={styles.modalMessage}>
+                Are you sure you want to remove the crest image? This action cannot be undone.
+              </Text>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonCancel]}
+                  onPress={() => setShowRemoveCrestModal(false)}
+                >
+                  <Text style={styles.modalButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonConfirm]}
+                  onPress={handleRemoveCrest}
+                >
+                  <Text style={[styles.modalButtonText, styles.modalButtonTextConfirm]}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Remove Jersey Confirmation Modal */}
+        <Modal
+          visible={showRemoveJerseyModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowRemoveJerseyModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Remove Jersey Image?</Text>
+              <Text style={styles.modalMessage}>
+                Are you sure you want to remove the jersey image? This action cannot be undone.
+              </Text>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonCancel]}
+                  onPress={() => setShowRemoveJerseyModal(false)}
+                >
+                  <Text style={styles.modalButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonConfirm]}
+                  onPress={handleRemoveJersey}
+                >
+                  <Text style={[styles.modalButtonText, styles.modalButtonTextConfirm]}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </>
   );
@@ -498,6 +949,170 @@ const styles = StyleSheet.create({
   saveButtonText: {
     fontSize: 18,
     fontWeight: '600',
+    color: '#fff',
+  },
+  imagePreviewContainer: {
+    gap: 12,
+  },
+  crestPreview: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: colors.backgroundAlt,
+    alignSelf: 'center',
+  },
+  jerseyPreview: {
+    width: 120,
+    height: 160,
+    borderRadius: 8,
+    backgroundColor: colors.backgroundAlt,
+    alignSelf: 'center',
+  },
+  imageActions: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'center',
+  },
+  imageActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  imageActionButtonDanger: {
+    borderColor: colors.error,
+  },
+  imageActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  imageActionTextDanger: {
+    color: colors.error,
+  },
+  uploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 16,
+    borderRadius: 8,
+    backgroundColor: colors.card,
+    borderWidth: 2,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+  },
+  uploadButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  colorInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  colorInput: {
+    flex: 1,
+  },
+  colorPreview: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  fieldHint: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
+  colorPresetsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 8,
+  },
+  colorPreset: {
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minWidth: 100,
+  },
+  colorPresetColors: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  colorPresetSwatch: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  colorPresetName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    gap: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    lineHeight: 24,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalButtonCancel: {
+    backgroundColor: colors.backgroundAlt,
+  },
+  modalButtonConfirm: {
+    backgroundColor: colors.error,
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  modalButtonTextConfirm: {
     color: '#fff',
   },
 });

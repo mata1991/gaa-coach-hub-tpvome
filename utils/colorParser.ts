@@ -181,3 +181,38 @@ export function parseClubColors(colorsInput: string | undefined): ParsedColors {
     secondaryColor: DEFAULT_SECONDARY,
   };
 }
+
+/**
+ * Calculate relative luminance of a color (WCAG formula)
+ * Returns value between 0 (black) and 1 (white)
+ */
+export function getLuminance(hex: string): number {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return 0;
+  
+  const [r, g, b] = rgb.map(val => {
+    const normalized = val / 255;
+    return normalized <= 0.03928
+      ? normalized / 12.92
+      : Math.pow((normalized + 0.055) / 1.055, 2.4);
+  });
+  
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/**
+ * Get contrasting text color (black or white) for a background color
+ * Uses WCAG contrast ratio formula
+ */
+export function getContrastTextColor(backgroundColor: string): string {
+  const luminance = getLuminance(backgroundColor);
+  // Use white text for dark backgrounds, black for light backgrounds
+  return luminance > 0.5 ? '#000000' : '#FFFFFF';
+}
+
+/**
+ * Validate hex color format
+ */
+export function validateHexColor(hex: string): boolean {
+  return isValidHex(hex);
+}

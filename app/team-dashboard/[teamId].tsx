@@ -19,6 +19,7 @@ import { authenticatedGet, authenticatedDelete, authenticatedPost } from '@/util
 import { Team, Fixture, Club } from '@/types';
 import { getSportDisplayName } from '@/constants/EventPresets';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useThemeColors } from '@/contexts/ThemeContext';
 
 // Helper to resolve image sources (handles both local and remote)
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -42,6 +43,7 @@ interface TeamDashboardData {
 export default function TeamDashboardScreen() {
   const router = useRouter();
   const { teamId } = useLocalSearchParams<{ teamId: string }>();
+  const { updateTheme, resetTheme } = useThemeColors();
   
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -71,6 +73,23 @@ export default function TeamDashboardScreen() {
       console.log('Team dashboard data fetched:', dashboardData);
       setData(dashboardData);
       
+      // Apply team colors to theme if available
+      if (dashboardData.team.primaryColor && dashboardData.team.secondaryColor) {
+        console.log('[TeamDashboard] Applying team colors to theme:', {
+          primary: dashboardData.team.primaryColor,
+          secondary: dashboardData.team.secondaryColor,
+          accent: dashboardData.team.accentColor,
+        });
+        await updateTheme(
+          dashboardData.team.primaryColor,
+          dashboardData.team.secondaryColor,
+          dashboardData.team.accentColor
+        );
+      } else {
+        console.log('[TeamDashboard] No team colors set, using default theme');
+        await resetTheme();
+      }
+      
       // Fetch upcoming schedule data
       await fetchUpcomingSchedule();
     } catch (error) {
@@ -83,7 +102,7 @@ export default function TeamDashboardScreen() {
         setLoading(false);
       }
     }
-  }, [teamId]);
+  }, [teamId, updateTheme, resetTheme]);
 
   const fetchUpcomingSchedule = React.useCallback(async () => {
     console.log('[TeamDashboard] Fetching upcoming schedule data');
@@ -566,9 +585,11 @@ export default function TeamDashboardScreen() {
   const upcomingSessionsCountStr = data.upcomingSessionsCount.toString();
   const completedSessionsCountStr = data.completedSessionsCount.toString();
   
-  // Determine crest URL (club crest has priority, then team crest)
-  const crestUrl = data.club?.crestUrl || data.team.crestUrl;
+  // Determine crest and jersey URLs (team images have priority, then club crest)
+  const crestUrl = data.team.crestImageUrl || data.club?.crestUrl || data.team.crestUrl;
+  const jerseyUrl = data.team.jerseyImageUrl;
   const hasCrest = !!crestUrl;
+  const hasJersey = !!jerseyUrl;
 
   return (
     <>
@@ -622,24 +643,36 @@ export default function TeamDashboardScreen() {
           {/* Team Info - Centered Summary Card */}
           <View style={styles.teamInfoCard}>
             <View style={styles.teamHeader}>
-              <View style={styles.teamCrestContainer}>
-                {hasCrest ? (
-                  <Image
-                    source={resolveImageSource(crestUrl)}
-                    style={styles.teamCrest}
-                    resizeMode="contain"
-                    onError={() => console.log('[TeamDashboard] Failed to load crest image')}
-                  />
-                ) : (
-                  <IconSymbol
-                    ios_icon_name="shield.fill"
-                    android_material_icon_name="shield"
-                    size={32}
-                    color="#000"
-                  />
+              <View style={styles.teamImagesRow}>
+                <View style={styles.teamCrestContainer}>
+                  {hasCrest ? (
+                    <Image
+                      source={resolveImageSource(crestUrl)}
+                      style={styles.teamCrest}
+                      resizeMode="contain"
+                      onError={() => console.log('[TeamDashboard] Failed to load crest image')}
+                    />
+                  ) : (
+                    <IconSymbol
+                      ios_icon_name="shield.fill"
+                      android_material_icon_name="shield"
+                      size={32}
+                      color="#000"
+                    />
+                  )}
+                </View>
+                <Text style={styles.teamName}>{data.team.name}</Text>
+                {hasJersey && (
+                  <View style={styles.teamJerseyContainer}>
+                    <Image
+                      source={resolveImageSource(jerseyUrl)}
+                      style={styles.teamJersey}
+                      resizeMode="contain"
+                      onError={() => console.log('[TeamDashboard] Failed to load jersey image')}
+                    />
+                  </View>
                 )}
               </View>
-              <Text style={styles.teamName}>{data.team.name}</Text>
             </View>
             
             <View style={styles.teamMetaRow}>
@@ -991,6 +1024,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  teamImagesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
   teamCrestContainer: {
     width: 48,
     height: 48,
@@ -1003,6 +1043,19 @@ const styles = StyleSheet.create({
   teamCrest: {
     width: 40,
     height: 40,
+  },
+  teamJerseyContainer: {
+    width: 40,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  teamJersey: {
+    width: 36,
+    height: 44,
   },
   teamName: {
     fontSize: 24,

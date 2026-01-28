@@ -28,7 +28,12 @@ export interface Team {
   ageGroup?: string;
   homeVenue?: string;
   crestUrl?: string;
+  crestImageUrl?: string;
+  jerseyImageUrl?: string;
   colours?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+  accentColor?: string;
   isArchived?: boolean;
   ageGrade?: string; // Keep for backward compatibility
   level?: string; // Keep for backward compatibility
