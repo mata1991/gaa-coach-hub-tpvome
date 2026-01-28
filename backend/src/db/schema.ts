@@ -180,11 +180,14 @@ export const players = pgTable('players', {
   isInjured: boolean('is_injured').default(false).notNull(),
   injuryNote: text('injury_note'),
   injuryUpdatedAt: timestamp('injury_updated_at'),
+  injuredAt: timestamp('injured_at'),
+  clearedAt: timestamp('cleared_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => [
   index('players_team_id_idx').on(table.teamId),
   index('players_position_group_depth_idx').on(table.primaryPositionGroup, table.depthOrder),
   index('players_is_injured_idx').on(table.isInjured),
+  index('players_injured_at_idx').on(table.injuredAt),
   uniqueIndex('players_team_jersey_unique_idx').on(table.teamId, table.jerseyNo),
 ]);
 

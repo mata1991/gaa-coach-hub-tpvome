@@ -33,8 +33,9 @@ export function registerPlayerRoutes(app: App) {
         const players = await app.db.query.players.findMany({
           where: whereCondition,
           orderBy: (players, { asc }) => [
-            asc(players.primaryPositionGroup),
+            asc(players.isInjured),
             asc(players.depthOrder),
+            asc(players.name),
           ],
           with: {
             trainingAttendance: true,
@@ -313,6 +314,14 @@ export function registerPlayerRoutes(app: App) {
         if (isInjured !== undefined) {
           updateData.isInjured = isInjured;
           updateData.injuryUpdatedAt = new Date();
+          if (isInjured) {
+            // Mark as injured
+            updateData.injuredAt = new Date();
+            updateData.clearedAt = null;
+          } else {
+            // Clear injury
+            updateData.clearedAt = new Date();
+          }
         }
         if (injuryNote !== undefined) updateData.injuryNote = injuryNote;
 
@@ -322,7 +331,7 @@ export function registerPlayerRoutes(app: App) {
           .where(eq(schema.players.id, id))
           .returning();
 
-        app.logger.info({ playerId: id }, 'Player patched successfully');
+        app.logger.info({ playerId: id, isInjured: updated.isInjured }, 'Player patched successfully');
         return updated;
       } catch (error) {
         app.logger.error({ err: error, playerId: id }, 'Failed to patch player');
