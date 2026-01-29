@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
-import { authenticatedGet } from '@/utils/api';
+import { authenticatedGet, authenticatedDelete } from '@/utils/api';
 import { Fixture } from '@/types';
 
 export default function ReportsScreen() {
@@ -23,6 +23,9 @@ export default function ReportsScreen() {
   const [completedFixtures, setCompletedFixtures] = useState<Fixture[]>([]);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [fixtureToDelete, setFixtureToDelete] = useState<Fixture | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   console.log('ReportsScreen: Rendering reports', { teamId });
 
@@ -85,6 +88,48 @@ export default function ReportsScreen() {
       pathname: '/training-report/[teamId]',
       params: { teamId },
     });
+  };
+
+  const handleDeleteFixture = (fixture: Fixture) => {
+    console.log('ReportsScreen: User tapped Delete for fixture:', fixture.id);
+    setFixtureToDelete(fixture);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteFixture = async () => {
+    if (!fixtureToDelete) {
+      console.error('ReportsScreen: No fixture to delete');
+      return;
+    }
+
+    console.log('ReportsScreen: Confirming delete for fixture:', fixtureToDelete.id);
+    setDeleting(true);
+
+    try {
+      await authenticatedDelete(`/api/fixtures/${fixtureToDelete.id}`);
+      console.log('ReportsScreen: Fixture deleted successfully');
+      
+      // Optimistic update: remove from list immediately
+      setCompletedFixtures((prev) => prev.filter((f) => f.id !== fixtureToDelete.id));
+      
+      setShowDeleteModal(false);
+      setFixtureToDelete(null);
+      
+      // Refetch to confirm
+      fetchCompletedFixtures();
+    } catch (error) {
+      console.error('ReportsScreen: Failed to delete fixture:', error);
+      setErrorMessage('Failed to delete fixture. Please try again.');
+      setShowErrorModal(true);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const cancelDeleteFixture = () => {
+    console.log('ReportsScreen: User cancelled delete');
+    setShowDeleteModal(false);
+    setFixtureToDelete(null);
   };
 
   if (loading) {
@@ -173,12 +218,25 @@ export default function ReportsScreen() {
                     
                     return (
                       <View key={fixture.id} style={styles.fixtureCard}>
-                        <View style={styles.fixtureInfo}>
-                          <Text style={styles.fixtureOpponent}>{fixture.opponent}</Text>
-                          <Text style={styles.fixtureDate}>{dateStr}</Text>
-                          {fixture.venue && (
-                            <Text style={styles.fixtureVenue}>{fixture.venue}</Text>
-                          )}
+                        <View style={styles.fixtureHeader}>
+                          <View style={styles.fixtureInfo}>
+                            <Text style={styles.fixtureOpponent}>{fixture.opponent}</Text>
+                            <Text style={styles.fixtureDate}>{dateStr}</Text>
+                            {fixture.venue && (
+                              <Text style={styles.fixtureVenue}>{fixture.venue}</Text>
+                            )}
+                          </View>
+                          <TouchableOpacity
+                            style={styles.deleteButton}
+                            onPress={() => handleDeleteFixture(fixture)}
+                          >
+                            <IconSymbol
+                              ios_icon_name="trash"
+                              android_material_icon_name="delete"
+                              size={20}
+                              color="#dc3545"
+                            />
+                          </TouchableOpacity>
                         </View>
                         <View style={styles.fixtureActions}>
                           <TouchableOpacity
@@ -220,6 +278,43 @@ export default function ReportsScreen() {
               >
                 <Text style={styles.errorModalButtonText}>OK</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Delete Confirmation Modal */}
+        <Modal
+          visible={showDeleteModal}
+          transparent
+          animationType="fade"
+          onRequestClose={cancelDeleteFixture}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.deleteModal}>
+              <Text style={styles.deleteModalTitle}>Delete Match Report?</Text>
+              <Text style={styles.deleteModalMessage}>
+                Are you sure you want to delete the match report for {fixtureToDelete?.opponent}? This will also delete all match events and statistics. This action cannot be undone.
+              </Text>
+              <View style={styles.deleteModalButtons}>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={cancelDeleteFixture}
+                  disabled={deleting}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.confirmDeleteButton}
+                  onPress={confirmDeleteFixture}
+                  disabled={deleting}
+                >
+                  {deleting ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.confirmDeleteButtonText}>Delete</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
@@ -330,8 +425,22 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
+  fixtureHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
   fixtureInfo: {
+    flex: 1,
     gap: 4,
+  },
+  deleteButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#dc3545',
   },
   fixtureOpponent: {
     fontSize: 18,
@@ -409,6 +518,57 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   errorModalButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  deleteModal: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    gap: 16,
+  },
+  deleteModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#000',
+    textAlign: 'center',
+  },
+  deleteModalMessage: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  deleteModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#000',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  confirmDeleteButton: {
+    flex: 1,
+    backgroundColor: '#dc3545',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  confirmDeleteButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
