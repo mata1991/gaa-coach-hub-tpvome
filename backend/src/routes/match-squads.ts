@@ -80,9 +80,48 @@ export function registerMatchSquadRoutes(app: App) {
           return reply.status(404).send({ error: 'Fixture not found' });
         }
 
-        const squads = await app.db.query.matchSquads.findMany({
+        let squads = await app.db.query.matchSquads.findMany({
           where: eq(schema.matchSquads.fixtureId, fixtureId),
         });
+
+        // If away squad doesn't exist, auto-create it with placeholders
+        const awaySquadExists = squads.some((s) => s.side === 'AWAY');
+        if (!awaySquadExists) {
+          const placeholderStartingSlots: LineupSlot[] = [];
+          for (let i = 1; i <= 15; i++) {
+            placeholderStartingSlots.push({
+              positionNo: i,
+              positionName: `Position ${i}`,
+              playerId: null,
+              playerName: `Away #${i}`,
+              jerseyNo: String(i),
+            });
+          }
+
+          const placeholderBench: LineupSlot[] = [];
+          for (let i = 1; i <= 15; i++) {
+            placeholderBench.push({
+              positionNo: i,
+              positionName: `Bench ${i}`,
+              playerId: null,
+              playerName: `Away Sub ${i}`,
+              jerseyNo: String(100 + i),
+            });
+          }
+
+          const [newAwaySquad] = await app.db
+            .insert(schema.matchSquads)
+            .values({
+              fixtureId,
+              side: 'AWAY',
+              startingSlots: placeholderStartingSlots as any,
+              bench: placeholderBench as any,
+            })
+            .returning();
+
+          squads.push(newAwaySquad);
+          app.logger.info({ fixtureId }, 'Auto-created AWAY squad with placeholders');
+        }
 
         app.logger.info({ fixtureId, squadCount: squads.length }, 'Match squads fetched');
         return squads;
@@ -138,14 +177,43 @@ export function registerMatchSquadRoutes(app: App) {
         });
 
         let squad;
+        let slotsToUse = startingSlots;
+        let benchToUse = bench;
+
+        // If creating AWAY squad without explicit slots, use placeholders
+        if (!existing && side === 'AWAY' && (!startingSlots || startingSlots.length === 0)) {
+          slotsToUse = [];
+          for (let i = 1; i <= 15; i++) {
+            slotsToUse.push({
+              positionNo: i,
+              positionName: `Position ${i}`,
+              playerId: undefined,
+              playerName: `Away #${i}`,
+              jerseyNo: String(i),
+            });
+          }
+
+          benchToUse = [];
+          for (let i = 1; i <= 15; i++) {
+            benchToUse.push({
+              positionNo: i,
+              positionName: `Bench ${i}`,
+              playerId: undefined,
+              playerName: `Away Sub ${i}`,
+              jerseyNo: String(100 + i),
+            });
+          }
+
+          app.logger.info({ fixtureId }, 'Using placeholder squads for AWAY team');
+        }
 
         if (existing) {
           // Update existing
           [squad] = await app.db
             .update(schema.matchSquads)
             .set({
-              startingSlots: startingSlots as any,
-              bench: bench as any,
+              startingSlots: slotsToUse as any,
+              bench: benchToUse as any,
             })
             .where(eq(schema.matchSquads.id, existing.id))
             .returning();
@@ -156,8 +224,8 @@ export function registerMatchSquadRoutes(app: App) {
             .values({
               fixtureId,
               side,
-              startingSlots: startingSlots as any,
-              bench: bench as any,
+              startingSlots: slotsToUse as any,
+              bench: benchToUse as any,
             })
             .returning();
         }

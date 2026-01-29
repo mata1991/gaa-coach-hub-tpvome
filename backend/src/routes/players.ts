@@ -438,4 +438,126 @@ export function registerPlayerRoutes(app: App) {
       }
     }
   );
+
+  // PATCH /api/teams/:teamId/players/batch - Batch update multiple players
+  app.fastify.patch(
+    '/api/teams/:teamId/players/batch',
+    async (
+      request: FastifyRequest<{
+        Params: { teamId: string };
+        Body: {
+          updates: Array<{
+            playerId: string;
+            depthOrder?: number;
+            isInjured?: boolean;
+            injuryNote?: string;
+          }>;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { teamId } = request.params;
+      const { updates } = request.body;
+
+      app.logger.info(
+        { userId: session.user.id, teamId, updateCount: updates.length },
+        'Batch updating players'
+      );
+
+      try {
+        // Validate that updates array is provided
+        if (!updates || updates.length === 0) {
+          app.logger.warn({ teamId }, 'No updates provided for batch operation');
+          return reply.status(400).send({ error: 'updates array is required and cannot be empty' });
+        }
+
+        // Extract all player IDs to validate
+        const playerIds = updates.map((u) => u.playerId);
+
+        // Fetch all players to validate they belong to the team
+        const players = await app.db.query.players.findMany({
+          where: inArray(schema.players.id, playerIds),
+        });
+
+        // Validate all players belong to the team
+        const invalidTeamPlayers = players.filter((p) => p.teamId !== teamId);
+        if (invalidTeamPlayers.length > 0) {
+          app.logger.warn(
+            { teamId, invalidPlayerCount: invalidTeamPlayers.length },
+            'Some players do not belong to the team'
+          );
+          return reply
+            .status(400)
+            .send({ error: 'All players must belong to the specified team' });
+        }
+
+        // Create a map of player IDs to their update data for quick lookup
+        const updateMap = new Map(updates.map((u) => [u.playerId, u]));
+
+        // Update each player with provided data
+        let updateCount = 0;
+        for (const player of players) {
+          const update = updateMap.get(player.id);
+          if (update) {
+            const updateData: any = {};
+
+            if (update.depthOrder !== undefined) {
+              updateData.depthOrder = update.depthOrder;
+            }
+
+            if (update.isInjured !== undefined) {
+              updateData.isInjured = update.isInjured;
+              updateData.injuryUpdatedAt = new Date();
+
+              // Set injuredAt/clearedAt based on injury status
+              if (update.isInjured) {
+                updateData.injuredAt = new Date();
+                updateData.clearedAt = null;
+              } else {
+                updateData.clearedAt = new Date();
+              }
+            }
+
+            if (update.injuryNote !== undefined) {
+              updateData.injuryNote = update.injuryNote;
+            }
+
+            if (Object.keys(updateData).length > 0) {
+              await app.db
+                .update(schema.players)
+                .set(updateData)
+                .where(eq(schema.players.id, player.id));
+              updateCount++;
+            }
+          }
+        }
+
+        // Fetch and return updated players sorted by isInjured, depthOrder, name
+        const updatedPlayers = await app.db.query.players.findMany({
+          where: eq(schema.players.teamId, teamId),
+          orderBy: (players, { asc }) => [
+            asc(players.isInjured),
+            asc(players.depthOrder),
+            asc(players.name),
+          ],
+        });
+
+        app.logger.info(
+          { teamId, updatedCount: updateCount },
+          'Batch player update completed successfully'
+        );
+        return {
+          success: true,
+          updated: updateCount,
+          players: updatedPlayers,
+        };
+      } catch (error) {
+        app.logger.error({ err: error, teamId }, 'Failed to batch update players');
+        throw error;
+      }
+    }
+  );
 }
