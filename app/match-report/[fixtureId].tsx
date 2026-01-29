@@ -7,9 +7,9 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Platform,
   Share,
+  Modal,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -119,32 +119,39 @@ const DEFAULT_REPORT: MatchReport = {
 };
 
 export default function MatchReportScreen() {
-  const params = useLocalSearchParams();
+  const params = useLocalSearchParams<{ fixtureId?: string }>();
   const router = useRouter();
-  
-  // Robustly read fixtureId - handle string | string[] | undefined
-  const rawFixtureId = params.fixtureId;
-  const fixtureId = Array.isArray(rawFixtureId) ? rawFixtureId[0] : rawFixtureId;
+  const fixtureId = params.fixtureId;
 
   const [report, setReport] = useState<MatchReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<'overview' | 'players' | 'halves' | 'heatmaps'>('overview');
   const [exporting, setExporting] = useState(false);
+  
+  // Custom modal state
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorModalMessage, setErrorModalMessage] = useState('');
+
+  console.log('[MatchReport] Rendering match report screen', { fixtureId });
 
   useEffect(() => {
-    // Only fetch if fixtureId exists
-    if (fixtureId) {
-      fetchReport();
-    } else {
+    // Validate fixtureId before fetching
+    if (!fixtureId) {
+      console.error('[MatchReport] ERROR: fixtureId is missing from route params!');
+      setError('No fixture selected');
       setLoading(false);
-      setError('Missing fixture ID');
+      return;
     }
+
+    fetchReport();
   }, [fixtureId]);
 
   const fetchReport = async () => {
     if (!fixtureId) {
-      console.log('[MatchReport] No fixtureId provided, skipping fetch');
+      console.error('[MatchReport] Cannot fetch report: fixtureId is undefined');
+      setError('No fixture selected');
+      setLoading(false);
       return;
     }
 
@@ -154,20 +161,30 @@ export default function MatchReportScreen() {
       setError(null);
       const data = await authenticatedGet<MatchReport>(`/api/fixtures/${fixtureId}/report`);
       console.log('[MatchReport] Fetched report:', data);
-      setReport(data);
+      
+      // Use safe defaults if data is missing
+      const safeData = data || DEFAULT_REPORT;
+      setReport(safeData);
     } catch (err: any) {
       console.error('[MatchReport] Error fetching report:', err);
+      console.error('[MatchReport] Error message:', err?.message);
+      console.error('[MatchReport] Error status:', err?.status);
+      
       const errorMessage = err?.message || 'Failed to load match report';
-      const statusCode = err?.status || '';
-      setError(`${errorMessage}${statusCode ? ` (${statusCode})` : ''}`);
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
+  const showAlert = (title: string, message: string) => {
+    setErrorModalMessage(`${title}\n\n${message}`);
+    setShowErrorModal(true);
+  };
+
   const handleExportWhatsApp = async () => {
     if (!fixtureId) {
-      Alert.alert('Error', 'Missing fixture ID');
+      showAlert('Error', 'Missing fixture ID');
       return;
     }
     
@@ -186,7 +203,7 @@ export default function MatchReportScreen() {
       }
     } catch (error) {
       console.error('[MatchReport] Error exporting to WhatsApp:', error);
-      Alert.alert('Error', 'Failed to generate WhatsApp share');
+      showAlert('Error', 'Failed to generate WhatsApp share');
     } finally {
       setExporting(false);
     }
@@ -194,7 +211,7 @@ export default function MatchReportScreen() {
 
   const handleExportPDF = async () => {
     if (!fixtureId) {
-      Alert.alert('Error', 'Missing fixture ID');
+      showAlert('Error', 'Missing fixture ID');
       return;
     }
     
@@ -207,13 +224,11 @@ export default function MatchReportScreen() {
       );
       
       if (result?.pdfUrl) {
-        Alert.alert('PDF Generated', `PDF available at: ${result.filename}`, [
-          { text: 'OK' }
-        ]);
+        showAlert('PDF Generated', `PDF available at: ${result.filename}`);
       }
     } catch (error) {
       console.error('[MatchReport] Error exporting PDF:', error);
-      Alert.alert('Error', 'Failed to generate PDF');
+      showAlert('Error', 'Failed to generate PDF');
     } finally {
       setExporting(false);
     }
@@ -221,7 +236,7 @@ export default function MatchReportScreen() {
 
   const handleExportCSV = async () => {
     if (!fixtureId) {
-      Alert.alert('Error', 'Missing fixture ID');
+      showAlert('Error', 'Missing fixture ID');
       return;
     }
     
@@ -234,7 +249,7 @@ export default function MatchReportScreen() {
       const token = await getBearerToken();
       
       if (!token) {
-        Alert.alert('Error', 'Authentication required');
+        showAlert('Error', 'Authentication required');
         return;
       }
       
@@ -266,7 +281,7 @@ export default function MatchReportScreen() {
         link.click();
         document.body.removeChild(link);
         window.URL.revokeObjectURL(downloadUrl);
-        Alert.alert('Success', 'CSV file downloaded');
+        showAlert('Success', 'CSV file downloaded');
       } else {
         // Native: Share via share sheet
         const { Share } = await import('react-native');
@@ -277,13 +292,13 @@ export default function MatchReportScreen() {
       }
     } catch (error) {
       console.error('[MatchReport] Error exporting CSV:', error);
-      Alert.alert('Error', 'Failed to export CSV');
+      showAlert('Error', 'Failed to export CSV');
     } finally {
       setExporting(false);
     }
   };
 
-  // Missing fixture ID - blocking state
+  // Show error screen if fixtureId is missing
   if (!fixtureId) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -294,16 +309,19 @@ export default function MatchReportScreen() {
             headerBackTitle: 'Back',
           }}
         />
-        <View style={styles.loadingContainer}>
+        <View style={styles.errorContainer}>
           <IconSymbol
             ios_icon_name="exclamationmark.triangle"
             android_material_icon_name="warning"
-            size={48}
-            color={colors.danger}
+            size={64}
+            color="#dc3545"
           />
-          <Text style={styles.errorText}>Missing fixture ID</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => router.back()}>
-            <Text style={styles.retryButtonText}>Go Back</Text>
+          <Text style={styles.errorTitle}>No Fixture Selected</Text>
+          <Text style={styles.errorText}>
+            Please select a fixture to view the match report.
+          </Text>
+          <TouchableOpacity style={styles.errorButton} onPress={() => router.back()}>
+            <Text style={styles.errorButtonText}>Go Back</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -340,16 +358,17 @@ export default function MatchReportScreen() {
             headerBackTitle: 'Back',
           }}
         />
-        <View style={styles.loadingContainer}>
+        <View style={styles.errorContainer}>
           <IconSymbol
             ios_icon_name="exclamationmark.circle"
             android_material_icon_name="error"
-            size={48}
-            color={colors.danger}
+            size={64}
+            color="#dc3545"
           />
+          <Text style={styles.errorTitle}>Failed to Load Report</Text>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={fetchReport}>
-            <Text style={styles.retryButtonText}>Retry</Text>
+          <TouchableOpacity style={styles.errorButton} onPress={fetchReport}>
+            <Text style={styles.errorButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -371,15 +390,15 @@ export default function MatchReportScreen() {
           <IconSymbol
             ios_icon_name="doc.text"
             android_material_icon_name="description"
-            size={48}
+            size={64}
             color={colors.textSecondary}
           />
           <Text style={styles.loadingText}>No report data yet</Text>
           <Text style={styles.emptyStateSubtext}>
             Match events will appear here once the match has started
           </Text>
-          <TouchableOpacity style={styles.retryButton} onPress={fetchReport}>
-            <Text style={styles.retryButtonText}>Refresh</Text>
+          <TouchableOpacity style={styles.errorButton} onPress={fetchReport}>
+            <Text style={styles.errorButtonText}>Refresh</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -408,343 +427,365 @@ export default function MatchReportScreen() {
   const fixtureDate = safeReport.fixture?.date ?? new Date().toISOString();
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Match Report',
-          headerBackTitle: 'Back',
-          headerRight: () => (
-            <TouchableOpacity onPress={() => router.push(`/match-report/${fixtureId}/benchmarks` as any)}>
-              <IconSymbol
-                ios_icon_name="chart.bar"
-                android_material_icon_name="bar-chart"
-                size={24}
-                color={colors.primary}
-              />
-            </TouchableOpacity>
-          ),
-        }}
-      />
+    <>
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Match Report',
+            headerBackTitle: 'Back',
+            headerRight: () => (
+              <TouchableOpacity onPress={() => router.push(`/match-report/${fixtureId}/benchmarks` as any)}>
+                <IconSymbol
+                  ios_icon_name="chart.bar"
+                  android_material_icon_name="bar-chart"
+                  size={24}
+                  color={colors.primary}
+                />
+              </TouchableOpacity>
+            ),
+          }}
+        />
 
-      {/* Match header */}
-      <View style={styles.header}>
-        <Text style={styles.opponent}>{opponent}</Text>
-        <Text style={styles.venue}>{venue}</Text>
-        <Text style={styles.date}>{new Date(fixtureDate).toLocaleDateString()}</Text>
-        <View style={styles.scoreContainer}>
-          <Text style={styles.score}>{scoreDisplay}</Text>
-          <Text style={styles.scoreLabel}>({totalPointsText})</Text>
+        {/* Match header */}
+        <View style={styles.header}>
+          <Text style={styles.opponent}>{opponent}</Text>
+          <Text style={styles.venue}>{venue}</Text>
+          <Text style={styles.date}>{new Date(fixtureDate).toLocaleDateString()}</Text>
+          <View style={styles.scoreContainer}>
+            <Text style={styles.score}>{scoreDisplay}</Text>
+            <Text style={styles.scoreLabel}>({totalPointsText})</Text>
+          </View>
         </View>
-      </View>
 
-      {/* Tabs */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs}>
-        {(['overview', 'players', 'halves', 'heatmaps'] as const).map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tab, selectedTab === tab && styles.tabActive]}
-            onPress={() => {
-              console.log('[MatchReport] User selected tab:', tab);
-              setSelectedTab(tab);
-            }}
-          >
-            <Text style={[styles.tabText, selectedTab === tab && styles.tabTextActive]}>
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+        {/* Tabs */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs}>
+          {(['overview', 'players', 'halves', 'heatmaps'] as const).map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              style={[styles.tab, selectedTab === tab && styles.tabActive]}
+              onPress={() => {
+                console.log('[MatchReport] User selected tab:', tab);
+                setSelectedTab(tab);
+              }}
+            >
+              <Text style={[styles.tabText, selectedTab === tab && styles.tabTextActive]}>
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
 
-      {/* Content */}
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-        {selectedTab === 'overview' && (
-          <View>
-            <StatCard title="Scoring">
-              <StatRow label="Goals" value={safeReport.teamStats?.totalGoals ?? 0} />
-              <StatRow label="Points" value={safeReport.teamStats?.totalPoints ?? 0} />
-              <StatRow label="Wides" value={safeReport.teamStats?.totalWides ?? 0} />
-              <StatRow
-                label="Conversion Rate"
-                value={`${((safeReport.teamStats?.conversionRate ?? 0) * 100).toFixed(1)}%`}
-              />
-              <StatRow
-                label="Scoring Efficiency"
-                value={(safeReport.teamStats?.scoringEfficiency ?? 0).toFixed(2)}
-              />
-            </StatCard>
+        {/* Content */}
+        <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+          {selectedTab === 'overview' && (
+            <View>
+              <StatCard title="Scoring">
+                <StatRow label="Goals" value={safeReport.teamStats?.totalGoals ?? 0} />
+                <StatRow label="Points" value={safeReport.teamStats?.totalPoints ?? 0} />
+                <StatRow label="Wides" value={safeReport.teamStats?.totalWides ?? 0} />
+                <StatRow
+                  label="Conversion Rate"
+                  value={`${((safeReport.teamStats?.conversionRate ?? 0) * 100).toFixed(1)}%`}
+                />
+                <StatRow
+                  label="Scoring Efficiency"
+                  value={(safeReport.teamStats?.scoringEfficiency ?? 0).toFixed(2)}
+                />
+              </StatCard>
 
-            <StatCard title="Puckouts">
-              <StatRow
-                label="Win Percentage"
-                value={`${((safeReport.teamStats?.puckoutWinPercentage ?? 0) * 100).toFixed(1)}%`}
-              />
-              <StatRow
-                label="Left"
-                value={safeReport.teamStats?.puckoutDirectionBreakdown?.left ?? 0}
-              />
-              <StatRow
-                label="Centre"
-                value={safeReport.teamStats?.puckoutDirectionBreakdown?.centre ?? 0}
-              />
-              <StatRow
-                label="Right"
-                value={safeReport.teamStats?.puckoutDirectionBreakdown?.right ?? 0}
-              />
-              <StatRow
-                label="Short"
-                value={safeReport.teamStats?.puckoutDirectionBreakdown?.short ?? 0}
-              />
-              <StatRow
-                label="Long"
-                value={safeReport.teamStats?.puckoutDirectionBreakdown?.long ?? 0}
-              />
-            </StatCard>
+              <StatCard title="Puckouts">
+                <StatRow
+                  label="Win Percentage"
+                  value={`${((safeReport.teamStats?.puckoutWinPercentage ?? 0) * 100).toFixed(1)}%`}
+                />
+                <StatRow
+                  label="Left"
+                  value={safeReport.teamStats?.puckoutDirectionBreakdown?.left ?? 0}
+                />
+                <StatRow
+                  label="Centre"
+                  value={safeReport.teamStats?.puckoutDirectionBreakdown?.centre ?? 0}
+                />
+                <StatRow
+                  label="Right"
+                  value={safeReport.teamStats?.puckoutDirectionBreakdown?.right ?? 0}
+                />
+                <StatRow
+                  label="Short"
+                  value={safeReport.teamStats?.puckoutDirectionBreakdown?.short ?? 0}
+                />
+                <StatRow
+                  label="Long"
+                  value={safeReport.teamStats?.puckoutDirectionBreakdown?.long ?? 0}
+                />
+              </StatCard>
 
-            <StatCard title="Possession & Discipline">
-              <StatRow
-                label="Turnover Differential"
-                value={safeReport.teamStats?.turnoverDifferential ?? 0}
-                highlight={(safeReport.teamStats?.turnoverDifferential ?? 0) > 0}
-              />
-              <StatRow label="Frees For" value={safeReport.teamStats?.freesFor ?? 0} />
-              <StatRow label="Frees Against" value={safeReport.teamStats?.freesAgainst ?? 0} />
-              <StatRow
-                label="Free Conversion"
-                value={`${((safeReport.teamStats?.freeConversionRate ?? 0) * 100).toFixed(1)}%`}
-              />
-            </StatCard>
-          </View>
-        )}
+              <StatCard title="Possession & Discipline">
+                <StatRow
+                  label="Turnover Differential"
+                  value={safeReport.teamStats?.turnoverDifferential ?? 0}
+                  highlight={(safeReport.teamStats?.turnoverDifferential ?? 0) > 0}
+                />
+                <StatRow label="Frees For" value={safeReport.teamStats?.freesFor ?? 0} />
+                <StatRow label="Frees Against" value={safeReport.teamStats?.freesAgainst ?? 0} />
+                <StatRow
+                  label="Free Conversion"
+                  value={`${((safeReport.teamStats?.freeConversionRate ?? 0) * 100).toFixed(1)}%`}
+                />
+              </StatCard>
+            </View>
+          )}
 
-        {selectedTab === 'players' && (
-          <View>
-            {(safeReport.playerStats ?? []).length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyStateText}>No player stats yet</Text>
-              </View>
-            ) : (
-              (safeReport.playerStats ?? []).map((player) => {
-                const jerseyNo = player?.jerseyNo ?? 0;
-                const playerName = player?.playerName ?? 'Unknown';
-                const efficiency = player?.efficiency ?? 0;
-                const contributions = player?.contributions ?? {};
-                const discipline = player?.discipline ?? {};
-                
-                return (
-                  <View key={player.playerId} style={styles.playerCard}>
-                    <View style={styles.playerHeader}>
-                      <Text style={styles.playerNumber}>#{jerseyNo}</Text>
-                      <Text style={styles.playerName}>{playerName}</Text>
-                      <Text style={styles.playerEfficiency}>
-                        {(efficiency * 100).toFixed(0)}%
-                      </Text>
-                    </View>
-                    <View style={styles.playerStats}>
-                      <PlayerStat
-                        label="Goals"
-                        value={contributions.goals ?? 0}
-                        icon="sports-soccer"
-                      />
-                      <PlayerStat
-                        label="Points"
-                        value={contributions.points ?? 0}
-                        icon="flag"
-                      />
-                      <PlayerStat
-                        label="Wides"
-                        value={contributions.wides ?? 0}
-                        icon="close"
-                      />
-                      <PlayerStat
-                        label="Turnovers +"
-                        value={contributions.turnoversWon ?? 0}
-                        icon="trending-up"
-                      />
-                      <PlayerStat
-                        label="Turnovers -"
-                        value={contributions.turnoversLost ?? 0}
-                        icon="trending-down"
-                      />
-                      <PlayerStat
-                        label="Frees Won"
-                        value={contributions.freesWon ?? 0}
-                        icon="add-circle"
-                      />
-                    </View>
-                    {((discipline.yellowCards ?? 0) > 0 || (discipline.redCards ?? 0) > 0) && (
-                      <View style={styles.disciplineRow}>
-                        {(discipline.yellowCards ?? 0) > 0 && (
-                          <View style={styles.card}>
-                            <View style={[styles.cardIcon, { backgroundColor: '#FFC107' }]} />
-                            <Text style={styles.cardText}>{discipline.yellowCards}</Text>
-                          </View>
-                        )}
-                        {(discipline.redCards ?? 0) > 0 && (
-                          <View style={styles.card}>
-                            <View style={[styles.cardIcon, { backgroundColor: '#F44336' }]} />
-                            <Text style={styles.cardText}>{discipline.redCards}</Text>
-                          </View>
-                        )}
+          {selectedTab === 'players' && (
+            <View>
+              {(safeReport.playerStats ?? []).length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateText}>No player stats yet</Text>
+                </View>
+              ) : (
+                (safeReport.playerStats ?? []).map((player) => {
+                  const jerseyNo = player?.jerseyNo ?? 0;
+                  const playerName = player?.playerName ?? 'Unknown';
+                  const efficiency = player?.efficiency ?? 0;
+                  const contributions = player?.contributions ?? {};
+                  const discipline = player?.discipline ?? {};
+                  
+                  return (
+                    <View key={player.playerId} style={styles.playerCard}>
+                      <View style={styles.playerHeader}>
+                        <Text style={styles.playerNumber}>#{jerseyNo}</Text>
+                        <Text style={styles.playerName}>{playerName}</Text>
+                        <Text style={styles.playerEfficiency}>
+                          {(efficiency * 100).toFixed(0)}%
+                        </Text>
                       </View>
-                    )}
+                      <View style={styles.playerStats}>
+                        <PlayerStat
+                          label="Goals"
+                          value={contributions.goals ?? 0}
+                          icon="sports-soccer"
+                        />
+                        <PlayerStat
+                          label="Points"
+                          value={contributions.points ?? 0}
+                          icon="flag"
+                        />
+                        <PlayerStat
+                          label="Wides"
+                          value={contributions.wides ?? 0}
+                          icon="close"
+                        />
+                        <PlayerStat
+                          label="Turnovers +"
+                          value={contributions.turnoversWon ?? 0}
+                          icon="trending-up"
+                        />
+                        <PlayerStat
+                          label="Turnovers -"
+                          value={contributions.turnoversLost ?? 0}
+                          icon="trending-down"
+                        />
+                        <PlayerStat
+                          label="Frees Won"
+                          value={contributions.freesWon ?? 0}
+                          icon="add-circle"
+                        />
+                      </View>
+                      {((discipline.yellowCards ?? 0) > 0 || (discipline.redCards ?? 0) > 0) && (
+                        <View style={styles.disciplineRow}>
+                          {(discipline.yellowCards ?? 0) > 0 && (
+                            <View style={styles.card}>
+                              <View style={[styles.cardIcon, { backgroundColor: '#FFC107' }]} />
+                              <Text style={styles.cardText}>{discipline.yellowCards}</Text>
+                            </View>
+                          )}
+                          {(discipline.redCards ?? 0) > 0 && (
+                            <View style={styles.card}>
+                              <View style={[styles.cardIcon, { backgroundColor: '#F44336' }]} />
+                              <Text style={styles.cardText}>{discipline.redCards}</Text>
+                            </View>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          )}
+
+          {selectedTab === 'halves' && (
+            <View>
+              {(safeReport.halfBreakdown ?? []).length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateText}>No half breakdown yet</Text>
+                </View>
+              ) : (
+                (safeReport.halfBreakdown ?? []).map((half) => {
+                  const halfTitle = half.half === 'H1' ? '1st Half' : '2nd Half';
+                  const stats = half?.stats ?? {};
+                  return (
+                    <StatCard key={half.half} title={halfTitle}>
+                      <StatRow label="Goals" value={stats.goals ?? 0} />
+                      <StatRow label="Points" value={stats.points ?? 0} />
+                      <StatRow label="Wides" value={stats.wides ?? 0} />
+                      <StatRow label="Turnovers" value={stats.turnovers ?? 0} />
+                      <StatRow label="Puckouts" value={stats.puckouts ?? 0} />
+                    </StatCard>
+                  );
+                })
+              )}
+            </View>
+          )}
+
+          {selectedTab === 'heatmaps' && (
+            <View>
+              <StatCard title="Shot Heatmap">
+                {(safeReport.heatmaps?.shots ?? []).length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyStateText}>No shot data yet</Text>
                   </View>
-                );
-              })
-            )}
-          </View>
-        )}
-
-        {selectedTab === 'halves' && (
-          <View>
-            {(safeReport.halfBreakdown ?? []).length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyStateText}>No half breakdown yet</Text>
-              </View>
-            ) : (
-              (safeReport.halfBreakdown ?? []).map((half) => {
-                const halfTitle = half.half === 'H1' ? '1st Half' : '2nd Half';
-                const stats = half?.stats ?? {};
-                return (
-                  <StatCard key={half.half} title={halfTitle}>
-                    <StatRow label="Goals" value={stats.goals ?? 0} />
-                    <StatRow label="Points" value={stats.points ?? 0} />
-                    <StatRow label="Wides" value={stats.wides ?? 0} />
-                    <StatRow label="Turnovers" value={stats.turnovers ?? 0} />
-                    <StatRow label="Puckouts" value={stats.puckouts ?? 0} />
-                  </StatCard>
-                );
-              })
-            )}
-          </View>
-        )}
-
-        {selectedTab === 'heatmaps' && (
-          <View>
-            <StatCard title="Shot Heatmap">
-              {(safeReport.heatmaps?.shots ?? []).length === 0 ? (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyStateText}>No shot data yet</Text>
-                </View>
-              ) : (
-                (safeReport.heatmaps?.shots ?? []).map((zone) => {
-                  const zoneCount = zone?.count ?? 1;
-                  const zoneSuccessful = zone?.successful ?? 0;
-                  const successPercent = (zoneSuccessful / zoneCount) * 100;
-                  const failPercent = ((zoneCount - zoneSuccessful) / zoneCount) * 100;
-                  
-                  return (
-                    <View key={zone.zone} style={styles.heatmapRow}>
-                      <Text style={styles.heatmapZone}>{zone.zone ?? 'Unknown'}</Text>
-                      <View style={styles.heatmapBar}>
-                        <View
-                          style={[
-                            styles.heatmapBarFill,
-                            {
-                              width: `${successPercent}%`,
-                              backgroundColor: colors.success,
-                            },
-                          ]}
-                        />
-                        <View
-                          style={[
-                            styles.heatmapBarFill,
-                            {
-                              width: `${failPercent}%`,
-                              backgroundColor: colors.danger,
-                            },
-                          ]}
-                        />
+                ) : (
+                  (safeReport.heatmaps?.shots ?? []).map((zone) => {
+                    const zoneCount = zone?.count ?? 1;
+                    const zoneSuccessful = zone?.successful ?? 0;
+                    const successPercent = (zoneSuccessful / zoneCount) * 100;
+                    const failPercent = ((zoneCount - zoneSuccessful) / zoneCount) * 100;
+                    
+                    return (
+                      <View key={zone.zone} style={styles.heatmapRow}>
+                        <Text style={styles.heatmapZone}>{zone.zone ?? 'Unknown'}</Text>
+                        <View style={styles.heatmapBar}>
+                          <View
+                            style={[
+                              styles.heatmapBarFill,
+                              {
+                                width: `${successPercent}%`,
+                                backgroundColor: colors.success,
+                              },
+                            ]}
+                          />
+                          <View
+                            style={[
+                              styles.heatmapBarFill,
+                              {
+                                width: `${failPercent}%`,
+                                backgroundColor: colors.danger,
+                              },
+                            ]}
+                          />
+                        </View>
+                        <Text style={styles.heatmapCount}>
+                          {zoneSuccessful}/{zoneCount}
+                        </Text>
                       </View>
-                      <Text style={styles.heatmapCount}>
-                        {zoneSuccessful}/{zoneCount}
-                      </Text>
-                    </View>
-                  );
-                })
-              )}
-            </StatCard>
+                    );
+                  })
+                )}
+              </StatCard>
 
-            <StatCard title="Puckout Heatmap">
-              {(safeReport.heatmaps?.puckouts ?? []).length === 0 ? (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyStateText}>No puckout data yet</Text>
-                </View>
-              ) : (
-                (safeReport.heatmaps?.puckouts ?? []).map((zone) => {
-                  const zoneCount = zone?.count ?? 1;
-                  const zoneWon = zone?.won ?? 0;
-                  const wonPercent = (zoneWon / zoneCount) * 100;
-                  
-                  return (
-                    <View key={zone.zone} style={styles.heatmapRow}>
-                      <Text style={styles.heatmapZone}>{zone.zone ?? 'Unknown'}</Text>
-                      <View style={styles.heatmapBar}>
-                        <View
-                          style={[
-                            styles.heatmapBarFill,
-                            {
-                              width: `${wonPercent}%`,
-                              backgroundColor: colors.primary,
-                            },
-                          ]}
-                        />
+              <StatCard title="Puckout Heatmap">
+                {(safeReport.heatmaps?.puckouts ?? []).length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyStateText}>No puckout data yet</Text>
+                  </View>
+                ) : (
+                  (safeReport.heatmaps?.puckouts ?? []).map((zone) => {
+                    const zoneCount = zone?.count ?? 1;
+                    const zoneWon = zone?.won ?? 0;
+                    const wonPercent = (zoneWon / zoneCount) * 100;
+                    
+                    return (
+                      <View key={zone.zone} style={styles.heatmapRow}>
+                        <Text style={styles.heatmapZone}>{zone.zone ?? 'Unknown'}</Text>
+                        <View style={styles.heatmapBar}>
+                          <View
+                            style={[
+                              styles.heatmapBarFill,
+                              {
+                                width: `${wonPercent}%`,
+                                backgroundColor: colors.primary,
+                              },
+                            ]}
+                          />
+                        </View>
+                        <Text style={styles.heatmapCount}>
+                          {zoneWon}/{zoneCount}
+                        </Text>
                       </View>
-                      <Text style={styles.heatmapCount}>
-                        {zoneWon}/{zoneCount}
-                      </Text>
-                    </View>
-                  );
-                })
-              )}
-            </StatCard>
-          </View>
-        )}
-      </ScrollView>
+                    );
+                  })
+                )}
+              </StatCard>
+            </View>
+          )}
+        </ScrollView>
 
-      {/* Export buttons */}
-      <View style={styles.exportContainer}>
-        <TouchableOpacity
-          style={styles.exportButton}
-          onPress={handleExportWhatsApp}
-          disabled={exporting}
-        >
-          <IconSymbol
-            ios_icon_name="message.fill"
-            android_material_icon_name="message"
-            size={20}
-            color="#fff"
-          />
-          <Text style={styles.exportButtonText}>WhatsApp</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.exportButton}
-          onPress={handleExportPDF}
-          disabled={exporting}
-        >
-          <IconSymbol
-            ios_icon_name="doc.fill"
-            android_material_icon_name="description"
-            size={20}
-            color="#fff"
-          />
-          <Text style={styles.exportButtonText}>PDF</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.exportButton}
-          onPress={handleExportCSV}
-          disabled={exporting}
-        >
-          <IconSymbol
-            ios_icon_name="tablecells"
-            android_material_icon_name="table-chart"
-            size={20}
-            color="#fff"
-          />
-          <Text style={styles.exportButtonText}>CSV</Text>
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
+        {/* Export buttons */}
+        <View style={styles.exportContainer}>
+          <TouchableOpacity
+            style={styles.exportButton}
+            onPress={handleExportWhatsApp}
+            disabled={exporting}
+          >
+            <IconSymbol
+              ios_icon_name="message.fill"
+              android_material_icon_name="message"
+              size={20}
+              color="#fff"
+            />
+            <Text style={styles.exportButtonText}>WhatsApp</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.exportButton}
+            onPress={handleExportPDF}
+            disabled={exporting}
+          >
+            <IconSymbol
+              ios_icon_name="doc.fill"
+              android_material_icon_name="description"
+              size={20}
+              color="#fff"
+            />
+            <Text style={styles.exportButtonText}>PDF</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.exportButton}
+            onPress={handleExportCSV}
+            disabled={exporting}
+          >
+            <IconSymbol
+              ios_icon_name="tablecells"
+              android_material_icon_name="table-chart"
+              size={20}
+              color="#fff"
+            />
+            <Text style={styles.exportButtonText}>CSV</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+
+      {/* Custom Error Modal */}
+      <Modal
+        visible={showErrorModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowErrorModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalMessage}>{errorModalMessage}</Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => setShowErrorModal(false)}
+            >
+              <Text style={styles.modalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -800,16 +841,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 16,
+    padding: 24,
   },
   loadingText: {
     fontSize: 16,
     color: colors.textSecondary,
   },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+    padding: 24,
+  },
+  errorTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    textAlign: 'center',
+  },
   errorText: {
     fontSize: 16,
-    color: colors.danger,
+    color: colors.textSecondary,
     textAlign: 'center',
-    paddingHorizontal: 20,
+  },
+  errorButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  errorButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   emptyStateSubtext: {
     fontSize: 14,
@@ -817,18 +883,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 20,
     marginTop: 8,
-  },
-  retryButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginTop: 16,
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
   },
   emptyState: {
     padding: 32,
@@ -1065,6 +1119,37 @@ const styles = StyleSheet.create({
   exportButtonText: {
     color: '#fff',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    gap: 16,
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  modalButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: '#fff',
+    fontSize: 16,
     fontWeight: '600',
   },
 });
