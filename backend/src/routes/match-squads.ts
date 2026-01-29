@@ -70,6 +70,16 @@ export function registerMatchSquadRoutes(app: App) {
       app.logger.info({ userId: session.user.id, fixtureId }, 'Fetching match squads');
 
       try {
+        // Verify fixture exists
+        const fixture = await app.db.query.fixtures.findFirst({
+          where: eq(schema.fixtures.id, fixtureId),
+        });
+
+        if (!fixture) {
+          app.logger.warn({ fixtureId }, 'Fixture not found');
+          return reply.status(404).send({ error: 'Fixture not found' });
+        }
+
         const squads = await app.db.query.matchSquads.findMany({
           where: eq(schema.matchSquads.fixtureId, fixtureId),
         });

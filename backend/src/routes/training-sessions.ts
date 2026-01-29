@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { eq, and } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import type { App } from '../index.js';
+import { validateParamId } from '../utils/validation.js';
 
 export function registerTrainingSessionRoutes(app: App) {
   const requireAuth = app.requireAuth();
@@ -17,9 +18,25 @@ export function registerTrainingSessionRoutes(app: App) {
       if (!session) return;
 
       const { teamId } = request.query;
+
+      // Validate teamId parameter
+      if (!validateParamId(teamId, 'teamId', reply)) {
+        return;
+      }
+
       app.logger.info({ userId: session.user.id, teamId }, 'Fetching training sessions');
 
       try {
+        // Verify team exists
+        const team = await app.db.query.teams.findFirst({
+          where: eq(schema.teams.id, teamId),
+        });
+
+        if (!team) {
+          app.logger.warn({ teamId }, 'Team not found');
+          return reply.status(404).send({ error: 'Team not found' });
+        }
+
         const sessions = await app.db.query.trainingSessions.findMany({
           where: eq(schema.trainingSessions.teamId, teamId),
           orderBy: (sessions, { desc }) => [desc(sessions.date)],
@@ -312,6 +329,12 @@ export function registerTrainingSessionRoutes(app: App) {
 
       const { teamId } = request.params;
       const { from, limit } = request.query;
+
+      // Validate teamId parameter
+      if (!validateParamId(teamId, 'teamId', reply)) {
+        return;
+      }
+
       const parsedLimit = limit ? Math.min(parseInt(limit), 100) : 5;
 
       app.logger.info(
@@ -320,6 +343,16 @@ export function registerTrainingSessionRoutes(app: App) {
       );
 
       try {
+        // Verify team exists
+        const team = await app.db.query.teams.findFirst({
+          where: eq(schema.teams.id, teamId),
+        });
+
+        if (!team) {
+          app.logger.warn({ teamId }, 'Team not found');
+          return reply.status(404).send({ error: 'Team not found' });
+        }
+
         let sessions = await app.db.query.trainingSessions.findMany({
           where: eq(schema.trainingSessions.teamId, teamId),
           orderBy: (sessions, { asc }) => [asc(sessions.date)],

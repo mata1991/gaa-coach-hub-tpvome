@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { eq, and, inArray } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import type { App } from '../index.js';
+import { validateParamId } from '../utils/validation.js';
 
 export function registerPlayerRoutes(app: App) {
   const requireAuth = app.requireAuth();
@@ -17,9 +18,25 @@ export function registerPlayerRoutes(app: App) {
       if (!session) return;
 
       const { teamId, positionGroup } = request.query;
+
+      // Validate teamId parameter
+      if (!validateParamId(teamId, 'teamId', reply)) {
+        return;
+      }
+
       app.logger.info({ userId: session.user.id, teamId, positionGroup }, 'Fetching players');
 
       try {
+        // Verify team exists
+        const team = await app.db.query.teams.findFirst({
+          where: eq(schema.teams.id, teamId),
+        });
+
+        if (!team) {
+          app.logger.warn({ teamId }, 'Team not found');
+          return reply.status(404).send({ error: 'Team not found' });
+        }
+
         let whereCondition: any = eq(schema.players.teamId, teamId);
 
         // Filter by position group if provided

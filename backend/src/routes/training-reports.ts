@@ -2,6 +2,7 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import { eq, and } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import type { App } from '../index.js';
+import { validateParamId } from '../utils/validation.js';
 
 export function registerTrainingReportRoutes(app: App) {
   const requireAuth = app.requireAuth();
@@ -22,12 +23,27 @@ export function registerTrainingReportRoutes(app: App) {
       const { teamId } = request.params;
       const { from, to } = request.query;
 
+      // Validate teamId parameter
+      if (!validateParamId(teamId, 'teamId', reply)) {
+        return;
+      }
+
       app.logger.info(
         { userId: session.user.id, teamId, from, to },
         'Fetching team training reports for all players'
       );
 
       try {
+        // Verify team exists
+        const team = await app.db.query.teams.findFirst({
+          where: eq(schema.teams.id, teamId),
+        });
+
+        if (!team) {
+          app.logger.warn({ teamId }, 'Team not found');
+          return reply.status(404).send({ error: 'Team not found' });
+        }
+
         // Parse date range
         let fromDate: Date | undefined;
         let toDate: Date | undefined;

@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { eq, and, gte } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import type { App } from '../index.js';
+import { validateParamId } from '../utils/validation.js';
 
 export function registerFixtureRoutes(app: App) {
   const requireAuth = app.requireAuth();
@@ -115,9 +116,25 @@ export function registerFixtureRoutes(app: App) {
           .values(insertData)
           .returning();
 
+        // Create default match_state for this fixture
+        await app.db
+          .insert(schema.matchState)
+          .values({
+            fixtureId: fixture.id,
+            status: 'NOT_STARTED',
+            homeGoals: 0,
+            homePoints: 0,
+            awayGoals: 0,
+            awayPoints: 0,
+            matchClock: 0,
+            half: 'H1',
+            startedAt: null,
+            completedAt: null,
+          });
+
         app.logger.info(
           { fixtureId: fixture.id, opponent, date, competitionId: fixture.competitionId },
-          'Fixture created successfully'
+          'Fixture created successfully with default match_state'
         );
         return fixture;
       } catch (error) {
@@ -424,6 +441,12 @@ export function registerFixtureRoutes(app: App) {
 
       const { teamId } = request.params;
       const { from, limit } = request.query;
+
+      // Validate teamId parameter
+      if (!validateParamId(teamId, 'teamId', reply)) {
+        return;
+      }
+
       const parsedLimit = limit ? Math.min(parseInt(limit), 100) : 5;
 
       app.logger.info(
@@ -432,6 +455,16 @@ export function registerFixtureRoutes(app: App) {
       );
 
       try {
+        // Verify team exists
+        const team = await app.db.query.teams.findFirst({
+          where: eq(schema.teams.id, teamId),
+        });
+
+        if (!team) {
+          app.logger.warn({ teamId }, 'Team not found');
+          return reply.status(404).send({ error: 'Team not found' });
+        }
+
         let fixtures = await app.db.query.fixtures.findMany({
           where: eq(schema.fixtures.teamId, teamId),
           orderBy: (fixtures, { asc }) => [asc(fixtures.date)],

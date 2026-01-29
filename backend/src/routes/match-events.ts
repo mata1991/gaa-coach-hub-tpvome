@@ -38,6 +38,16 @@ export function registerMatchEventRoutes(app: App) {
       app.logger.info({ userId: session.user.id, fixtureId }, 'Fetching match events');
 
       try {
+        // Verify fixture exists
+        const fixture = await app.db.query.fixtures.findFirst({
+          where: eq(schema.fixtures.id, fixtureId),
+        });
+
+        if (!fixture) {
+          app.logger.warn({ fixtureId }, 'Fixture not found');
+          return reply.status(404).send({ error: 'Fixture not found' });
+        }
+
         const events = await app.db.query.matchEvents.findMany({
           where: eq(schema.matchEvents.fixtureId, fixtureId),
           orderBy: (events, { asc }) => [asc(events.timestamp)],
