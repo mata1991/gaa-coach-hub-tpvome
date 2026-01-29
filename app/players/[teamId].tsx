@@ -9,12 +9,15 @@ import {
   ActivityIndicator,
   TextInput,
   Modal,
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { authenticatedGet, authenticatedPost, authenticatedPut, authenticatedDelete, authenticatedPatch } from '@/utils/api';
 import { Player, PositionGroup } from '@/types';
+import { ScreenState } from '@/components/ScreenState';
+import { useSafeParams, isValidParam } from '@/hooks/useSafeParams';
 
 type FilterType = 'ALL' | PositionGroup;
 
@@ -35,9 +38,7 @@ const FILTER_OPTIONS: { value: FilterType; label: string }[] = [
 
 export default function PlayersListScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ teamId: string }>();
-  
-  // Source of truth: route params (teamId)
+  const params = useSafeParams<{ teamId?: string }>();
   const teamId = params.teamId;
   
   const [loading, setLoading] = useState(true);
@@ -72,7 +73,7 @@ export default function PlayersListScreen() {
   console.log('PlayersListScreen: Rendering players list', { teamId, filter, playerCount: players.length });
 
   const fetchPlayers = useCallback(async () => {
-    if (!teamId) {
+    if (!isValidParam(teamId, 'teamId')) {
       console.log('PlayersListScreen: No teamId provided');
       setError('No team selected');
       setLoading(false);
@@ -211,38 +212,51 @@ export default function PlayersListScreen() {
   const handleMoveUp = async (player: Player, groupPlayers: Player[]) => {
     console.log('PlayersListScreen: User tapped Move Up for player:', player.name);
     
-    const currentIndex = groupPlayers.findIndex((p) => p.id === player.id);
+    // Filter out injured players for reordering
+    const nonInjuredPlayers = groupPlayers.filter(p => !p.isInjured);
+    const currentIndex = nonInjuredPlayers.findIndex((p) => p.id === player.id);
+    
     if (currentIndex <= 0) {
       console.log('PlayersListScreen: Player is already at the top');
       return;
     }
 
-    const playerAbove = groupPlayers[currentIndex - 1];
-    const newOrder = [...groupPlayers];
-    newOrder[currentIndex] = playerAbove;
-    newOrder[currentIndex - 1] = player;
-
-    const orderedPlayerIds = newOrder.map((p) => p.id);
+    const playerAbove = nonInjuredPlayers[currentIndex - 1];
+    
+    // Swap depthOrder values
+    const playerNewDepth = playerAbove.depthOrder ?? currentIndex - 1;
+    const playerAboveNewDepth = player.depthOrder ?? currentIndex;
 
     try {
-      console.log('PlayersListScreen: Reordering players:', { positionGroup: player.primaryPositionGroup, orderedPlayerIds });
+      console.log('PlayersListScreen: Swapping depth order:', {
+        player: player.name,
+        playerOldDepth: player.depthOrder,
+        playerNewDepth,
+        playerAbove: playerAbove.name,
+        playerAboveOldDepth: playerAbove.depthOrder,
+        playerAboveNewDepth,
+      });
       
-      // Optimistic update
+      // Optimistic update - swap the two players
       const updatedPlayers = players.map((p) => {
-        const newIndex = orderedPlayerIds.indexOf(p.id);
-        if (newIndex !== -1 && p.primaryPositionGroup === player.primaryPositionGroup) {
-          return { ...p, depthOrder: newIndex };
+        if (p.id === player.id) {
+          return { ...p, depthOrder: playerNewDepth };
+        }
+        if (p.id === playerAbove.id) {
+          return { ...p, depthOrder: playerAboveNewDepth };
         }
         return p;
       });
-      setPlayers(updatedPlayers);
+      setPlayers(sortPlayers(updatedPlayers));
 
-      await authenticatedPut(`/api/teams/${teamId}/players/reorder`, {
-        positionGroup: player.primaryPositionGroup,
-        orderedPlayerIds,
-      });
+      // Send batch update to backend
+      await authenticatedPatch(`/api/teams/${teamId}/players/reorder`, [
+        { playerId: player.id, depthOrder: playerNewDepth },
+        { playerId: playerAbove.id, depthOrder: playerAboveNewDepth },
+      ]);
 
       console.log('PlayersListScreen: Order updated successfully');
+      // Refetch to confirm backend state
       fetchPlayers();
     } catch (err) {
       console.error('PlayersListScreen: Failed to reorder players:', err);
@@ -254,38 +268,51 @@ export default function PlayersListScreen() {
   const handleMoveDown = async (player: Player, groupPlayers: Player[]) => {
     console.log('PlayersListScreen: User tapped Move Down for player:', player.name);
     
-    const currentIndex = groupPlayers.findIndex((p) => p.id === player.id);
-    if (currentIndex >= groupPlayers.length - 1) {
+    // Filter out injured players for reordering
+    const nonInjuredPlayers = groupPlayers.filter(p => !p.isInjured);
+    const currentIndex = nonInjuredPlayers.findIndex((p) => p.id === player.id);
+    
+    if (currentIndex >= nonInjuredPlayers.length - 1) {
       console.log('PlayersListScreen: Player is already at the bottom');
       return;
     }
 
-    const playerBelow = groupPlayers[currentIndex + 1];
-    const newOrder = [...groupPlayers];
-    newOrder[currentIndex] = playerBelow;
-    newOrder[currentIndex + 1] = player;
-
-    const orderedPlayerIds = newOrder.map((p) => p.id);
+    const playerBelow = nonInjuredPlayers[currentIndex + 1];
+    
+    // Swap depthOrder values
+    const playerNewDepth = playerBelow.depthOrder ?? currentIndex + 1;
+    const playerBelowNewDepth = player.depthOrder ?? currentIndex;
 
     try {
-      console.log('PlayersListScreen: Reordering players:', { positionGroup: player.primaryPositionGroup, orderedPlayerIds });
+      console.log('PlayersListScreen: Swapping depth order:', {
+        player: player.name,
+        playerOldDepth: player.depthOrder,
+        playerNewDepth,
+        playerBelow: playerBelow.name,
+        playerBelowOldDepth: playerBelow.depthOrder,
+        playerBelowNewDepth,
+      });
       
-      // Optimistic update
+      // Optimistic update - swap the two players
       const updatedPlayers = players.map((p) => {
-        const newIndex = orderedPlayerIds.indexOf(p.id);
-        if (newIndex !== -1 && p.primaryPositionGroup === player.primaryPositionGroup) {
-          return { ...p, depthOrder: newIndex };
+        if (p.id === player.id) {
+          return { ...p, depthOrder: playerNewDepth };
+        }
+        if (p.id === playerBelow.id) {
+          return { ...p, depthOrder: playerBelowNewDepth };
         }
         return p;
       });
-      setPlayers(updatedPlayers);
+      setPlayers(sortPlayers(updatedPlayers));
 
-      await authenticatedPut(`/api/teams/${teamId}/players/reorder`, {
-        positionGroup: player.primaryPositionGroup,
-        orderedPlayerIds,
-      });
+      // Send batch update to backend
+      await authenticatedPatch(`/api/teams/${teamId}/players/reorder`, [
+        { playerId: player.id, depthOrder: playerNewDepth },
+        { playerId: playerBelow.id, depthOrder: playerBelowNewDepth },
+      ]);
 
       console.log('PlayersListScreen: Order updated successfully');
+      // Refetch to confirm backend state
       fetchPlayers();
     } catch (err) {
       console.error('PlayersListScreen: Failed to reorder players:', err);
@@ -304,7 +331,7 @@ export default function PlayersListScreen() {
       const updatedPlayers = players.map((p) =>
         p.id === player.id ? { ...p, isInjured: newInjuredStatus } : p
       );
-      setPlayers(updatedPlayers);
+      setPlayers(sortPlayers(updatedPlayers));
 
       console.log('PlayersListScreen: Updating player injured status:', { playerId: player.id, isInjured: newInjuredStatus });
       await authenticatedPatch(`/api/players/${player.id}`, {
@@ -332,8 +359,8 @@ export default function PlayersListScreen() {
       }
       
       // Within same injury status, sort by depthOrder
-      const aDepth = a.depthOrder || 999;
-      const bDepth = b.depthOrder || 999;
+      const aDepth = a.depthOrder ?? 999;
+      const bDepth = b.depthOrder ?? 999;
       
       if (aDepth !== bDepth) {
         return aDepth - bDepth;
@@ -376,109 +403,22 @@ export default function PlayersListScreen() {
     return grouped;
   };
 
-  // Show "Select a team" state if teamId is missing
-  if (!teamId) {
-    return (
-      <>
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: 'Players',
-            headerBackTitle: 'Back',
-          }}
-        />
-        <SafeAreaView style={styles.container} edges={['bottom']}>
-          <View style={styles.errorContainer}>
-            <IconSymbol
-              ios_icon_name="exclamationmark.triangle"
-              android_material_icon_name="warning"
-              size={64}
-              color="#dc3545"
-            />
-            <Text style={styles.errorTitle}>Select a Team</Text>
-            <Text style={styles.errorText}>
-              Please select a team to view players
-            </Text>
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={() => router.push('/select-team')}
-            >
-              <Text style={styles.primaryButtonText}>Go to Select Team</Text>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-      </>
-    );
-  }
-
-  // Loading state
-  if (loading) {
-    return (
-      <>
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: 'Players',
-            headerBackTitle: 'Back',
-          }}
-        />
-        <SafeAreaView style={styles.container} edges={['bottom']}>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#000" />
-            <Text style={styles.loadingText}>Loading players...</Text>
-          </View>
-        </SafeAreaView>
-      </>
-    );
-  }
-
-  // Error state
-  if (error) {
-    return (
-      <>
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: 'Players',
-            headerBackTitle: 'Back',
-          }}
-        />
-        <SafeAreaView style={styles.container} edges={['bottom']}>
-          <View style={styles.errorContainer}>
-            <IconSymbol
-              ios_icon_name="exclamationmark.triangle"
-              android_material_icon_name="error"
-              size={64}
-              color="#dc3545"
-            />
-            <Text style={styles.errorTitle}>Failed to Load Players</Text>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={fetchPlayers}
-            >
-              <Text style={styles.primaryButtonText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-      </>
-    );
-  }
-
   const filteredPlayers = getFilteredPlayers();
   const groupedPlayers = getGroupedPlayers();
 
   const renderPlayerCard = (player: Player, groupPlayers: Player[]) => {
-    const currentIndex = groupPlayers.findIndex((p) => p.id === player.id);
+    // For up/down buttons, only consider non-injured players
+    const nonInjuredPlayers = groupPlayers.filter(p => !p.isInjured);
+    const currentIndex = nonInjuredPlayers.findIndex((p) => p.id === player.id);
     const isFirst = currentIndex === 0;
-    const isLast = currentIndex === groupPlayers.length - 1;
+    const isLast = currentIndex === nonInjuredPlayers.length - 1;
+    const isInjured = player.isInjured || false;
     
     const positionLabel = POSITION_GROUPS.find((g) => g.value === player.primaryPositionGroup)?.label || 'No position';
     const handednessText = player.dominantSide === 'left' ? 'Left-handed' : player.dominantSide === 'right' ? 'Right-handed' : '';
-    const isInjured = player.isInjured || false;
 
     return (
-      <View key={player.id} style={styles.playerCard}>
+      <View style={styles.playerCard}>
         <View style={styles.playerInfo}>
           <Text style={styles.playerName}>{player.name}</Text>
           <Text style={styles.playerPosition}>{positionLabel}</Text>
@@ -498,7 +438,7 @@ export default function PlayersListScreen() {
               color={isInjured ? '#fff' : '#dc3545'}
             />
           </TouchableOpacity>
-          {player.primaryPositionGroup && (
+          {player.primaryPositionGroup && !isInjured && (
             <>
               <TouchableOpacity
                 style={[styles.iconButton, isFirst && styles.iconButtonDisabled]}
@@ -553,6 +493,26 @@ export default function PlayersListScreen() {
     );
   };
 
+  if (!isValidParam(teamId, 'teamId')) {
+    return (
+      <>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Players',
+            headerBackTitle: 'Back',
+          }}
+        />
+        <SafeAreaView style={styles.container} edges={['bottom']}>
+          <ScreenState
+            error="No team selected. Please select a team to view players."
+            onRetry={() => router.push('/select-team')}
+          />
+        </SafeAreaView>
+      </>
+    );
+  }
+
   return (
     <>
       <Stack.Screen
@@ -563,106 +523,114 @@ export default function PlayersListScreen() {
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.content}>
-          {players.length === 0 ? (
-            <View style={styles.emptyState}>
-              <IconSymbol
-                ios_icon_name="person.3"
-                android_material_icon_name="group"
-                size={64}
-                color="#666"
-              />
-              <Text style={styles.emptyTitle}>No Players Yet</Text>
-              <Text style={styles.emptyText}>
-                Add your first player to get started
-              </Text>
-              <TouchableOpacity style={styles.primaryButton} onPress={handleAddPlayer}>
-                <Text style={styles.primaryButtonText}>Add Player</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <>
-              {/* Filter Pills */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.filterContainer}
-              >
-                {FILTER_OPTIONS.map((option) => {
-                  const isActive = filter === option.value;
+        <ScreenState
+          loading={loading}
+          error={error}
+          empty={players.length === 0}
+          emptyTitle="No Players Yet"
+          emptyMessage="Add your first player to get started"
+          emptyIcon="person.3"
+          emptyIconMaterial="group"
+          onRetry={fetchPlayers}
+          onEmptyAction={handleAddPlayer}
+          emptyActionText="Add Player"
+        >
+          <ScrollView contentContainerStyle={styles.content}>
+            {/* Filter Pills */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterContainer}
+            >
+              {FILTER_OPTIONS.map((option) => {
+                const isActive = filter === option.value;
+                return (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[styles.filterPill, isActive && styles.filterPillActive]}
+                    onPress={() => {
+                      console.log('PlayersListScreen: User selected filter:', option.value);
+                      setFilter(option.value);
+                    }}
+                  >
+                    <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* Players List */}
+            {filter === 'ALL' ? (
+              <View style={styles.playersList}>
+                {POSITION_GROUPS.map((group) => {
+                  const groupPlayersList = groupedPlayers[group.value] || [];
+                  if (groupPlayersList.length === 0) {
+                    return null;
+                  }
+
                   return (
-                    <TouchableOpacity
-                      key={option.value}
-                      style={[styles.filterPill, isActive && styles.filterPillActive]}
-                      onPress={() => {
-                        console.log('PlayersListScreen: User selected filter:', option.value);
-                        setFilter(option.value);
-                      }}
-                    >
-                      <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
-                        {option.label}
-                      </Text>
-                    </TouchableOpacity>
+                    <View key={group.value} style={styles.groupSection}>
+                      <Text style={styles.groupHeader}>{group.label}</Text>
+                      <FlatList
+                        data={groupPlayersList}
+                        keyExtractor={(item) => item.id}
+                        renderItem={({ item }) => renderPlayerCard(item, groupPlayersList)}
+                        scrollEnabled={false}
+                      />
+                    </View>
                   );
                 })}
-              </ScrollView>
+                
+                {/* Show players without position group */}
+                {players.filter(p => !p.primaryPositionGroup).length > 0 && (
+                  <View style={styles.groupSection}>
+                    <Text style={styles.groupHeader}>Unassigned Position</Text>
+                    <FlatList
+                      data={players.filter(p => !p.primaryPositionGroup)}
+                      keyExtractor={(item) => item.id}
+                      renderItem={({ item }) => renderPlayerCard(item, players.filter(p => !p.primaryPositionGroup))}
+                      scrollEnabled={false}
+                    />
+                  </View>
+                )}
+              </View>
+            ) : (
+              <View style={styles.playersList}>
+                {filteredPlayers.length > 0 ? (
+                  <FlatList
+                    data={filteredPlayers}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => renderPlayerCard(item, filteredPlayers)}
+                    scrollEnabled={false}
+                  />
+                ) : (
+                  <View style={styles.emptyFilterState}>
+                    <IconSymbol
+                      ios_icon_name="person.3"
+                      android_material_icon_name="group"
+                      size={48}
+                      color="#999"
+                    />
+                    <Text style={styles.emptyFilterText}>
+                      No players in this position
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
 
-              {/* Players List */}
-              {filter === 'ALL' ? (
-                <View style={styles.playersList}>
-                  {POSITION_GROUPS.map((group) => {
-                    const groupPlayersList = groupedPlayers[group.value] || [];
-                    if (groupPlayersList.length === 0) {
-                      return null;
-                    }
-
-                    return (
-                      <View key={group.value} style={styles.groupSection}>
-                        <Text style={styles.groupHeader}>{group.label}</Text>
-                        {groupPlayersList.map((player) => renderPlayerCard(player, groupPlayersList))}
-                      </View>
-                    );
-                  })}
-                  
-                  {/* Show players without position group */}
-                  {players.filter(p => !p.primaryPositionGroup).length > 0 && (
-                    <View style={styles.groupSection}>
-                      <Text style={styles.groupHeader}>Unassigned Position</Text>
-                      {players.filter(p => !p.primaryPositionGroup).map((player) => renderPlayerCard(player, players.filter(p => !p.primaryPositionGroup)))}
-                    </View>
-                  )}
-                </View>
-              ) : (
-                <View style={styles.playersList}>
-                  {filteredPlayers.length > 0 ? (
-                    filteredPlayers.map((player) => renderPlayerCard(player, filteredPlayers))
-                  ) : (
-                    <View style={styles.emptyFilterState}>
-                      <IconSymbol
-                        ios_icon_name="person.3"
-                        android_material_icon_name="group"
-                        size={48}
-                        color="#999"
-                      />
-                      <Text style={styles.emptyFilterText}>
-                        No players in this position
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              )}
-
-              <TouchableOpacity style={styles.fabButton} onPress={handleAddPlayer}>
-                <IconSymbol
-                  ios_icon_name="plus"
-                  android_material_icon_name="add"
-                  size={24}
-                  color="#fff"
-                />
-              </TouchableOpacity>
-            </>
-          )}
-        </ScrollView>
+            <TouchableOpacity style={styles.fabButton} onPress={handleAddPlayer}>
+              <IconSymbol
+                ios_icon_name="plus"
+                android_material_icon_name="add"
+                size={24}
+                color="#fff"
+              />
+            </TouchableOpacity>
+          </ScrollView>
+        </ScreenState>
 
         {/* Add/Edit Player Modal */}
         <Modal
@@ -856,74 +824,6 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 80,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#666',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 24,
-    gap: 16,
-  },
-  errorTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#000',
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 80,
-    gap: 16,
-  },
-  emptyTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#000',
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    paddingHorizontal: 40,
-  },
-  emptyFilterState: {
-    paddingVertical: 60,
-    alignItems: 'center',
-    gap: 12,
-  },
-  emptyFilterText: {
-    fontSize: 16,
-    color: '#999',
-  },
-  primaryButton: {
-    backgroundColor: '#000',
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 8,
-    marginTop: 16,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
   filterContainer: {
     paddingBottom: 16,
     gap: 8,
@@ -1011,6 +911,15 @@ const styles = StyleSheet.create({
   },
   iconButtonDisabled: {
     opacity: 0.3,
+  },
+  emptyFilterState: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyFilterText: {
+    fontSize: 16,
+    color: '#999',
   },
   fabButton: {
     position: 'absolute',

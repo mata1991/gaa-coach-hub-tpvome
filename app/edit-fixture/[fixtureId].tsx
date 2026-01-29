@@ -109,7 +109,7 @@ export default function EditFixtureScreen() {
     } finally {
       setLoading(false);
     }
-  }, [fixtureId, teamId]);
+  }, [fixtureId, teamId, router]);
 
   useEffect(() => {
     fetchData();
