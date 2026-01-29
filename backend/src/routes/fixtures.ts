@@ -304,6 +304,62 @@ export function registerFixtureRoutes(app: App) {
     }
   );
 
+  // DELETE /api/fixtures/:id - Delete a fixture and all related data
+  app.fastify.delete(
+    '/api/fixtures/:id',
+    async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { id } = request.params;
+      app.logger.info({ userId: session.user.id, fixtureId: id }, 'Deleting fixture');
+
+      try {
+        // Fetch the fixture to verify it exists and get team info
+        const fixture = await app.db.query.fixtures.findFirst({
+          where: eq(schema.fixtures.id, id),
+          with: {
+            team: true,
+          },
+        });
+
+        if (!fixture) {
+          app.logger.warn({ fixtureId: id }, 'Fixture not found');
+          return reply.status(404).send({ error: 'Fixture not found' });
+        }
+
+        // Check permissions: user must be COACH or CLUB_ADMIN for the team's club
+        const membership = await app.db.query.memberships.findFirst({
+          where: and(
+            eq(schema.memberships.clubId, fixture.team.clubId),
+            eq(schema.memberships.userId, session.user.id)
+          ),
+        });
+
+        if (!membership || !['COACH', 'CLUB_ADMIN'].includes(membership.role)) {
+          app.logger.warn({ fixtureId: id, userId: session.user.id }, 'Unauthorized fixture deletion');
+          return reply
+            .status(403)
+            .send({ error: 'Only COACH or CLUB_ADMIN can delete fixtures' });
+        }
+
+        // Delete fixture (cascade will delete match_events, match_state, match_squads, lineups, etc.)
+        await app.db
+          .delete(schema.fixtures)
+          .where(eq(schema.fixtures.id, id));
+
+        app.logger.info(
+          { fixtureId: id, opponent: fixture.opponent },
+          'Fixture deleted successfully'
+        );
+        return { success: true, message: 'Fixture deleted successfully' };
+      } catch (error) {
+        app.logger.error({ err: error, fixtureId: id }, 'Failed to delete fixture');
+        throw error;
+      }
+    }
+  );
+
   // GET /api/fixtures/:id/stats - Get fixture stats
   app.fastify.get(
     '/api/fixtures/:id/stats',
