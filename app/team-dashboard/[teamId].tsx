@@ -192,37 +192,12 @@ export default function TeamDashboardScreen() {
       return;
     }
     
-    // Include both upcoming and draft fixtures for team line out
-    const availableFixtures = data?.upcomingFixtures || [];
-    
-    if (availableFixtures.length === 0) {
-      console.log('[TeamDashboard] No fixtures available, showing alert');
-      Alert.alert(
-        'Create a Fixture First',
-        'You need to create a fixture before setting up your team line out.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Create Fixture',
-            onPress: handleCreateFixture,
-          },
-        ]
-      );
-      return;
-    }
-
-    if (availableFixtures.length === 1) {
-      const fixture = availableFixtures[0];
-      console.log('[TeamDashboard] Single fixture found, navigating to lineups for:', fixture.id);
-      router.push({
-        pathname: '/lineups/[fixtureId]',
-        params: { fixtureId: fixture.id, teamId },
-      });
-    } else {
-      console.log('[TeamDashboard] Multiple fixtures found, showing picker');
-      setFixturePickerMode('build');
-      setShowFixturePicker(true);
-    }
+    // Navigate to team-based lineout (no fixture required)
+    console.log('[TeamDashboard] Navigating to team lineout template');
+    router.push({
+      pathname: '/team-lineout-template/[teamId]',
+      params: { teamId },
+    });
   };
 
   const handleTrainingSessions = () => {

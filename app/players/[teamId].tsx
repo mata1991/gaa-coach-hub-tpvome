@@ -250,10 +250,12 @@ export default function PlayersListScreen() {
       setPlayers(sortPlayers(updatedPlayers));
 
       // Send batch update to backend
-      await authenticatedPatch(`/api/teams/${teamId}/players/reorder`, [
-        { playerId: player.id, depthOrder: playerNewDepth },
-        { playerId: playerAbove.id, depthOrder: playerAboveNewDepth },
-      ]);
+      await authenticatedPatch(`/api/teams/${teamId}/players/batch`, {
+        updates: [
+          { playerId: player.id, depthOrder: playerNewDepth },
+          { playerId: playerAbove.id, depthOrder: playerAboveNewDepth },
+        ],
+      });
 
       console.log('PlayersListScreen: Order updated successfully');
       // Refetch to confirm backend state
@@ -306,10 +308,12 @@ export default function PlayersListScreen() {
       setPlayers(sortPlayers(updatedPlayers));
 
       // Send batch update to backend
-      await authenticatedPatch(`/api/teams/${teamId}/players/reorder`, [
-        { playerId: player.id, depthOrder: playerNewDepth },
-        { playerId: playerBelow.id, depthOrder: playerBelowNewDepth },
-      ]);
+      await authenticatedPatch(`/api/teams/${teamId}/players/batch`, {
+        updates: [
+          { playerId: player.id, depthOrder: playerNewDepth },
+          { playerId: playerBelow.id, depthOrder: playerBelowNewDepth },
+        ],
+      });
 
       console.log('PlayersListScreen: Order updated successfully');
       // Refetch to confirm backend state

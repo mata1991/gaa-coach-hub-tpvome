@@ -15,26 +15,22 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
-import { authenticatedGet, authenticatedPost, authenticatedPut } from '@/utils/api';
-import { Fixture, Player, LineupSlot, MatchSquad, TeamSide } from '@/types';
-import { GAA_POSITIONS } from '@/constants/EventPresets';
+import { authenticatedGet } from '@/utils/api';
+import { Player, LineupSlot } from '@/types';
 import { ScreenState } from '@/components/ScreenState';
 import { useSafeParams, isValidParam } from '@/hooks/useSafeParams';
+import { GAA_POSITIONS } from '@/constants/EventPresets';
 
-export default function TeamLineoutScreen() {
+export default function TeamLineoutTemplateScreen() {
   const router = useRouter();
-  const params = useSafeParams<{ fixtureId?: string; side?: string }>();
-  const fixtureId = params.fixtureId;
-  const initialSide = (params.side || 'home') as 'home' | 'away';
+  const params = useSafeParams<{ teamId?: string }>();
+  const teamId = params.teamId;
 
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fixture, setFixture] = useState<Fixture | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
-  const [selectedSide, setSelectedSide] = useState<TeamSide>(initialSide.toUpperCase() as TeamSide);
-  const [homeSquad, setHomeSquad] = useState<MatchSquad | null>(null);
-  const [awaySquad, setAwaySquad] = useState<MatchSquad | null>(null);
+  const [startingSlots, setStartingSlots] = useState<LineupSlot[]>([]);
+  const [benchSlots, setBenchSlots] = useState<LineupSlot[]>([]);
   
   // Player picker state
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
@@ -49,17 +45,17 @@ export default function TeamLineoutScreen() {
     message: string;
   } | null>(null);
 
-  console.log('[TeamLineout] Rendering team lineout screen', { fixtureId, side: initialSide });
+  console.log('[TeamLineoutTemplate] Rendering team lineout template screen', { teamId });
 
   useEffect(() => {
-    if (!isValidParam(fixtureId, 'fixtureId')) {
-      setError('Invalid fixture ID');
+    if (!isValidParam(teamId, 'teamId')) {
+      setError('Invalid team ID');
       setLoading(false);
       return;
     }
     
     fetchData();
-  }, [fixtureId]);
+  }, [teamId]);
 
   const showAlert = (title: string, message: string) => {
     setAlertModalConfig({ title, message });
@@ -67,83 +63,57 @@ export default function TeamLineoutScreen() {
   };
 
   const fetchData = async () => {
-    if (!fixtureId) return;
+    if (!teamId) return;
     
-    console.log('[TeamLineout] Fetching lineup data');
+    console.log('[TeamLineoutTemplate] Fetching players');
     setLoading(true);
     setError(null);
 
     try {
-      const fixtureData = await authenticatedGet<Fixture>(`/api/fixtures/${fixtureId}`);
-      console.log('[TeamLineout] Fixture data fetched:', fixtureData);
-      setFixture(fixtureData);
-
-      const squadsResponse = await authenticatedGet(`/api/fixtures/${fixtureId}/squads`);
-      console.log('[TeamLineout] Squads response:', squadsResponse);
-      
-      const squadsArray = Array.isArray(squadsResponse) ? squadsResponse : [];
-      const homeSquadData = squadsArray.find((s: any) => s.side === 'HOME');
-      const awaySquadData = squadsArray.find((s: any) => s.side === 'AWAY');
-      
-      setHomeSquad(homeSquadData || createEmptySquad('HOME'));
-      setAwaySquad(awaySquadData || createEmptySquad('AWAY'));
-
-      const playersResponse = await authenticatedGet<Player[]>(`/api/players?teamId=${fixtureData.teamId}`);
-      console.log('[TeamLineout] Players fetched:', playersResponse.length);
+      const playersResponse = await authenticatedGet<Player[]>(`/api/players?teamId=${teamId}`);
+      console.log('[TeamLineoutTemplate] Players fetched:', playersResponse.length);
       setPlayers(playersResponse);
+
+      // Initialize empty slots
+      const emptyStarting: LineupSlot[] = GAA_POSITIONS.map(pos => ({
+        positionNo: pos.positionNo,
+        positionName: pos.positionName,
+        playerId: null,
+        playerName: null,
+        jerseyNo: null,
+      }));
+
+      const emptyBench: LineupSlot[] = Array.from({ length: 15 }, (_, i) => ({
+        positionNo: i + 16,
+        positionName: `Bench ${i + 1}`,
+        playerId: null,
+        playerName: null,
+        jerseyNo: null,
+      }));
+
+      setStartingSlots(emptyStarting);
+      setBenchSlots(emptyBench);
     } catch (err: any) {
-      console.error('[TeamLineout] Error fetching lineup data:', err);
-      setError(err?.message || 'Failed to load lineup data');
+      console.error('[TeamLineoutTemplate] Error fetching data:', err);
+      setError(err?.message || 'Failed to load data');
     } finally {
       setLoading(false);
     }
   };
 
-  const createEmptySquad = (side: TeamSide): MatchSquad => {
-    const startingSlots: LineupSlot[] = GAA_POSITIONS.map(pos => ({
-      positionNo: pos.positionNo,
-      positionName: pos.positionName,
-      playerId: null,
-      playerName: side === 'AWAY' ? `${pos.positionNo}` : null,
-      jerseyNo: side === 'AWAY' ? pos.positionNo.toString() : null,
-    }));
-
-    const bench: LineupSlot[] = Array.from({ length: 15 }, (_, i) => ({
-      positionNo: i + 16,
-      positionName: `Bench ${i + 1}`,
-      playerId: null,
-      playerName: side === 'AWAY' ? `${i + 16}` : null,
-      jerseyNo: side === 'AWAY' ? (i + 16).toString() : null,
-    }));
-
-    return {
-      id: '',
-      fixtureId: fixtureId || '',
-      side,
-      startingSlots,
-      bench,
-      subsLog: [],
-      locked: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  };
-
-  const currentSquad = selectedSide === 'HOME' ? homeSquad : awaySquad;
-
   const handleSlotPress = (index: number, type: 'starting' | 'bench') => {
-    console.log('[TeamLineout] Slot pressed:', type, index);
+    console.log('[TeamLineoutTemplate] Slot pressed:', type, index);
     setSelectedSlotIndex(index);
     setSelectedSlotType(type);
     setSearchQuery('');
     setShowPlayerPicker(true);
   };
 
-  const handlePlayerSelect = async (player: Player) => {
-    console.log('[TeamLineout] Player selected:', player.name);
-    if (!currentSquad || selectedSlotIndex === null) return;
+  const handlePlayerSelect = (player: Player) => {
+    console.log('[TeamLineoutTemplate] Player selected:', player.name);
+    if (selectedSlotIndex === null) return;
 
-    const slots = selectedSlotType === 'starting' ? currentSquad.startingSlots : currentSquad.bench;
+    const slots = selectedSlotType === 'starting' ? startingSlots : benchSlots;
     const updatedSlots = [...slots];
     
     const autoJerseyNo = selectedSlotType === 'starting' 
@@ -157,102 +127,42 @@ export default function TeamLineoutScreen() {
       jerseyNo: autoJerseyNo,
     };
 
-    // Optimistic update
-    if (selectedSide === 'HOME') {
-      setHomeSquad({
-        ...currentSquad,
-        [selectedSlotType === 'starting' ? 'startingSlots' : 'bench']: updatedSlots,
-      });
+    if (selectedSlotType === 'starting') {
+      setStartingSlots(updatedSlots);
     } else {
-      setAwaySquad({
-        ...currentSquad,
-        [selectedSlotType === 'starting' ? 'startingSlots' : 'bench']: updatedSlots,
-      });
+      setBenchSlots(updatedSlots);
     }
 
     setShowPlayerPicker(false);
     setSelectedSlotIndex(null);
-
-    await saveSquad(
-      selectedSlotType === 'starting' ? updatedSlots : currentSquad.startingSlots,
-      selectedSlotType === 'bench' ? updatedSlots : currentSquad.bench
-    );
   };
 
-  const handleRemovePlayer = async (index: number, type: 'starting' | 'bench') => {
-    if (!currentSquad) return;
-
-    const slots = type === 'starting' ? currentSquad.startingSlots : currentSquad.bench;
+  const handleRemovePlayer = (index: number, type: 'starting' | 'bench') => {
+    const slots = type === 'starting' ? startingSlots : benchSlots;
     const updatedSlots = [...slots];
     
     updatedSlots[index] = {
       ...updatedSlots[index],
       playerId: null,
-      playerName: selectedSide === 'AWAY' ? `Away #${updatedSlots[index].positionNo}` : null,
-      jerseyNo: selectedSide === 'AWAY' ? updatedSlots[index].positionNo.toString() : null,
+      playerName: null,
+      jerseyNo: null,
     };
 
-    // Optimistic update
-    if (selectedSide === 'HOME') {
-      setHomeSquad({
-        ...currentSquad,
-        [type === 'starting' ? 'startingSlots' : 'bench']: updatedSlots,
-      });
+    if (type === 'starting') {
+      setStartingSlots(updatedSlots);
     } else {
-      setAwaySquad({
-        ...currentSquad,
-        [type === 'starting' ? 'startingSlots' : 'bench']: updatedSlots,
-      });
-    }
-
-    await saveSquad(
-      type === 'starting' ? updatedSlots : currentSquad.startingSlots,
-      type === 'bench' ? updatedSlots : currentSquad.bench
-    );
-  };
-
-  const saveSquad = async (startingSlots: LineupSlot[], bench: LineupSlot[]) => {
-    if (!fixtureId) return;
-    
-    console.log('[TeamLineout] Saving squad for side:', selectedSide);
-    try {
-      setSaving(true);
-      
-      const response = await authenticatedPost(`/api/fixtures/${fixtureId}/squads`, {
-        side: selectedSide,
-        startingSlots,
-        bench,
-      });
-
-      console.log('[TeamLineout] Squad saved successfully');
-
-      if (selectedSide === 'HOME') {
-        setHomeSquad(response);
-      } else {
-        setAwaySquad(response);
-      }
-    } catch (err: any) {
-      console.error('[TeamLineout] Error saving squad:', err);
-      showAlert('Error', 'Failed to save lineup. Please try again.');
-      // Rollback on error
-      fetchData();
-    } finally {
-      setSaving(false);
+      setBenchSlots(updatedSlots);
     }
   };
 
   const handleViewPitch = () => {
-    console.log('[TeamLineout] User tapped View Pitch button');
-    const side = selectedSide.toLowerCase();
-    router.push({
-      pathname: '/team-lineout-sheet/[fixtureId]',
-      params: { fixtureId, side },
-    });
+    console.log('[TeamLineoutTemplate] User tapped View Pitch button');
+    // TODO: Navigate to pitch view screen with the current lineup
+    showAlert('Coming Soon', 'Pitch view will be available in the next update.');
   };
 
   const getStarting15Count = () => {
-    if (!currentSquad) return 0;
-    return currentSquad.startingSlots.filter(slot => slot.playerId || slot.playerName).length;
+    return startingSlots.filter(slot => slot.playerId || slot.playerName).length;
   };
 
   const isStarting15Complete = getStarting15Count() === 15;
@@ -261,19 +171,18 @@ export default function TeamLineoutScreen() {
     player.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  if (!isValidParam(fixtureId, 'fixtureId')) {
+  if (!isValidParam(teamId, 'teamId')) {
     return (
       <SafeAreaView style={styles.container}>
         <Stack.Screen options={{ title: 'Team Line Out', headerShown: true }} />
         <ScreenState
-          error="Invalid fixture ID. Please select a valid fixture."
+          error="Invalid team ID. Please select a valid team."
           onRetry={() => router.back()}
         />
       </SafeAreaView>
     );
   }
 
-  const opponentName = fixture?.opponent || 'Opponent';
   const starting15Count = getStarting15Count();
 
   return (
@@ -281,7 +190,7 @@ export default function TeamLineoutScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          title: `Team Line Out vs ${opponentName}`,
+          title: 'Team Line Out',
           headerBackTitle: 'Back',
         }}
       />
@@ -291,26 +200,6 @@ export default function TeamLineoutScreen() {
           error={error}
           onRetry={fetchData}
         >
-          {/* Home/Away Tabs */}
-          <View style={styles.tabContainer}>
-            <TouchableOpacity
-              style={[styles.tab, selectedSide === 'HOME' && styles.activeTab]}
-              onPress={() => setSelectedSide('HOME')}
-            >
-              <Text style={[styles.tabText, selectedSide === 'HOME' && styles.activeTabText]}>
-                Home
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tab, selectedSide === 'AWAY' && styles.activeTab]}
-              onPress={() => setSelectedSide('AWAY')}
-            >
-              <Text style={[styles.tabText, selectedSide === 'AWAY' && styles.activeTabText]}>
-                Away
-              </Text>
-            </TouchableOpacity>
-          </View>
-
           {/* Progress Indicator */}
           <View style={styles.progressContainer}>
             <Text style={styles.progressText}>
@@ -325,7 +214,7 @@ export default function TeamLineoutScreen() {
             {/* Starting 15 List */}
             <Text style={styles.sectionTitle}>Starting 15</Text>
             <View style={styles.positionsList}>
-              {currentSquad?.startingSlots.map((slot, index) => {
+              {startingSlots.map((slot, index) => {
                 const hasPlayer = !!slot.playerId || !!slot.playerName;
                 const displayName = slot.playerName || 'Tap to select';
                 const positionText = slot.positionName;
@@ -377,7 +266,7 @@ export default function TeamLineoutScreen() {
             {/* Bench List */}
             <Text style={styles.sectionTitle}>Bench</Text>
             <View style={styles.positionsList}>
-              {currentSquad?.bench.map((slot, index) => {
+              {benchSlots.map((slot, index) => {
                 const hasPlayer = !!slot.playerId || !!slot.playerName;
                 const displayName = slot.playerName || 'Tap to select';
                 const benchNumber = (index + 16).toString();
@@ -433,25 +322,19 @@ export default function TeamLineoutScreen() {
             <TouchableOpacity
               style={[styles.primaryButton, !isStarting15Complete && styles.disabledButton]}
               onPress={handleViewPitch}
-              disabled={!isStarting15Complete || saving}
+              disabled={!isStarting15Complete}
             >
-              {saving ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <>
-                  <IconSymbol
-                    ios_icon_name="doc.text"
-                    android_material_icon_name="description"
-                    size={24}
-                    color="#FFFFFF"
-                  />
-                  <Text style={styles.primaryButtonText}>View Pitch Layout</Text>
-                </>
-              )}
+              <IconSymbol
+                ios_icon_name="doc.text"
+                android_material_icon_name="description"
+                size={24}
+                color="#FFFFFF"
+              />
+              <Text style={styles.primaryButtonText}>Preview Pitch</Text>
             </TouchableOpacity>
             {!isStarting15Complete && (
               <Text style={styles.helperText}>
-                Complete the starting 15 to view pitch layout
+                Complete the starting 15 to preview pitch layout
               </Text>
             )}
           </View>
@@ -529,7 +412,7 @@ export default function TeamLineoutScreen() {
                   }
                 />
 
-                {/* Skip Button */}
+                {/* Cancel Button */}
                 <TouchableOpacity
                   style={styles.skipButton}
                   onPress={() => setShowPlayerPicker(false)}
@@ -574,35 +457,11 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: colors.card,
-    padding: 4,
-    margin: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  activeTab: {
-    backgroundColor: colors.primary,
-  },
-  tabText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  activeTabText: {
-    color: '#FFFFFF',
-  },
   progressContainer: {
     paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   progressText: {
     fontSize: 14,
