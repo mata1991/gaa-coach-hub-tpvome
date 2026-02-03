@@ -47,6 +47,7 @@ export default function PlayersListScreen() {
   const [filter, setFilter] = useState<FilterType>('ALL');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   
   // Form state
   const [name, setName] = useState('');
@@ -227,6 +228,9 @@ export default function PlayersListScreen() {
     const playerNewDepth = playerAbove.depthOrder ?? currentIndex - 1;
     const playerAboveNewDepth = player.depthOrder ?? currentIndex;
 
+    // Store original state for rollback
+    const originalPlayers = [...players];
+
     try {
       console.log('PlayersListScreen: Swapping depth order:', {
         player: player.name,
@@ -237,7 +241,7 @@ export default function PlayersListScreen() {
         playerAboveNewDepth,
       });
       
-      // Optimistic update - swap the two players
+      // Optimistic update - swap the two players immediately
       const updatedPlayers = players.map((p) => {
         if (p.id === player.id) {
           return { ...p, depthOrder: playerNewDepth };
@@ -248,6 +252,7 @@ export default function PlayersListScreen() {
         return p;
       });
       setPlayers(sortPlayers(updatedPlayers));
+      setIsSaving(true);
 
       // Send batch update to backend
       await authenticatedPatch(`/api/teams/${teamId}/players/batch`, {
@@ -259,11 +264,15 @@ export default function PlayersListScreen() {
 
       console.log('PlayersListScreen: Order updated successfully');
       // Refetch to confirm backend state
-      fetchPlayers();
-    } catch (err) {
+      await fetchPlayers();
+    } catch (err: any) {
       console.error('PlayersListScreen: Failed to reorder players:', err);
-      showAlert('Error', 'Failed to update order');
-      fetchPlayers(); // Revert on error
+      // Rollback on error
+      setPlayers(originalPlayers);
+      const errorMessage = err?.message || 'Failed to update order. Please try again.';
+      showAlert('Error', errorMessage);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -285,6 +294,9 @@ export default function PlayersListScreen() {
     const playerNewDepth = playerBelow.depthOrder ?? currentIndex + 1;
     const playerBelowNewDepth = player.depthOrder ?? currentIndex;
 
+    // Store original state for rollback
+    const originalPlayers = [...players];
+
     try {
       console.log('PlayersListScreen: Swapping depth order:', {
         player: player.name,
@@ -295,7 +307,7 @@ export default function PlayersListScreen() {
         playerBelowNewDepth,
       });
       
-      // Optimistic update - swap the two players
+      // Optimistic update - swap the two players immediately
       const updatedPlayers = players.map((p) => {
         if (p.id === player.id) {
           return { ...p, depthOrder: playerNewDepth };
@@ -306,6 +318,7 @@ export default function PlayersListScreen() {
         return p;
       });
       setPlayers(sortPlayers(updatedPlayers));
+      setIsSaving(true);
 
       // Send batch update to backend
       await authenticatedPatch(`/api/teams/${teamId}/players/batch`, {
@@ -317,11 +330,15 @@ export default function PlayersListScreen() {
 
       console.log('PlayersListScreen: Order updated successfully');
       // Refetch to confirm backend state
-      fetchPlayers();
-    } catch (err) {
+      await fetchPlayers();
+    } catch (err: any) {
       console.error('PlayersListScreen: Failed to reorder players:', err);
-      showAlert('Error', 'Failed to update order');
-      fetchPlayers(); // Revert on error
+      // Rollback on error
+      setPlayers(originalPlayers);
+      const errorMessage = err?.message || 'Failed to update order. Please try again.';
+      showAlert('Error', errorMessage);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -330,6 +347,9 @@ export default function PlayersListScreen() {
     
     const newInjuredStatus = !player.isInjured;
     
+    // Store original state for rollback
+    const originalPlayers = [...players];
+
     try {
       // Optimistic update with immediate re-sort
       const updatedPlayers = players.map((p) =>
@@ -344,11 +364,13 @@ export default function PlayersListScreen() {
 
       console.log('PlayersListScreen: Player injured status updated successfully');
       // Refetch to confirm backend state
-      fetchPlayers();
-    } catch (err) {
+      await fetchPlayers();
+    } catch (err: any) {
       console.error('PlayersListScreen: Failed to update injured status:', err);
-      showAlert('Error', 'Failed to update injured status');
-      fetchPlayers(); // Revert on error
+      // Rollback on error
+      setPlayers(originalPlayers);
+      const errorMessage = err?.message || 'Failed to update injured status. Please try again.';
+      showAlert('Error', errorMessage);
     }
   };
 
@@ -445,28 +467,36 @@ export default function PlayersListScreen() {
           {player.primaryPositionGroup && !isInjured && (
             <>
               <TouchableOpacity
-                style={[styles.iconButton, isFirst && styles.iconButtonDisabled]}
-                onPress={() => !isFirst && handleMoveUp(player, groupPlayers)}
-                disabled={isFirst}
+                style={[styles.iconButton, (isFirst || isSaving) && styles.iconButtonDisabled]}
+                onPress={() => !isFirst && !isSaving && handleMoveUp(player, groupPlayers)}
+                disabled={isFirst || isSaving}
               >
-                <IconSymbol
-                  ios_icon_name="chevron.up"
-                  android_material_icon_name="arrow-upward"
-                  size={20}
-                  color={isFirst ? '#ccc' : '#000'}
-                />
+                {isSaving ? (
+                  <ActivityIndicator size="small" color="#000" />
+                ) : (
+                  <IconSymbol
+                    ios_icon_name="chevron.up"
+                    android_material_icon_name="arrow-upward"
+                    size={20}
+                    color={isFirst ? '#ccc' : '#000'}
+                  />
+                )}
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.iconButton, isLast && styles.iconButtonDisabled]}
-                onPress={() => !isLast && handleMoveDown(player, groupPlayers)}
-                disabled={isLast}
+                style={[styles.iconButton, (isLast || isSaving) && styles.iconButtonDisabled]}
+                onPress={() => !isLast && !isSaving && handleMoveDown(player, groupPlayers)}
+                disabled={isLast || isSaving}
               >
-                <IconSymbol
-                  ios_icon_name="chevron.down"
-                  android_material_icon_name="arrow-downward"
-                  size={20}
-                  color={isLast ? '#ccc' : '#000'}
-                />
+                {isSaving ? (
+                  <ActivityIndicator size="small" color="#000" />
+                ) : (
+                  <IconSymbol
+                    ios_icon_name="chevron.down"
+                    android_material_icon_name="arrow-downward"
+                    size={20}
+                    color={isLast ? '#ccc' : '#000'}
+                  />
+                )}
               </TouchableOpacity>
             </>
           )}
