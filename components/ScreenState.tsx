@@ -33,6 +33,12 @@ interface ScreenStateProps {
  * >
  *   {content}
  * </ScreenState>
+ * 
+ * This component ensures:
+ * - No blank screens (always shows loading, error, empty, or content)
+ * - Consistent error handling with retry button
+ * - User-friendly empty states with optional action button
+ * - Proper loading indicators
  */
 export function ScreenState({
   loading,

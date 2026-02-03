@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -167,9 +167,85 @@ export default function TeamLineoutTemplateScreen() {
 
   const isStarting15Complete = getStarting15Count() === 15;
 
-  const filteredPlayers = players.filter(player => 
-    player.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Get all selected player IDs across starting and bench
+  const selectedPlayerIds = useMemo(() => {
+    const ids = new Set<string>();
+    startingSlots.forEach(slot => {
+      if (slot.playerId) ids.add(slot.playerId);
+    });
+    benchSlots.forEach(slot => {
+      if (slot.playerId) ids.add(slot.playerId);
+    });
+    return ids;
+  }, [startingSlots, benchSlots]);
+
+  // Position order for sorting
+  const POS_ORDER: Record<string, number> = { 
+    'GK': 0, 
+    'BACK': 1, 
+    'MID': 2, 
+    'FWD': 3 
+  };
+
+  // Filter and sort players: exclude selected, group by position, sort by depthOrder
+  const availablePlayers = useMemo(() => {
+    return players
+      .filter(p => !selectedPlayerIds.has(p.id)) // Exclude already selected
+      .filter(p => !searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      .sort((a, b) => {
+        // Sort by position group first
+        const posA = a.primaryPositionGroup || 'ZZZ';
+        const posB = b.primaryPositionGroup || 'ZZZ';
+        const posOrderA = POS_ORDER[posA] ?? 999;
+        const posOrderB = POS_ORDER[posB] ?? 999;
+        
+        if (posOrderA !== posOrderB) {
+          return posOrderA - posOrderB;
+        }
+        
+        // Then by depthOrder (null last)
+        const depthA = a.depthOrder ?? 9999;
+        const depthB = b.depthOrder ?? 9999;
+        
+        if (depthA !== depthB) {
+          return depthA - depthB;
+        }
+        
+        // Finally by name
+        return a.name.localeCompare(b.name);
+      });
+  }, [players, selectedPlayerIds, searchQuery]);
+
+  // Group players by position for section list
+  const playerSections = useMemo(() => {
+    const grouped: { [key: string]: Player[] } = {
+      'GK': [],
+      'BACK': [],
+      'MID': [],
+      'FWD': [],
+    };
+    
+    availablePlayers.forEach(player => {
+      const pos = player.primaryPositionGroup || 'OTHER';
+      if (grouped[pos]) {
+        grouped[pos].push(player);
+      }
+    });
+    
+    const POS_LABELS: Record<string, string> = {
+      'GK': 'Goalkeepers',
+      'BACK': 'Backs',
+      'MID': 'Midfielders',
+      'FWD': 'Forwards',
+    };
+    
+    return Object.keys(grouped)
+      .filter(key => grouped[key].length > 0)
+      .map(key => ({
+        title: POS_LABELS[key] || key,
+        data: grouped[key],
+      }));
+  }, [availablePlayers]);
 
   if (!isValidParam(teamId, 'teamId')) {
     return (
@@ -377,40 +453,49 @@ export default function TeamLineoutTemplateScreen() {
                   />
                 </View>
 
-                {/* Player List */}
-                <FlatList
-                  data={filteredPlayers}
-                  keyExtractor={(item) => item.id}
-                  renderItem={({ item }) => {
-                    const playerName = item.name;
-                    const positionText = item.primaryPositionGroup || '';
-
-                    return (
-                      <TouchableOpacity
-                        style={styles.playerItem}
-                        onPress={() => handlePlayerSelect(item)}
-                      >
-                        <View style={styles.playerInfo}>
-                          <Text style={styles.playerItemName}>{playerName}</Text>
-                          {positionText && (
-                            <Text style={styles.playerItemPosition}>{positionText}</Text>
-                          )}
+                {/* Player List - Grouped by Position */}
+                {playerSections.length > 0 ? (
+                  <ScrollView style={{ flex: 1 }}>
+                    {playerSections.map((section) => (
+                      <View key={section.title}>
+                        <View style={styles.sectionHeader}>
+                          <Text style={styles.sectionHeaderText}>{section.title}</Text>
                         </View>
-                        <IconSymbol
-                          ios_icon_name="chevron.right"
-                          android_material_icon_name="chevron-right"
-                          size={20}
-                          color={colors.textSecondary}
-                        />
-                      </TouchableOpacity>
-                    );
-                  }}
-                  ListEmptyComponent={
-                    <View style={styles.emptyList}>
-                      <Text style={styles.emptyListText}>No players found</Text>
-                    </View>
-                  }
-                />
+                        {section.data.map((item) => {
+                          const playerName = item.name;
+                          const depthText = item.depthOrder ? `#${item.depthOrder}` : '';
+
+                          return (
+                            <TouchableOpacity
+                              key={item.id}
+                              style={styles.playerItem}
+                              onPress={() => handlePlayerSelect(item)}
+                            >
+                              <View style={styles.playerInfo}>
+                                <Text style={styles.playerItemName}>{playerName}</Text>
+                                {depthText && (
+                                  <Text style={styles.playerItemPosition}>{depthText}</Text>
+                                )}
+                              </View>
+                              <IconSymbol
+                                ios_icon_name="chevron.right"
+                                android_material_icon_name="chevron-right"
+                                size={20}
+                                color={colors.textSecondary}
+                              />
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    ))}
+                  </ScrollView>
+                ) : (
+                  <View style={styles.emptyList}>
+                    <Text style={styles.emptyListText}>
+                      {searchQuery ? 'No players found' : 'All players have been assigned'}
+                    </Text>
+                  </View>
+                )}
 
                 {/* Cancel Button */}
                 <TouchableOpacity
@@ -636,6 +721,19 @@ const styles = StyleSheet.create({
   emptyListText: {
     fontSize: 16,
     color: colors.textSecondary,
+  },
+  sectionHeader: {
+    backgroundColor: colors.backgroundAlt,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  sectionHeaderText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
   },
   skipButton: {
     padding: 16,

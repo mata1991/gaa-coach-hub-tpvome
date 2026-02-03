@@ -105,16 +105,41 @@ export const apiCall = async <T = any>(
 
     if (!response.ok) {
       let errorText = '';
+      let errorData: any = null;
+      
       try {
-        errorText = await response.text();
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          errorData = await response.json();
+          errorText = errorData.message || errorData.error || JSON.stringify(errorData);
+        } else {
+          errorText = await response.text();
+        }
       } catch (e) {
         errorText = 'Unable to read error response';
       }
+      
       console.error(`[API] ${method} ${url} failed:`, response.status, errorText);
       
-      const error = new Error(`API error: ${response.status} - ${errorText}`);
+      // Create user-friendly error messages
+      let userMessage = errorText;
+      
+      if (response.status === 400) {
+        userMessage = errorText || 'Invalid request. Please check your input.';
+      } else if (response.status === 401) {
+        userMessage = 'Session expired. Please log in again.';
+      } else if (response.status === 403) {
+        userMessage = 'You do not have permission to perform this action.';
+      } else if (response.status === 404) {
+        userMessage = errorText || 'Resource not found.';
+      } else if (response.status >= 500) {
+        userMessage = 'Server error. Please try again later.';
+      }
+      
+      const error = new Error(userMessage);
       (error as any).status = response.status;
       (error as any).statusText = response.statusText;
+      (error as any).originalError = errorText;
       throw error;
     }
 
