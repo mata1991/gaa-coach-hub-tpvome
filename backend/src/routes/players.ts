@@ -7,7 +7,74 @@ import { validateParamId } from '../utils/validation.js';
 export function registerPlayerRoutes(app: App) {
   const requireAuth = app.requireAuth();
 
-  // GET /api/players - Get players for a team, sorted by position group and depth order
+  // GET /api/teams/:teamId/players - Get players for a team (by path param)
+  app.fastify.get(
+    '/api/teams/:teamId/players',
+    async (
+      request: FastifyRequest<{
+        Params: { teamId: string };
+        Querystring: { positionGroup?: string };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { teamId } = request.params;
+      const { positionGroup } = request.query;
+
+      // Validate teamId parameter
+      if (!validateParamId(teamId, 'teamId', reply)) {
+        return;
+      }
+
+      app.logger.info({ userId: session.user.id, teamId, positionGroup }, 'Fetching team players');
+
+      try {
+        // Verify team exists
+        const team = await app.db.query.teams.findFirst({
+          where: eq(schema.teams.id, teamId),
+        });
+
+        if (!team) {
+          app.logger.warn({ teamId }, 'Team not found');
+          return reply.status(404).send({ error: 'Team not found' });
+        }
+
+        let whereCondition: any = eq(schema.players.teamId, teamId);
+
+        // Filter by position group if provided
+        if (positionGroup) {
+          whereCondition = and(
+            eq(schema.players.teamId, teamId),
+            eq(schema.players.primaryPositionGroup, positionGroup as 'GK' | 'BACK' | 'MID' | 'FWD')
+          );
+        }
+
+        const players = await app.db.query.players.findMany({
+          where: whereCondition,
+          orderBy: (players, { asc }) => [
+            asc(players.isInjured),
+            asc(players.depthOrder),
+            asc(players.name),
+          ],
+          with: {
+            trainingAttendance: true,
+            developmentNotes: true,
+            fitnessTests: true,
+          },
+        });
+
+        app.logger.info({ teamId, positionGroup, playerCount: players.length }, 'Team players fetched');
+        return players;
+      } catch (error) {
+        app.logger.error({ err: error, teamId, positionGroup }, 'Failed to fetch team players');
+        throw error;
+      }
+    }
+  );
+
+  // GET /api/players - Get players for a team (by query param for backward compatibility)
   app.fastify.get(
     '/api/players',
     async (
@@ -434,6 +501,109 @@ export function registerPlayerRoutes(app: App) {
         return { success: true, updated: updateCount };
       } catch (error) {
         app.logger.error({ err: error, teamId, positionGroup }, 'Failed to reorder players');
+        throw error;
+      }
+    }
+  );
+
+  // PUT /api/teams/:teamId/players/reorder (alternative format with updates array)
+  app.fastify.put(
+    '/api/teams/:teamId/players/reorder/v2',
+    async (
+      request: FastifyRequest<{
+        Params: { teamId: string };
+        Body: {
+          updates: Array<{ playerId: string; depthOrder: number }>;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { teamId } = request.params;
+      const { updates } = request.body;
+
+      app.logger.info(
+        { userId: session.user.id, teamId, updateCount: updates.length },
+        'Reordering players (v2 format)'
+      );
+
+      try {
+        // Validate team exists
+        if (!validateParamId(teamId, 'teamId', reply)) {
+          return;
+        }
+
+        const team = await app.db.query.teams.findFirst({
+          where: eq(schema.teams.id, teamId),
+        });
+
+        if (!team) {
+          app.logger.warn({ teamId }, 'Team not found');
+          return reply.status(404).send({ error: 'Team not found' });
+        }
+
+        // Validate that updates array is provided
+        if (!updates || updates.length === 0) {
+          app.logger.warn({ teamId }, 'No updates provided for reorder');
+          return reply.status(400).send({ error: 'updates array is required and cannot be empty' });
+        }
+
+        // Extract all player IDs to validate
+        const playerIds = updates.map((u) => u.playerId);
+
+        // Fetch all players to validate they belong to the team
+        const players = await app.db.query.players.findMany({
+          where: inArray(schema.players.id, playerIds),
+        });
+
+        // Validate all players belong to the team
+        const invalidTeamPlayers = players.filter((p) => p.teamId !== teamId);
+        if (invalidTeamPlayers.length > 0) {
+          app.logger.warn(
+            { teamId, invalidPlayerCount: invalidTeamPlayers.length },
+            'Some players do not belong to the team'
+          );
+          return reply
+            .status(400)
+            .send({ error: 'All players must belong to the specified team' });
+        }
+
+        // Create a map of player ID to depth order for quick lookup
+        const updateMap = new Map(updates.map((u) => [u.playerId, u.depthOrder]));
+
+        // Update depthOrder for each player
+        let updateCount = 0;
+        for (const player of players) {
+          const depthOrder = updateMap.get(player.id);
+          if (depthOrder !== undefined) {
+            await app.db
+              .update(schema.players)
+              .set({ depthOrder })
+              .where(eq(schema.players.id, player.id));
+            updateCount++;
+          }
+        }
+
+        app.logger.info(
+          { teamId, updatedCount: updateCount },
+          'Players reordered successfully (v2 format)'
+        );
+
+        // Fetch and return updated players
+        const updatedPlayers = await app.db.query.players.findMany({
+          where: eq(schema.players.teamId, teamId),
+          orderBy: (players, { asc }) => [
+            asc(players.isInjured),
+            asc(players.depthOrder),
+            asc(players.name),
+          ],
+        });
+
+        return { success: true, updated: updateCount, players: updatedPlayers };
+      } catch (error) {
+        app.logger.error({ err: error, teamId }, 'Failed to reorder players (v2 format)');
         throw error;
       }
     }

@@ -144,4 +144,95 @@ export function registerLineupRoutes(app: App) {
       }
     }
   );
+
+  // POST /api/fixtures/:fixtureId/lineups - Create a lineup for a fixture
+  app.fastify.post(
+    '/api/fixtures/:fixtureId/lineups',
+    async (
+      request: FastifyRequest<{
+        Params: { fixtureId: string };
+        Body: {
+          name: string;
+          starting15: Array<{ playerId: string; position: string }>;
+          subs: Array<{ playerId: string; order: number }>;
+          minutesTargets?: Record<string, number>;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { fixtureId } = request.params;
+      const { name, starting15, subs, minutesTargets } = request.body;
+
+      app.logger.info(
+        { userId: session.user.id, fixtureId, name },
+        'Creating lineup for fixture'
+      );
+
+      try {
+        // Verify fixture exists
+        const fixture = await app.db.query.fixtures.findFirst({
+          where: eq(schema.fixtures.id, fixtureId),
+        });
+
+        if (!fixture) {
+          app.logger.warn({ fixtureId }, 'Fixture not found');
+          return reply.status(404).send({ error: 'Fixture not found' });
+        }
+
+        const [lineup] = await app.db
+          .insert(schema.lineups)
+          .values({
+            fixtureId,
+            name,
+            starting15: starting15 as any,
+            subs: subs as any,
+            minutesTargets: minutesTargets as any,
+          })
+          .returning();
+
+        app.logger.info({ lineupId: lineup.id, name, fixtureId }, 'Lineup created successfully for fixture');
+        return lineup;
+      } catch (error) {
+        app.logger.error({ err: error, fixtureId, name }, 'Failed to create lineup for fixture');
+        throw error;
+      }
+    }
+  );
+
+  // GET /api/fixtures/:fixtureId/lineups - Get lineups for a fixture
+  app.fastify.get(
+    '/api/fixtures/:fixtureId/lineups',
+    async (request: FastifyRequest<{ Params: { fixtureId: string } }>, reply: FastifyReply) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { fixtureId } = request.params;
+      app.logger.info({ userId: session.user.id, fixtureId }, 'Fetching fixture lineups');
+
+      try {
+        // Verify fixture exists
+        const fixture = await app.db.query.fixtures.findFirst({
+          where: eq(schema.fixtures.id, fixtureId),
+        });
+
+        if (!fixture) {
+          app.logger.warn({ fixtureId }, 'Fixture not found');
+          return reply.status(404).send({ error: 'Fixture not found' });
+        }
+
+        const lineups = await app.db.query.lineups.findMany({
+          where: eq(schema.lineups.fixtureId, fixtureId),
+        });
+
+        app.logger.info({ fixtureId, lineupCount: lineups.length }, 'Fixture lineups fetched');
+        return lineups;
+      } catch (error) {
+        app.logger.error({ err: error, fixtureId }, 'Failed to fetch fixture lineups');
+        throw error;
+      }
+    }
+  );
 }
