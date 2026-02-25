@@ -71,22 +71,22 @@ export default function TeamDashboardScreen() {
     try {
       const dashboardData = await authenticatedGet(`/api/teams/${teamId}/dashboard`);
       console.log('Team dashboard data fetched:', dashboardData);
-      console.log('[TeamDashboard] Team crest URL:', dashboardData.team.crestImageUrl);
-      console.log('[TeamDashboard] Team jersey URL:', dashboardData.team.jerseyImageUrl);
+      console.log('[TeamDashboard] Team crestUri:', dashboardData.team.crestUri);
+      console.log('[TeamDashboard] Team jerseyUri:', dashboardData.team.jerseyUri);
+      console.log('[TeamDashboard] Team colours:', dashboardData.team.colours);
       setData(dashboardData);
       
       // Apply team colors to theme if available
-      if (dashboardData.team.primaryColor && dashboardData.team.secondaryColor) {
-        console.log('[TeamDashboard] Applying team colors to theme:', {
-          primary: dashboardData.team.primaryColor,
-          secondary: dashboardData.team.secondaryColor,
-          accent: dashboardData.team.accentColor,
-        });
-        await updateTheme(
-          dashboardData.team.primaryColor,
-          dashboardData.team.secondaryColor,
-          dashboardData.team.accentColor
-        );
+      // Backend returns flat fields: primaryColor, secondaryColor, accentColor
+      // Also support new colours object if backend is updated
+      const team = dashboardData.team;
+      const primaryColor = team.colours?.primary || team.primaryColor;
+      const secondaryColor = team.colours?.secondary || team.secondaryColor;
+      const accentColor = team.colours?.accent || team.accentColor;
+      
+      if (primaryColor && secondaryColor) {
+        console.log('[TeamDashboard] Applying team colors to theme:', { primaryColor, secondaryColor, accentColor });
+        await updateTheme(primaryColor, secondaryColor, accentColor || null);
       } else {
         console.log('[TeamDashboard] No team colors set, using default theme');
         await resetTheme();
@@ -122,7 +122,6 @@ export default function TeamDashboardScreen() {
       setUpcomingTrainingData(trainingResponse || []);
     } catch (error) {
       console.error('[TeamDashboard] Failed to fetch upcoming schedule:', error);
-      // Don't show error alert, just log it - the dashboard can still work without this data
       setUpcomingFixturesData([]);
       setUpcomingTrainingData([]);
     } finally {
@@ -247,19 +246,15 @@ export default function TeamDashboardScreen() {
 
   const checkLineupsAndStartMatch = async (fixtureId: string) => {
     console.log('[TeamDashboard] Checking squad status for fixture:', fixtureId);
-    console.log('[TeamDashboard] Request URL:', `/api/fixtures/${fixtureId}/squad-status`);
 
     try {
       const response = await authenticatedGet<{ homeReady: boolean; awayReady: boolean }>(`/api/fixtures/${fixtureId}/squad-status`);
       console.log('[TeamDashboard] Squad status response:', response);
-      console.log('[TeamDashboard] Response status code: 200');
-      console.log('[TeamDashboard] Response body:', JSON.stringify(response));
 
       const homeReady = response.homeReady || false;
       const awayReady = response.awayReady || false;
 
       if (!homeReady || !awayReady) {
-        // Squads are missing, show alert and navigate to lineup screen
         const missingSquads = [];
         if (!homeReady) missingSquads.push('HOME');
         if (!awayReady) missingSquads.push('AWAY');
@@ -303,24 +298,18 @@ export default function TeamDashboardScreen() {
       try {
         const startResponse = await authenticatedPost(`/api/fixtures/${fixtureId}/match-state/start`, {});
         console.log('[TeamDashboard] Match started successfully:', startResponse);
-        console.log('[TeamDashboard] Navigating to live match tracker');
         
         router.push({
           pathname: '/match-tracker-live/[fixtureId]',
           params: { fixtureId },
         });
-        console.log('[TeamDashboard] Navigation to match tracker initiated');
       } catch (startError: any) {
         console.error('[TeamDashboard] Failed to start match:', startError);
-        console.error('[TeamDashboard] Start error message:', startError?.message);
-        console.error('[TeamDashboard] Start error status:', startError?.status);
         
-        // If we get a 400 error about squads, show the squad setup screen
         if (startError?.status === 400 && startError?.message?.includes('squad')) {
-          console.log('[TeamDashboard] Backend returned 400 - squads issue, navigating to lineup screen');
           Alert.alert(
             'Squads Required',
-            'Both HOME and AWAY squads must be created before starting the match. Please ensure both squads have been saved with at least one player each.',
+            'Both HOME and AWAY squads must be created before starting the match.',
             [
               { text: 'Cancel', style: 'cancel' },
               {
@@ -336,113 +325,22 @@ export default function TeamDashboardScreen() {
           );
         } else {
           const errorMessage = startError?.message || 'Unknown error';
-          Alert.alert(
-            'Error',
-            `Failed to start match: ${errorMessage}`,
-            [{ text: 'OK' }]
-          );
+          Alert.alert('Error', `Failed to start match: ${errorMessage}`);
         }
       }
     } catch (error: any) {
       console.error('[TeamDashboard] Failed to check squad status:', error);
-      console.error('[TeamDashboard] Error message:', error?.message);
-      console.error('[TeamDashboard] Error status:', error?.status);
-      console.error('[TeamDashboard] Error stack:', error?.stack);
-
-      // Check for specific error types
-      if (error?.status === 401 || error?.status === 403 || error?.message?.includes('401') || error?.message?.includes('403')) {
-        console.log('[TeamDashboard] Authentication error detected (401/403)');
-        Alert.alert(
-          'Session Expired',
-          'Your session has expired. Please log in again.',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                router.push('/auth');
-              },
-            },
-          ]
-        );
-      } else if (error?.status === 404 || error?.message?.includes('404') || error?.message?.includes('not found')) {
-        console.log('[TeamDashboard] 404 error - fixture not found');
-        Alert.alert(
-          'Fixture Not Found',
-          'Could not find this fixture. It may have been deleted.',
-          [
-            { text: 'OK', onPress: () => fetchDashboard(true) },
-          ]
-        );
-      } else if (error?.message?.includes('Network') || error?.message?.includes('fetch') || error?.message?.includes('Failed to fetch')) {
-        console.log('[TeamDashboard] Network error detected, checking for cached squads');
-        
-        // Check if there's a cached squad for offline use
-        try {
-          const cachedSquadsKey = `match-squads-${fixtureId}`;
-          const cachedSquads = await AsyncStorage.getItem(cachedSquadsKey);
-          
-          if (cachedSquads) {
-            const squads = JSON.parse(cachedSquads);
-            const homeReady = squads && squads.home;
-            const awayReady = squads && squads.away;
-            
-            if (homeReady && awayReady) {
-              console.log('[TeamDashboard] Found cached squads, allowing offline match tracker');
-              Alert.alert(
-                'Offline Mode',
-                'You are offline. Using cached squad data. Match events will be synced when you reconnect.',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Start Match',
-                    onPress: () => {
-                      router.push({
-                        pathname: '/match-tracker-live/[fixtureId]',
-                        params: { fixtureId },
-                      });
-                    },
-                  },
-                ]
-              );
-              return;
-            }
-          }
-          
-          console.log('[TeamDashboard] No cached squads found or incomplete');
-          Alert.alert(
-            'Squads Required',
-            'Squads required to start match. Please connect to the internet to create squads.',
-            [
-              { text: 'OK' },
-            ]
-          );
-        } catch (cacheError) {
-          console.error('[TeamDashboard] Error checking cached squads:', cacheError);
-          Alert.alert(
-            'Could Not Reach Server',
-            'Could not reach server. Please check your connection and try again.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Retry',
-                onPress: () => checkLineupsAndStartMatch(fixtureId),
-              },
-            ]
-          );
-        }
+      
+      if (error?.status === 401 || error?.status === 403) {
+        Alert.alert('Session Expired', 'Please log in again.', [
+          { text: 'OK', onPress: () => router.push('/auth') },
+        ]);
+      } else if (error?.status === 404) {
+        Alert.alert('Fixture Not Found', 'This fixture may have been deleted.', [
+          { text: 'OK', onPress: () => fetchDashboard(true) },
+        ]);
       } else {
-        console.log('[TeamDashboard] Unknown error type');
-        Alert.alert(
-          'Error',
-          'An unexpected error occurred. Please try again.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Retry',
-              onPress: () => checkLineupsAndStartMatch(fixtureId),
-            },
-          ]
-        );
+        Alert.alert('Error', 'An unexpected error occurred. Please try again.');
       }
     }
   };
@@ -473,7 +371,7 @@ export default function TeamDashboardScreen() {
     console.log('[TeamDashboard] User tapped Delete Fixture:', fixture.id);
     Alert.alert(
       'Delete Fixture',
-      `Are you sure you want to delete the fixture against ${fixture.opponent}? This action cannot be undone.`,
+      `Are you sure you want to delete the fixture against ${fixture.opponent}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -486,7 +384,6 @@ export default function TeamDashboardScreen() {
               await authenticatedDelete(`/api/fixtures/${fixture.id}`);
               console.log('[TeamDashboard] Fixture deleted successfully');
               
-              // Optimistically update the UI by removing the fixture from the list
               if (data) {
                 setData({
                   ...data,
@@ -498,7 +395,6 @@ export default function TeamDashboardScreen() {
             } catch (error) {
               console.error('[TeamDashboard] Failed to delete fixture:', error);
               Alert.alert('Error', 'Failed to delete fixture. Please try again.');
-              // Refetch to restore the correct state
               fetchDashboard();
             }
           },
@@ -509,7 +405,6 @@ export default function TeamDashboardScreen() {
 
   const handleEditTeam = () => {
     console.log('[TeamDashboard] User tapped Edit Team button');
-    console.log('[TeamDashboard] Navigating to edit-team with teamId:', teamId);
     
     if (!teamId) {
       console.error('[TeamDashboard] ERROR: teamId is missing!');
@@ -517,16 +412,10 @@ export default function TeamDashboardScreen() {
       return;
     }
     
-    try {
-      router.push({
-        pathname: '/edit-team/[teamId]',
-        params: { teamId },
-      });
-      console.log('[TeamDashboard] Navigation initiated successfully');
-    } catch (error) {
-      console.error('[TeamDashboard] Navigation failed:', error);
-      Alert.alert('Error', 'Failed to open Edit Team screen. Please try again.');
-    }
+    router.push({
+      pathname: '/edit-team/[teamId]',
+      params: { teamId },
+    });
   };
 
   const canEdit = data?.userRole === 'CLUB_ADMIN' || data?.userRole === 'COACH';
@@ -562,9 +451,9 @@ export default function TeamDashboardScreen() {
   const upcomingSessionsCountStr = data.upcomingSessionsCount.toString();
   const completedSessionsCountStr = data.completedSessionsCount.toString();
   
-  // Determine crest and jersey URLs from team data
-  const crestUrl = data.team.crestImageUrl || data.team.crestUrl || data.club?.crestUrl;
-  const jerseyUrl = data.team.jerseyImageUrl;
+  // Use crestUri and jerseyUri (NOT crestUrl)
+  const crestUrl = data.team.crestUri || data.team.crestImageUrl || data.club?.crestUrl;
+  const jerseyUrl = data.team.jerseyUri || data.team.jerseyImageUrl;
   const hasCrest = !!crestUrl;
   const hasJersey = !!jerseyUrl;
   
@@ -821,7 +710,6 @@ export default function TeamDashboardScreen() {
                                 key={fixture.id}
                                 style={styles.scheduleItem}
                                 onPress={() => {
-                                  console.log('[TeamDashboard] User tapped fixture:', fixture.id);
                                   router.push({
                                     pathname: '/edit-fixture/[fixtureId]',
                                     params: { fixtureId: fixture.id, teamId },
@@ -885,7 +773,6 @@ export default function TeamDashboardScreen() {
                                 key={session.id}
                                 style={styles.scheduleItem}
                                 onPress={() => {
-                                  console.log('[TeamDashboard] User tapped training session:', session.id);
                                   router.push({
                                     pathname: '/training-attendance/[sessionId]',
                                     params: { sessionId: session.id, teamId },

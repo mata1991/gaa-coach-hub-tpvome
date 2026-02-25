@@ -18,9 +18,10 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
+import { ColourField } from '@/components/ColourField';
 import { authenticatedGet, authenticatedPut, authenticatedUpload, authenticatedDelete } from '@/utils/api';
 import { Team } from '@/types';
-import { validateHexColor } from '@/utils/colorParser';
+import { useThemeColors } from '@/contexts/ThemeContext';
 
 // Helper to resolve image sources (handles both local and remote)
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -34,17 +35,21 @@ const GRADES = ['Senior', 'Intermediate', 'Junior', 'Youth'];
 
 // Common GAA club color presets
 const COLOR_PRESETS = [
-  { name: 'Green & Gold', primary: '#0F8A3B', secondary: '#F4C542' },
-  { name: 'Blue & Gold', primary: '#0047AB', secondary: '#FFD700' },
-  { name: 'Red & White', primary: '#DC143C', secondary: '#FFFFFF' },
-  { name: 'Black & Amber', primary: '#000000', secondary: '#FFBF00' },
-  { name: 'Maroon & White', primary: '#800000', secondary: '#FFFFFF' },
-  { name: 'Navy & Sky', primary: '#000080', secondary: '#87CEEB' },
+  { name: 'Green & Gold', primary: '#0F8A3B', secondary: '#F4C542', accent: '#0F8A3B' },
+  { name: 'Blue & Gold', primary: '#0047AB', secondary: '#FFD700', accent: '#0047AB' },
+  { name: 'Red & White', primary: '#DC143C', secondary: '#FFFFFF', accent: '#DC143C' },
+  { name: 'Black & Amber', primary: '#000000', secondary: '#FFBF00', accent: '#000000' },
+  { name: 'Maroon & White', primary: '#800000', secondary: '#FFFFFF', accent: '#800000' },
+  { name: 'Navy & Sky', primary: '#000080', secondary: '#87CEEB', accent: '#000080' },
 ];
+
+// Hex validation helper
+const isHex = (v: string): boolean => /^#[0-9A-Fa-f]{6}$/.test(v);
 
 export default function EditTeamScreen() {
   const router = useRouter();
   const { teamId } = useLocalSearchParams<{ teamId: string }>();
+  const { updateTheme } = useThemeColors();
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -57,16 +62,16 @@ export default function EditTeamScreen() {
   const [ageGroup, setAgeGroup] = useState('');
   const [homeVenue, setHomeVenue] = useState('');
   
-  // Image uploads
-  const [crestImageUrl, setCrestImageUrl] = useState('');
-  const [jerseyImageUrl, setJerseyImageUrl] = useState('');
+  // Image uploads - using crestUri and jerseyUri
+  const [crestUri, setCrestUri] = useState('');
+  const [jerseyUri, setJerseyUri] = useState('');
   const [uploadingCrest, setUploadingCrest] = useState(false);
   const [uploadingJersey, setUploadingJersey] = useState(false);
   
-  // Color inputs
-  const [primaryColor, setPrimaryColor] = useState('');
-  const [secondaryColor, setSecondaryColor] = useState('');
-  const [accentColor, setAccentColor] = useState('');
+  // Color inputs - controlled state with hex values
+  const [primary, setPrimary] = useState('#000000');
+  const [secondary, setSecondary] = useState('#FFFFFF');
+  const [accent, setAccent] = useState('#FF0000');
   
   // Confirmation modals
   const [showRemoveCrestModal, setShowRemoveCrestModal] = useState(false);
@@ -95,17 +100,25 @@ export default function EditTeamScreen() {
       setGrade(teamData.grade || '');
       setAgeGroup(teamData.ageGroup || '');
       setHomeVenue(teamData.homeVenue || '');
-      setCrestImageUrl(teamData.crestImageUrl || '');
-      setJerseyImageUrl(teamData.jerseyImageUrl || '');
-      setPrimaryColor(teamData.primaryColor || '');
-      setSecondaryColor(teamData.secondaryColor || '');
-      setAccentColor(teamData.accentColor || '');
+      
+      // Backend returns crestImageUrl/jerseyImageUrl; also support crestUri/jerseyUri if backend is updated
+      setCrestUri(teamData.crestUri || teamData.crestImageUrl || '');
+      setJerseyUri(teamData.jerseyUri || teamData.jerseyImageUrl || '');
+      
+      // Load colours: support both new colours object and legacy flat fields
+      if (teamData.colours && (teamData.colours.primary || teamData.colours.secondary)) {
+        setPrimary(teamData.colours.primary || '#000000');
+        setSecondary(teamData.colours.secondary || '#FFFFFF');
+        setAccent(teamData.colours.accent || '');
+      } else {
+        // Use legacy flat color fields from backend
+        setPrimary(teamData.primaryColor || '#000000');
+        setSecondary(teamData.secondaryColor || '#FFFFFF');
+        setAccent(teamData.accentColor || '');
+      }
     } catch (error: any) {
       console.error('[EditTeam] Failed to fetch team:', error);
-      console.error('[EditTeam] Error message:', error?.message);
-      console.error('[EditTeam] Error status:', error?.status);
       
-      // Show specific error message based on error type
       let errorMessage = 'Failed to load team data. Please try again.';
       
       if (error?.message?.includes('401') || error?.message?.includes('403')) {
@@ -146,15 +159,15 @@ export default function EditTeamScreen() {
     }
     
     // Validate color formats if provided
-    if (primaryColor && !validateHexColor(primaryColor)) {
+    if (primary && !isHex(primary)) {
       setErrorMessage('Primary color must be a valid hex color (e.g., #FF0000)');
       isValid = false;
     }
-    if (secondaryColor && !validateHexColor(secondaryColor)) {
+    if (secondary && !isHex(secondary)) {
       setErrorMessage('Secondary color must be a valid hex color (e.g., #0000FF)');
       isValid = false;
     }
-    if (accentColor && !validateHexColor(accentColor)) {
+    if (accent && !isHex(accent)) {
       setErrorMessage('Accent color must be a valid hex color (e.g., #00FF00)');
       isValid = false;
     }
@@ -162,11 +175,17 @@ export default function EditTeamScreen() {
     return isValid;
   };
 
+  const applyPreset = (preset: typeof COLOR_PRESETS[0]) => {
+    console.log('[EditTeam] Applying preset:', preset.name);
+    setPrimary(preset.primary);
+    setSecondary(preset.secondary);
+    setAccent(preset.accent);
+  };
+
   const handlePickCrestImage = async () => {
     console.log('[EditTeam] User tapped Pick Crest Photo');
     
     try {
-      // Request permission
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       
       if (!permissionResult.granted) {
@@ -174,11 +193,10 @@ export default function EditTeamScreen() {
         return;
       }
 
-      // Launch image picker
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        aspect: [1, 1], // Square crop for crest
+        aspect: [1, 1],
         quality: 0.8,
       });
 
@@ -186,7 +204,6 @@ export default function EditTeamScreen() {
         const asset = result.assets[0];
         console.log('[EditTeam] Image selected:', asset.uri);
         
-        // Upload image
         setUploadingCrest(true);
         setErrorMessage('');
         
@@ -205,7 +222,8 @@ export default function EditTeamScreen() {
           );
           
           console.log('[EditTeam] Crest uploaded successfully:', uploadResult);
-          setCrestImageUrl(uploadResult.crestImageUrl);
+          // Backend returns crestImageUrl; map to crestUri for local state
+          setCrestUri(uploadResult.crestImageUrl || uploadResult.crestUri || '');
           Alert.alert('Success', 'Crest image uploaded successfully');
         } catch (error: any) {
           console.error('[EditTeam] Failed to upload crest:', error);
@@ -231,7 +249,6 @@ export default function EditTeamScreen() {
     console.log('[EditTeam] User tapped Pick Jersey Photo');
     
     try {
-      // Request permission
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       
       if (!permissionResult.granted) {
@@ -239,11 +256,10 @@ export default function EditTeamScreen() {
         return;
       }
 
-      // Launch image picker
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        aspect: [3, 4], // Portrait aspect for jersey
+        aspect: [3, 4],
         quality: 0.8,
       });
 
@@ -251,7 +267,6 @@ export default function EditTeamScreen() {
         const asset = result.assets[0];
         console.log('[EditTeam] Image selected:', asset.uri);
         
-        // Upload image
         setUploadingJersey(true);
         setErrorMessage('');
         
@@ -270,7 +285,8 @@ export default function EditTeamScreen() {
           );
           
           console.log('[EditTeam] Jersey uploaded successfully:', uploadResult);
-          setJerseyImageUrl(uploadResult.jerseyImageUrl);
+          // Backend returns jerseyImageUrl; map to jerseyUri for local state
+          setJerseyUri(uploadResult.jerseyImageUrl || uploadResult.jerseyUri || '');
           Alert.alert('Success', 'Jersey image uploaded successfully');
         } catch (error: any) {
           console.error('[EditTeam] Failed to upload jersey:', error);
@@ -298,7 +314,7 @@ export default function EditTeamScreen() {
     
     try {
       await authenticatedDelete(`/api/teams/${teamId}/crest`);
-      setCrestImageUrl('');
+      setCrestUri('');
       console.log('[EditTeam] Crest removed successfully');
     } catch (error) {
       console.error('[EditTeam] Failed to remove crest:', error);
@@ -312,7 +328,7 @@ export default function EditTeamScreen() {
     
     try {
       await authenticatedDelete(`/api/teams/${teamId}/jersey`);
-      setJerseyImageUrl('');
+      setJerseyUri('');
       console.log('[EditTeam] Jersey removed successfully');
     } catch (error) {
       console.error('[EditTeam] Failed to remove jersey:', error);
@@ -321,16 +337,7 @@ export default function EditTeamScreen() {
   };
 
   const handleSaveTeam = async () => {
-    console.log('[EditTeam] User tapped Save button', {
-      name,
-      shortName,
-      sport,
-      grade,
-      ageGroup,
-      homeVenue,
-      crestUrl,
-      colours,
-    });
+    console.log('[EditTeam] User tapped Save button');
 
     setErrorMessage('');
     
@@ -345,31 +352,42 @@ export default function EditTeamScreen() {
     console.log('[EditTeam] Starting team update...');
 
     try {
-      const requestPayload = {
+      // Map frontend field names to what the backend PUT endpoint accepts:
+      // Backend PUT /api/teams/:id accepts: crestUrl, primaryColor, secondaryColor, accentColor
+      // Note: jerseyImageUrl is only updated via the dedicated /api/teams/:teamId/jersey upload endpoint
+      const payload = {
         name: name.trim(),
         shortName: shortName.trim() || undefined,
         sport: sport || undefined,
         grade: grade || undefined,
         ageGroup: ageGroup.trim() || undefined,
         homeVenue: homeVenue.trim() || undefined,
-        primaryColor: primaryColor.trim() || undefined,
-        secondaryColor: secondaryColor.trim() || undefined,
-        accentColor: accentColor.trim() || undefined,
+        // Map crestUri → crestUrl (backend field name for PUT)
+        crestUrl: crestUri || null,
+        // Map colours object → flat color fields (backend field names)
+        primaryColor: primary || null,
+        secondaryColor: secondary || null,
+        accentColor: accent || null,
       };
       
-      console.log('[EditTeam] Request payload:', requestPayload);
+      console.log('[EditTeam] Request payload:', payload);
       console.log('[EditTeam] Calling PUT /api/teams/:id');
 
-      const updatedTeam = await authenticatedPut(`/api/teams/${teamId}`, requestPayload);
+      const updatedTeam = await authenticatedPut(`/api/teams/${teamId}`, payload);
 
       console.log('[EditTeam] Team updated successfully:', updatedTeam);
+      
+      // Update app theme with new colours immediately
+      if (primary && secondary) {
+        console.log('[EditTeam] Updating app theme with new colours:', { primary, secondary, accent });
+        await updateTheme(primary, secondary, accent || null);
+      }
       
       Alert.alert('Success', 'Team updated successfully', [
         {
           text: 'OK',
           onPress: () => {
             console.log('[EditTeam] Navigating back to team dashboard');
-            // Navigate back - the dashboard will refetch data when it comes into focus
             if (router.canGoBack()) {
               router.back();
             } else {
@@ -542,10 +560,10 @@ export default function EditTeamScreen() {
             {/* Crest Image Upload */}
             <View style={styles.field}>
               <Text style={styles.label}>Crest Image (Optional)</Text>
-              {crestImageUrl ? (
+              {crestUri ? (
                 <View style={styles.imagePreviewContainer}>
                   <Image
-                    source={resolveImageSource(crestImageUrl)}
+                    source={resolveImageSource(crestUri)}
                     style={styles.crestPreview}
                     resizeMode="contain"
                   />
@@ -604,10 +622,10 @@ export default function EditTeamScreen() {
             {/* Jersey Image Upload */}
             <View style={styles.field}>
               <Text style={styles.label}>Jersey Image (Optional)</Text>
-              {jerseyImageUrl ? (
+              {jerseyUri ? (
                 <View style={styles.imagePreviewContainer}>
                   <Image
-                    source={resolveImageSource(jerseyImageUrl)}
+                    source={resolveImageSource(jerseyUri)}
                     style={styles.jerseyPreview}
                     resizeMode="contain"
                   />
@@ -666,7 +684,7 @@ export default function EditTeamScreen() {
             {/* Team Colors */}
             <View style={styles.field}>
               <Text style={styles.label}>Team Colors (Optional)</Text>
-              <Text style={styles.fieldHint}>Choose a preset or enter custom hex colors</Text>
+              <Text style={styles.fieldHint}>Choose a preset or select custom colors</Text>
               
               {/* Color Presets */}
               <View style={styles.colorPresetsContainer}>
@@ -674,10 +692,7 @@ export default function EditTeamScreen() {
                   <TouchableOpacity
                     key={preset.name}
                     style={styles.colorPreset}
-                    onPress={() => {
-                      setPrimaryColor(preset.primary);
-                      setSecondaryColor(preset.secondary);
-                    }}
+                    onPress={() => applyPreset(preset)}
                     disabled={saving}
                   >
                     <View style={styles.colorPresetColors}>
@@ -691,57 +706,28 @@ export default function EditTeamScreen() {
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>Primary Color</Text>
-              <View style={styles.colorInputContainer}>
-                <TextInput
-                  style={[styles.input, styles.colorInput]}
-                  value={primaryColor}
-                  onChangeText={setPrimaryColor}
-                  placeholder="#FF0000"
-                  placeholderTextColor={colors.textSecondary}
-                  autoCapitalize="none"
-                  editable={!saving}
-                />
-                {primaryColor && validateHexColor(primaryColor) && (
-                  <View style={[styles.colorPreview, { backgroundColor: primaryColor }]} />
-                )}
-              </View>
+              <ColourField
+                label="Primary"
+                value={primary}
+                onChange={setPrimary}
+              />
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>Secondary Color</Text>
-              <View style={styles.colorInputContainer}>
-                <TextInput
-                  style={[styles.input, styles.colorInput]}
-                  value={secondaryColor}
-                  onChangeText={setSecondaryColor}
-                  placeholder="#0000FF"
-                  placeholderTextColor={colors.textSecondary}
-                  autoCapitalize="none"
-                  editable={!saving}
-                />
-                {secondaryColor && validateHexColor(secondaryColor) && (
-                  <View style={[styles.colorPreview, { backgroundColor: secondaryColor }]} />
-                )}
-              </View>
+              <ColourField
+                label="Secondary"
+                value={secondary}
+                onChange={setSecondary}
+              />
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>Accent Color (Optional)</Text>
-              <View style={styles.colorInputContainer}>
-                <TextInput
-                  style={[styles.input, styles.colorInput]}
-                  value={accentColor}
-                  onChangeText={setAccentColor}
-                  placeholder="#00FF00"
-                  placeholderTextColor={colors.textSecondary}
-                  autoCapitalize="none"
-                  editable={!saving}
-                />
-                {accentColor && validateHexColor(accentColor) && (
-                  <View style={[styles.colorPreview, { backgroundColor: accentColor }]} />
-                )}
-              </View>
+              <ColourField
+                label="Accent"
+                value={accent}
+                onChange={setAccent}
+                allowNone
+              />
             </View>
           </View>
 
@@ -1011,21 +997,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.primary,
-  },
-  colorInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  colorInput: {
-    flex: 1,
-  },
-  colorPreview: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   fieldHint: {
     fontSize: 12,

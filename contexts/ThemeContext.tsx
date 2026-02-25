@@ -2,7 +2,6 @@
 import React, { createContext, useContext, ReactNode, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors as defaultColors } from '@/styles/commonStyles';
-import { getLuminance, getContrastTextColor } from '@/utils/colorParser';
 
 interface ThemeColors {
   primary: string;
@@ -20,14 +19,13 @@ interface ThemeColors {
   danger: string;
   error: string;
   errorBackground: string;
-  // Additional colors for team theming
-  primaryText: string; // Text color that contrasts with primary
-  secondaryText: string; // Text color that contrasts with secondary
+  textOnPrimary: string;
+  textOnSecondary: string;
 }
 
 interface ThemeContextType {
   colors: ThemeColors;
-  updateTheme: (primaryColor: string, secondaryColor: string, accentColor?: string) => Promise<void>;
+  updateTheme: (primaryColor: string, secondaryColor: string, accentColor?: string | null) => Promise<void>;
   resetTheme: () => Promise<void>;
   isCustomTheme: boolean;
 }
@@ -36,7 +34,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 const THEME_STORAGE_KEY = 'app_theme_colors';
 
-// Default monochrome theme - black and white only
+// Default monochrome theme
 const defaultThemeColors: ThemeColors = {
   primary: '#000000',
   secondary: '#ffffff',
@@ -53,9 +51,46 @@ const defaultThemeColors: ThemeColors = {
   danger: '#dc3545',
   error: '#dc3545',
   errorBackground: '#FEE',
-  primaryText: '#ffffff',
-  secondaryText: '#000000',
+  textOnPrimary: '#ffffff',
+  textOnSecondary: '#000000',
 };
+
+/**
+ * Calculate relative luminance (WCAG formula)
+ * Returns value between 0 (black) and 1 (white)
+ */
+function getLuminance(hex: string): number {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return 0;
+  
+  const [r, g, b] = rgb.map(val => {
+    const normalized = val / 255;
+    return normalized <= 0.03928
+      ? normalized / 12.92
+      : Math.pow((normalized + 0.055) / 1.055, 2.4);
+  });
+  
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function hexToRgb(hex: string): [number, number, number] | null {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? [
+        parseInt(result[1], 16),
+        parseInt(result[2], 16),
+        parseInt(result[3], 16),
+      ]
+    : null;
+}
+
+/**
+ * Get contrasting text color (black or white) for a background
+ */
+function textFor(hex: string): string {
+  const luminance = getLuminance(hex);
+  return luminance > 0.5 ? '#000000' : '#FFFFFF';
+}
 
 /**
  * Generate theme colors from team colors
@@ -63,13 +98,12 @@ const defaultThemeColors: ThemeColors = {
 function generateThemeColors(
   primaryColor: string,
   secondaryColor: string,
-  accentColor?: string
+  accentColor?: string | null
 ): ThemeColors {
   console.log('[Theme] Generating theme colors:', { primaryColor, secondaryColor, accentColor });
   
-  // Calculate contrasting text colors
-  const primaryText = getContrastTextColor(primaryColor);
-  const secondaryText = getContrastTextColor(secondaryColor);
+  const textOnPrimary = textFor(primaryColor);
+  const textOnSecondary = textFor(secondaryColor);
   
   return {
     primary: primaryColor,
@@ -87,8 +121,8 @@ function generateThemeColors(
     danger: '#dc3545',
     error: '#dc3545',
     errorBackground: '#FEE',
-    primaryText,
-    secondaryText,
+    textOnPrimary,
+    textOnSecondary,
   };
 }
 
@@ -125,7 +159,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const updateTheme = async (
     primaryColor: string,
     secondaryColor: string,
-    accentColor?: string
+    accentColor?: string | null
   ) => {
     console.log('[Theme] Updating theme:', { primaryColor, secondaryColor, accentColor });
     

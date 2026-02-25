@@ -209,7 +209,8 @@ export default function SelectTeamScreen() {
             {teams.map((team) => {
               const club = clubs.find((c) => c.id === team.clubId);
               const sportDisplay = getSportDisplayName(team.sport);
-              const crestUrl = team.crestUrl || club?.crestUrl;
+              // Use crestUri (new field) or crestImageUrl (legacy field) or club crest as fallback
+              const crestUrl = team.crestUri || team.crestImageUrl || club?.crestUrl;
               const hasCrest = !!crestUrl;
               
               // Fix duplicate grade display: only show ageGroup if it's different from grade

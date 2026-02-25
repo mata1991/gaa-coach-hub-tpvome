@@ -27,16 +27,24 @@ export interface Team {
   grade?: string;
   ageGroup?: string;
   homeVenue?: string;
-  crestUrl?: string;
-  crestImageUrl?: string;
-  jerseyImageUrl?: string;
-  colours?: string;
-  primaryColor?: string;
-  secondaryColor?: string;
-  accentColor?: string;
+  // New field names (preferred)
+  crestUri?: string | null;
+  jerseyUri?: string | null;
+  colours?: {
+    primary: string;
+    secondary: string;
+    accent?: string | null;
+  };
   isArchived?: boolean;
-  ageGrade?: string; // Keep for backward compatibility
-  level?: string; // Keep for backward compatibility
+  // Legacy/backend field names (returned by current backend)
+  crestUrl?: string | null;
+  crestImageUrl?: string | null;
+  jerseyImageUrl?: string | null;
+  primaryColor?: string | null;
+  secondaryColor?: string | null;
+  accentColor?: string | null;
+  ageGrade?: string;
+  level?: string;
   createdAt: string;
 }
 
@@ -121,17 +129,17 @@ export interface MatchEvent {
   id?: string;
   fixtureId: string;
   playerId: string;
-  side?: 'HOME' | 'AWAY'; // Added for home vs away tracking
-  timestamp: number; // seconds
+  side?: 'HOME' | 'AWAY';
+  timestamp: number;
   eventType: string;
   eventCategory: 'Scoring' | 'Puckouts' | 'Possession' | 'Discipline' | 'Substitutions';
-  half?: 'H1' | 'H2'; // Half when event occurred
+  half?: 'H1' | 'H2';
   outcome?: string;
   zone?: string;
   notes?: string;
   createdAt?: string;
   synced?: boolean;
-  clientId?: string; // For offline tracking
+  clientId?: string;
 }
 
 export interface EventPreset {
@@ -146,7 +154,7 @@ export interface EventPreset {
 export type TeamSide = 'HOME' | 'AWAY';
 
 export interface LineupSlot {
-  positionNo: number; // 1-15
+  positionNo: number;
   positionName: string;
   playerId: string | null;
   playerName: string | null;
@@ -154,8 +162,8 @@ export interface LineupSlot {
 }
 
 export interface SubEvent {
-  time: string; // ISO timestamp
-  matchTime: number; // seconds
+  time: string;
+  matchTime: number;
   playerOffId: string;
   playerOffName: string;
   playerOnId: string;
@@ -182,9 +190,9 @@ export interface MatchState {
   homePoints: number;
   awayGoals: number;
   awayPoints: number;
-  matchClock: number; // seconds
-  period: number; // Legacy field, use half instead
-  half?: 'H1' | 'H2'; // New field for halves
+  matchClock: number;
+  period: number;
+  half?: 'H1' | 'H2';
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string;
