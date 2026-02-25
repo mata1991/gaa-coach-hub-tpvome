@@ -79,6 +79,13 @@ export const teams = pgTable('teams', {
   grade: text('grade'),
   ageGroup: text('age_group'),
   homeVenue: text('home_venue'),
+  // New colour structure
+  crestUri: text('crest_uri'),
+  jerseyUri: text('jersey_uri'),
+  coloursPrimary: text('colours_primary'),
+  coloursSecondary: text('colours_secondary'),
+  coloursAccent: text('colours_accent'),
+  // Legacy fields for backward compatibility (to be deprecated)
   crestUrl: text('crest_url'),
   crestImageUrl: text('crest_image_url'),
   jerseyImageUrl: text('jersey_image_url'),

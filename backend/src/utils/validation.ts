@@ -65,3 +65,24 @@ export function validateParamIds(
   }
   return true;
 }
+
+/**
+ * Validates a hex color is in format #RRGGBB
+ */
+export function isValidHexColor(color: string): boolean {
+  if (!color) return false;
+  return /^#[0-9A-Fa-f]{6}$/.test(color);
+}
+
+/**
+ * Validates a URL string
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url) return false;
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}

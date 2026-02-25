@@ -3,6 +3,7 @@ import { eq, and, inArray } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import { user } from '../db/auth-schema.js';
 import type { App } from '../index.js';
+import { isValidHexColor, isValidUrl } from '../utils/validation.js';
 
 // Sport normalization mapping
 const SPORT_MAP: Record<string, string> = {
@@ -31,11 +32,34 @@ function normalizeSport(sport: string | undefined): string | undefined {
   return SPORT_MAP[lower] || undefined;
 }
 
-// Hex color validation - accepts #RRGGBB or #RGB format
-function isValidHexColor(color: string): boolean {
-  if (!color) return false;
-  // Match #RGB or #RRGGBB format
-  return /^#([A-Fa-f0-9]{3}){1,2}$/.test(color);
+/**
+ * Map team database record to API response with new colour structure
+ * Handles backward compatibility with legacy fields
+ */
+function mapTeamToResponse(team: any) {
+  // Use new fields if they exist, fall back to legacy fields
+  const crestUri = team.crestUri || team.crestImageUrl || team.crestUrl || null;
+  const jerseyUri = team.jerseyUri || team.jerseyImageUrl || null;
+
+  const colours = {
+    primary: team.coloursPrimary || team.primaryColor || '#000000',
+    secondary: team.coloursSecondary || team.secondaryColor || '#FFFFFF',
+    accent: team.coloursAccent || team.accentColor || null,
+  };
+
+  return {
+    ...team,
+    crestUri,
+    jerseyUri,
+    colours,
+    // Remove legacy fields from response
+    crestUrl: undefined,
+    crestImageUrl: undefined,
+    jerseyImageUrl: undefined,
+    primaryColor: undefined,
+    secondaryColor: undefined,
+    accentColor: undefined,
+  };
 }
 
 export function registerTeamsV2Routes(app: App) {
@@ -116,7 +140,7 @@ export function registerTeamsV2Routes(app: App) {
         }
 
         app.logger.info({ userId: session.user.id, clubId, teamCount: teams.length }, 'Teams fetched');
-        return teams;
+        return teams.map(mapTeamToResponse);
       } catch (error) {
         app.logger.error({ err: error, userId: session.user.id, clubId }, 'Failed to fetch teams');
         throw error;
@@ -162,7 +186,7 @@ export function registerTeamsV2Routes(app: App) {
         }
 
         app.logger.info({ teamId, name: team.name }, 'Team details fetched');
-        return team;
+        return mapTeamToResponse(team);
       } catch (error) {
         app.logger.error({ err: error, teamId }, 'Failed to fetch team details');
         throw error;
@@ -274,13 +298,20 @@ export function registerTeamsV2Routes(app: App) {
         Params: { id: string };
         Body: {
           name?: string;
+          ageGroup?: string;
+          homeVenue?: string;
+          crestUri?: string | null;
+          jerseyUri?: string | null;
+          colours?: {
+            primary?: string;
+            secondary?: string;
+            accent?: string | null;
+          };
+          // Legacy fields for backward compatibility
           shortName?: string;
           sport?: string;
           grade?: string;
-          ageGroup?: string;
-          homeVenue?: string;
           crestUrl?: string;
-          colours?: string;
           primaryColor?: string;
           secondaryColor?: string;
           accentColor?: string;
@@ -293,7 +324,7 @@ export function registerTeamsV2Routes(app: App) {
       if (!session) return;
 
       const { id } = request.params;
-      const { name, shortName, sport, grade, ageGroup, homeVenue, crestUrl, colours, primaryColor, secondaryColor, accentColor, isArchived } = request.body;
+      const { name, ageGroup, homeVenue, crestUri, jerseyUri, colours, ...legacyFields } = request.body;
 
       app.logger.info({ userId: session.user.id, teamId: id }, 'Updating team');
 
@@ -322,35 +353,66 @@ export function registerTeamsV2Routes(app: App) {
             .send({ error: 'Only CLUB_ADMIN or COACH can update teams' });
         }
 
-        // Validate hex colors if provided
-        if (primaryColor !== undefined && primaryColor && !isValidHexColor(primaryColor)) {
-          app.logger.warn({ teamId: id, primaryColor }, 'Invalid primaryColor format');
-          return reply.status(400).send({ error: 'primaryColor must be a valid hex color (#RGB or #RRGGBB)' });
-        }
-
-        if (secondaryColor !== undefined && secondaryColor && !isValidHexColor(secondaryColor)) {
-          app.logger.warn({ teamId: id, secondaryColor }, 'Invalid secondaryColor format');
-          return reply.status(400).send({ error: 'secondaryColor must be a valid hex color (#RGB or #RRGGBB)' });
-        }
-
-        if (accentColor !== undefined && accentColor && !isValidHexColor(accentColor)) {
-          app.logger.warn({ teamId: id, accentColor }, 'Invalid accentColor format');
-          return reply.status(400).send({ error: 'accentColor must be a valid hex color (#RGB or #RRGGBB)' });
-        }
-
         const updateData: any = {};
+
+        // Update basic fields
         if (name) updateData.name = name.trim();
-        if (shortName !== undefined) updateData.shortName = shortName;
-        if (sport !== undefined) updateData.sport = normalizeSport(sport);
-        if (grade !== undefined) updateData.grade = grade;
         if (ageGroup !== undefined) updateData.ageGroup = ageGroup;
         if (homeVenue !== undefined) updateData.homeVenue = homeVenue;
-        if (crestUrl !== undefined) updateData.crestUrl = crestUrl;
-        if (colours !== undefined) updateData.colours = colours;
-        if (primaryColor !== undefined) updateData.primaryColor = primaryColor;
-        if (secondaryColor !== undefined) updateData.secondaryColor = secondaryColor;
-        if (accentColor !== undefined) updateData.accentColor = accentColor;
-        if (isArchived !== undefined) updateData.isArchived = isArchived;
+
+        // Handle new colour structure
+        if (colours) {
+          if (colours.primary !== undefined) {
+            if (colours.primary && !isValidHexColor(colours.primary)) {
+              app.logger.warn({ teamId: id, primary: colours.primary }, 'Invalid colours.primary format');
+              return reply.status(400).send({ error: 'colours.primary must be a valid hex color (#RRGGBB)' });
+            }
+            updateData.coloursPrimary = colours.primary;
+          }
+
+          if (colours.secondary !== undefined) {
+            if (colours.secondary && !isValidHexColor(colours.secondary)) {
+              app.logger.warn({ teamId: id, secondary: colours.secondary }, 'Invalid colours.secondary format');
+              return reply.status(400).send({ error: 'colours.secondary must be a valid hex color (#RRGGBB)' });
+            }
+            updateData.coloursSecondary = colours.secondary;
+          }
+
+          if (colours.accent !== undefined) {
+            if (colours.accent && !isValidHexColor(colours.accent)) {
+              app.logger.warn({ teamId: id, accent: colours.accent }, 'Invalid colours.accent format');
+              return reply.status(400).send({ error: 'colours.accent must be a valid hex color (#RRGGBB)' });
+            }
+            updateData.coloursAccent = colours.accent;
+          }
+        }
+
+        // Handle image URIs
+        if (crestUri !== undefined) {
+          if (crestUri && !isValidUrl(crestUri)) {
+            app.logger.warn({ teamId: id, crestUri }, 'Invalid crestUri format');
+            return reply.status(400).send({ error: 'crestUri must be a valid URL or null' });
+          }
+          updateData.crestUri = crestUri;
+        }
+
+        if (jerseyUri !== undefined) {
+          if (jerseyUri && !isValidUrl(jerseyUri)) {
+            app.logger.warn({ teamId: id, jerseyUri }, 'Invalid jerseyUri format');
+            return reply.status(400).send({ error: 'jerseyUri must be a valid URL or null' });
+          }
+          updateData.jerseyUri = jerseyUri;
+        }
+
+        // Handle legacy fields for backward compatibility
+        if (legacyFields.shortName !== undefined) updateData.shortName = legacyFields.shortName;
+        if (legacyFields.sport !== undefined) updateData.sport = normalizeSport(legacyFields.sport);
+        if (legacyFields.grade !== undefined) updateData.grade = legacyFields.grade;
+        if (legacyFields.crestUrl !== undefined) updateData.crestUrl = legacyFields.crestUrl;
+        if (legacyFields.primaryColor !== undefined) updateData.primaryColor = legacyFields.primaryColor;
+        if (legacyFields.secondaryColor !== undefined) updateData.secondaryColor = legacyFields.secondaryColor;
+        if (legacyFields.accentColor !== undefined) updateData.accentColor = legacyFields.accentColor;
+        if (legacyFields.isArchived !== undefined) updateData.isArchived = legacyFields.isArchived;
 
         const [updated] = await app.db
           .update(schema.teams)
@@ -359,7 +421,7 @@ export function registerTeamsV2Routes(app: App) {
           .returning();
 
         app.logger.info({ teamId: id }, 'Team updated successfully');
-        return updated;
+        return mapTeamToResponse(updated);
       } catch (error) {
         app.logger.error({ err: error, teamId: id }, 'Failed to update team');
         throw error;
@@ -432,7 +494,7 @@ export function registerTeamsV2Routes(app: App) {
         const completedSessionsCount = allSessions.filter((s) => s.dateTime < now).length;
 
         const dashboard = {
-          team,
+          team: mapTeamToResponse(team),
           club: team.club,
           playerCount,
           injuredCount,
@@ -727,15 +789,15 @@ export function registerTeamsV2Routes(app: App) {
         // Generate a signed URL for client access
         const { url } = await app.storage.getSignedUrl(uploadedKey);
 
-        // Update team with new crest URL
+        // Update team with new crest URL (use new field, but also set legacy field for compatibility)
         const [updated] = await app.db
           .update(schema.teams)
-          .set({ crestImageUrl: url })
+          .set({ crestUri: url, crestImageUrl: url })
           .where(eq(schema.teams.id, teamId))
           .returning();
 
         app.logger.info({ teamId, url }, 'Team crest uploaded successfully');
-        return { crestImageUrl: updated.crestImageUrl };
+        return { crestUri: updated.crestUri };
       } catch (error) {
         app.logger.error({ err: error, teamId }, 'Failed to upload team crest');
         throw error;
@@ -816,15 +878,15 @@ export function registerTeamsV2Routes(app: App) {
         // Generate a signed URL for client access
         const { url } = await app.storage.getSignedUrl(uploadedKey);
 
-        // Update team with new jersey URL
+        // Update team with new jersey URL (use new field, but also set legacy field for compatibility)
         const [updated] = await app.db
           .update(schema.teams)
-          .set({ jerseyImageUrl: url })
+          .set({ jerseyUri: url, jerseyImageUrl: url })
           .where(eq(schema.teams.id, teamId))
           .returning();
 
         app.logger.info({ teamId, url }, 'Team jersey uploaded successfully');
-        return { jerseyImageUrl: updated.jerseyImageUrl };
+        return { jerseyUri: updated.jerseyUri };
       } catch (error) {
         app.logger.error({ err: error, teamId }, 'Failed to upload team jersey');
         throw error;
@@ -869,10 +931,10 @@ export function registerTeamsV2Routes(app: App) {
           return reply.status(403).send({ error: 'Only COACH or CLUB_ADMIN can delete team crest' });
         }
 
-        // Remove crest URL
+        // Remove crest URL (clear both new and legacy fields)
         await app.db
           .update(schema.teams)
-          .set({ crestImageUrl: null })
+          .set({ crestUri: null, crestImageUrl: null })
           .where(eq(schema.teams.id, teamId));
 
         app.logger.info({ teamId }, 'Team crest removed successfully');
@@ -921,10 +983,10 @@ export function registerTeamsV2Routes(app: App) {
           return reply.status(403).send({ error: 'Only COACH or CLUB_ADMIN can delete team jersey' });
         }
 
-        // Remove jersey URL
+        // Remove jersey URL (clear both new and legacy fields)
         await app.db
           .update(schema.teams)
-          .set({ jerseyImageUrl: null })
+          .set({ jerseyUri: null, jerseyImageUrl: null })
           .where(eq(schema.teams.id, teamId));
 
         app.logger.info({ teamId }, 'Team jersey removed successfully');
