@@ -71,6 +71,8 @@ export default function TeamDashboardScreen() {
     try {
       const dashboardData = await authenticatedGet(`/api/teams/${teamId}/dashboard`);
       console.log('Team dashboard data fetched:', dashboardData);
+      console.log('[TeamDashboard] Team crest URL:', dashboardData.team.crestImageUrl);
+      console.log('[TeamDashboard] Team jersey URL:', dashboardData.team.jerseyImageUrl);
       setData(dashboardData);
       
       // Apply team colors to theme if available
@@ -560,11 +562,13 @@ export default function TeamDashboardScreen() {
   const upcomingSessionsCountStr = data.upcomingSessionsCount.toString();
   const completedSessionsCountStr = data.completedSessionsCount.toString();
   
-  // Determine crest and jersey URLs (team images have priority, then club crest)
-  const crestUrl = data.team.crestImageUrl || data.club?.crestUrl || data.team.crestUrl;
+  // Determine crest and jersey URLs from team data
+  const crestUrl = data.team.crestImageUrl || data.team.crestUrl || data.club?.crestUrl;
   const jerseyUrl = data.team.jerseyImageUrl;
   const hasCrest = !!crestUrl;
   const hasJersey = !!jerseyUrl;
+  
+  console.log('[TeamDashboard] Rendering images:', { hasCrest, hasJersey, crestUrl, jerseyUrl });
 
   return (
     <>
@@ -619,13 +623,16 @@ export default function TeamDashboardScreen() {
           <View style={styles.teamInfoCard}>
             <View style={styles.teamHeader}>
               <View style={styles.teamImagesRow}>
+                {/* Crest Image */}
                 <View style={styles.teamCrestContainer}>
                   {hasCrest ? (
                     <Image
                       source={resolveImageSource(crestUrl)}
                       style={styles.teamCrest}
                       resizeMode="contain"
-                      onError={() => console.log('[TeamDashboard] Failed to load crest image')}
+                      onError={(e) => {
+                        console.log('[TeamDashboard] Failed to load crest image:', e.nativeEvent.error);
+                      }}
                     />
                   ) : (
                     <IconSymbol
@@ -636,14 +643,20 @@ export default function TeamDashboardScreen() {
                     />
                   )}
                 </View>
+                
+                {/* Team Name */}
                 <Text style={styles.teamName}>{data.team.name}</Text>
+                
+                {/* Jersey Image */}
                 {hasJersey && (
                   <View style={styles.teamJerseyContainer}>
                     <Image
                       source={resolveImageSource(jerseyUrl)}
                       style={styles.teamJersey}
                       resizeMode="contain"
-                      onError={() => console.log('[TeamDashboard] Failed to load jersey image')}
+                      onError={(e) => {
+                        console.log('[TeamDashboard] Failed to load jersey image:', e.nativeEvent.error);
+                      }}
                     />
                   </View>
                 )}
@@ -1014,10 +1027,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
   },
   teamCrest: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
   },
   teamJerseyContainer: {
     width: 40,
@@ -1027,6 +1042,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
   },
   teamJersey: {
     width: 36,

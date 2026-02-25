@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
-  FlatList,
+  SectionList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -20,6 +20,28 @@ import { Player, LineupSlot } from '@/types';
 import { ScreenState } from '@/components/ScreenState';
 import { useSafeParams, isValidParam } from '@/hooks/useSafeParams';
 import { GAA_POSITIONS } from '@/constants/EventPresets';
+
+type Position = 'GOALKEEPER' | 'BACK' | 'MIDFIELDER' | 'FORWARD';
+
+const POS_ORDER: Record<string, number> = {
+  'GOALKEEPER': 0,
+  'GK': 0,
+  'BACK': 1,
+  'MIDFIELDER': 2,
+  'MID': 2,
+  'FORWARD': 3,
+  'FWD': 3,
+};
+
+const POS_LABEL: Record<string, string> = {
+  'GOALKEEPER': 'Goalkeepers',
+  'GK': 'Goalkeepers',
+  'BACK': 'Backs',
+  'MIDFIELDER': 'Midfielders',
+  'MID': 'Midfielders',
+  'FORWARD': 'Forwards',
+  'FWD': 'Forwards',
+};
 
 export default function TeamLineoutTemplateScreen() {
   const router = useRouter();
@@ -65,13 +87,15 @@ export default function TeamLineoutTemplateScreen() {
   const fetchData = async () => {
     if (!teamId) return;
     
-    console.log('[TeamLineoutTemplate] Fetching players');
+    console.log('[TeamLineoutTemplate] Fetching players for teamId:', teamId);
     setLoading(true);
     setError(null);
 
     try {
-      const playersResponse = await authenticatedGet<Player[]>(`/api/players?teamId=${teamId}`);
+      // Fetch players using the correct endpoint
+      const playersResponse = await authenticatedGet<Player[]>(`/api/teams/${teamId}/players`);
       console.log('[TeamLineoutTemplate] Players fetched:', playersResponse.length);
+      console.log('[TeamLineoutTemplate] Sample player:', playersResponse[0]);
       setPlayers(playersResponse);
 
       // Initialize empty slots
@@ -95,7 +119,20 @@ export default function TeamLineoutTemplateScreen() {
       setBenchSlots(emptyBench);
     } catch (err: any) {
       console.error('[TeamLineoutTemplate] Error fetching data:', err);
-      setError(err?.message || 'Failed to load data');
+      console.error('[TeamLineoutTemplate] Error status:', err?.status);
+      console.error('[TeamLineoutTemplate] Error message:', err?.message);
+      
+      let errorMessage = 'Failed to load players';
+      
+      if (err?.status === 401 || err?.status === 403) {
+        errorMessage = 'Session expired. Please log in again.';
+      } else if (err?.status === 404) {
+        errorMessage = 'Team not found';
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -103,6 +140,17 @@ export default function TeamLineoutTemplateScreen() {
 
   const handleSlotPress = (index: number, type: 'starting' | 'bench') => {
     console.log('[TeamLineoutTemplate] Slot pressed:', type, index);
+    
+    // Check if there are players available
+    if (players.length === 0) {
+      console.log('[TeamLineoutTemplate] No players available');
+      showAlert(
+        'No Players Available',
+        'You need to add players to your team before creating a lineup. Go to the Players screen to add players.'
+      );
+      return;
+    }
+    
     setSelectedSlotIndex(index);
     setSelectedSlotType(type);
     setSearchQuery('');
@@ -157,7 +205,6 @@ export default function TeamLineoutTemplateScreen() {
 
   const handleViewPitch = () => {
     console.log('[TeamLineoutTemplate] User tapped View Pitch button');
-    // TODO: Navigate to pitch view screen with the current lineup
     showAlert('Coming Soon', 'Pitch view will be available in the next update.');
   };
 
@@ -176,76 +223,91 @@ export default function TeamLineoutTemplateScreen() {
     benchSlots.forEach(slot => {
       if (slot.playerId) ids.add(slot.playerId);
     });
+    console.log('[TeamLineoutTemplate] Selected player IDs:', Array.from(ids));
     return ids;
   }, [startingSlots, benchSlots]);
 
-  // Position order for sorting
-  const POS_ORDER: Record<string, number> = { 
-    'GK': 0, 
-    'BACK': 1, 
-    'MID': 2, 
-    'FWD': 3 
-  };
-
-  // Filter and sort players: exclude selected, group by position, sort by depthOrder
-  const availablePlayers = useMemo(() => {
-    return players
-      .filter(p => !selectedPlayerIds.has(p.id)) // Exclude already selected
-      .filter(p => !searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase()))
-      .sort((a, b) => {
-        // Sort by position group first
-        const posA = a.primaryPositionGroup || 'ZZZ';
-        const posB = b.primaryPositionGroup || 'ZZZ';
-        const posOrderA = POS_ORDER[posA] ?? 999;
-        const posOrderB = POS_ORDER[posB] ?? 999;
-        
-        if (posOrderA !== posOrderB) {
-          return posOrderA - posOrderB;
-        }
-        
-        // Then by depthOrder (null last)
-        const depthA = a.depthOrder ?? 9999;
-        const depthB = b.depthOrder ?? 9999;
-        
-        if (depthA !== depthB) {
-          return depthA - depthB;
-        }
-        
-        // Finally by name
-        return a.name.localeCompare(b.name);
-      });
-  }, [players, selectedPlayerIds, searchQuery]);
-
-  // Group players by position for section list
+  // Build sections for SectionList - grouped by position, sorted by depthOrder
   const playerSections = useMemo(() => {
+    console.log('[TeamLineoutTemplate] Building player sections');
+    console.log('[TeamLineoutTemplate] Total players:', players.length);
+    console.log('[TeamLineoutTemplate] Selected IDs count:', selectedPlayerIds.size);
+    console.log('[TeamLineoutTemplate] Search query:', searchQuery);
+    
+    // Filter out selected players and apply search
+    const availablePlayers = players
+      .filter(p => {
+        const isSelected = selectedPlayerIds.has(p.id);
+        console.log(`[TeamLineoutTemplate] Player ${p.name}: selected=${isSelected}`);
+        return !isSelected;
+      })
+      .filter(p => {
+        if (!searchQuery) return true;
+        const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+        console.log(`[TeamLineoutTemplate] Player ${p.name}: matchesSearch=${matchesSearch}`);
+        return matchesSearch;
+      });
+    
+    console.log('[TeamLineoutTemplate] Available players after filtering:', availablePlayers.length);
+    
+    // Sort by position group, then depthOrder, then name
+    const sortedPlayers = availablePlayers.sort((a, b) => {
+      // Get position group (handle both formats: GOALKEEPER, GK, etc.)
+      const posA = a.primaryPositionGroup || 'ZZZ';
+      const posB = b.primaryPositionGroup || 'ZZZ';
+      const posOrderA = POS_ORDER[posA] ?? 999;
+      const posOrderB = POS_ORDER[posB] ?? 999;
+      
+      if (posOrderA !== posOrderB) {
+        return posOrderA - posOrderB;
+      }
+      
+      // Then by depthOrder (null last)
+      const depthA = a.depthOrder ?? 9999;
+      const depthB = b.depthOrder ?? 9999;
+      
+      if (depthA !== depthB) {
+        return depthA - depthB;
+      }
+      
+      // Finally by name
+      return a.name.localeCompare(b.name);
+    });
+    
+    // Group by position
     const grouped: { [key: string]: Player[] } = {
-      'GK': [],
+      'GOALKEEPER': [],
       'BACK': [],
-      'MID': [],
-      'FWD': [],
+      'MIDFIELDER': [],
+      'FORWARD': [],
     };
     
-    availablePlayers.forEach(player => {
+    sortedPlayers.forEach(player => {
       const pos = player.primaryPositionGroup || 'OTHER';
-      if (grouped[pos]) {
+      // Normalize position names
+      if (pos === 'GK') {
+        grouped['GOALKEEPER'].push(player);
+      } else if (pos === 'MID') {
+        grouped['MIDFIELDER'].push(player);
+      } else if (pos === 'FWD') {
+        grouped['FORWARD'].push(player);
+      } else if (grouped[pos]) {
         grouped[pos].push(player);
       }
     });
     
-    const POS_LABELS: Record<string, string> = {
-      'GK': 'Goalkeepers',
-      'BACK': 'Backs',
-      'MID': 'Midfielders',
-      'FWD': 'Forwards',
-    };
-    
-    return Object.keys(grouped)
+    // Build sections array
+    const sections = Object.keys(grouped)
       .filter(key => grouped[key].length > 0)
       .map(key => ({
-        title: POS_LABELS[key] || key,
+        title: POS_LABEL[key] || key,
         data: grouped[key],
       }));
-  }, [availablePlayers]);
+    
+    console.log('[TeamLineoutTemplate] Sections built:', sections.map(s => `${s.title}: ${s.data.length}`));
+    
+    return sections;
+  }, [players, selectedPlayerIds, searchQuery]);
 
   if (!isValidParam(teamId, 'teamId')) {
     return (
@@ -453,47 +515,72 @@ export default function TeamLineoutTemplateScreen() {
                   />
                 </View>
 
-                {/* Player List - Grouped by Position */}
+                {/* Player List - Grouped by Position using SectionList */}
                 {playerSections.length > 0 ? (
-                  <ScrollView style={{ flex: 1 }}>
-                    {playerSections.map((section) => (
-                      <View key={section.title}>
-                        <View style={styles.sectionHeader}>
-                          <Text style={styles.sectionHeaderText}>{section.title}</Text>
-                        </View>
-                        {section.data.map((item) => {
-                          const playerName = item.name;
-                          const depthText = item.depthOrder ? `#${item.depthOrder}` : '';
+                  <SectionList
+                    sections={playerSections}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => {
+                      const playerName = item.name;
+                      const depthText = item.depthOrder ? `#${item.depthOrder}` : '';
 
-                          return (
-                            <TouchableOpacity
-                              key={item.id}
-                              style={styles.playerItem}
-                              onPress={() => handlePlayerSelect(item)}
-                            >
-                              <View style={styles.playerInfo}>
-                                <Text style={styles.playerItemName}>{playerName}</Text>
-                                {depthText && (
-                                  <Text style={styles.playerItemPosition}>{depthText}</Text>
-                                )}
-                              </View>
-                              <IconSymbol
-                                ios_icon_name="chevron.right"
-                                android_material_icon_name="chevron-right"
-                                size={20}
-                                color={colors.textSecondary}
-                              />
-                            </TouchableOpacity>
-                          );
-                        })}
+                      return (
+                        <TouchableOpacity
+                          style={styles.playerItem}
+                          onPress={() => handlePlayerSelect(item)}
+                        >
+                          <View style={styles.playerInfo}>
+                            <Text style={styles.playerItemName}>{playerName}</Text>
+                            {depthText && (
+                              <Text style={styles.playerItemPosition}>{depthText}</Text>
+                            )}
+                          </View>
+                          <IconSymbol
+                            ios_icon_name="chevron.right"
+                            android_material_icon_name="chevron-right"
+                            size={20}
+                            color={colors.textSecondary}
+                          />
+                        </TouchableOpacity>
+                      );
+                    }}
+                    renderSectionHeader={({ section: { title } }) => (
+                      <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionHeaderText}>{title}</Text>
                       </View>
-                    ))}
-                  </ScrollView>
+                    )}
+                    style={{ flex: 1 }}
+                    stickySectionHeadersEnabled={true}
+                  />
                 ) : (
                   <View style={styles.emptyList}>
+                    <IconSymbol
+                      ios_icon_name="person.3"
+                      android_material_icon_name="group"
+                      size={48}
+                      color={colors.textSecondary}
+                    />
                     <Text style={styles.emptyListText}>
-                      {searchQuery ? 'No players found' : 'All players have been assigned'}
+                      {searchQuery 
+                        ? 'No players found matching your search' 
+                        : players.length === 0
+                        ? 'No players in your team yet'
+                        : 'All players have been assigned'}
                     </Text>
+                    {players.length === 0 && (
+                      <TouchableOpacity
+                        style={styles.emptyListButton}
+                        onPress={() => {
+                          setShowPlayerPicker(false);
+                          router.push({
+                            pathname: '/players/[teamId]',
+                            params: { teamId },
+                          });
+                        }}
+                      >
+                        <Text style={styles.emptyListButtonText}>Add Players</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 )}
 
@@ -717,10 +804,24 @@ const styles = StyleSheet.create({
   emptyList: {
     padding: 32,
     alignItems: 'center',
+    gap: 16,
   },
   emptyListText: {
     fontSize: 16,
     color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  emptyListButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  emptyListButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   sectionHeader: {
     backgroundColor: colors.backgroundAlt,
