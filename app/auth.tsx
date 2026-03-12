@@ -1,5 +1,9 @@
 
+<<<<<<< HEAD
 import React, { useState } from "react";
+=======
+import React, { useState } from 'react';
+>>>>>>> origin/main
 import {
   View,
   Text,
@@ -8,6 +12,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Platform,
+<<<<<<< HEAD
   KeyboardAvoidingView,
   ScrollView,
   Modal,
@@ -17,8 +22,22 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "expo-router";
 import { IconSymbol } from "@/components/IconSymbol";
+=======
+  Image,
+  ImageSourcePropType,
+} from 'react-native';
+import { Stack, useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '@/contexts/AuthContext';
+import { IconSymbol } from '@/components/IconSymbol';
+>>>>>>> origin/main
 
-type Mode = "signin" | "signup";
+// Helper to resolve image sources (handles both local require() and remote URLs)
+function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
+  if (!source) return { uri: '' };
+  if (typeof source === 'string') return { uri: source };
+  return source as ImageSourcePropType;
+}
 
 // Helper to resolve image sources (handles both local require() and remote URLs)
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -28,15 +47,11 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
 }
 
 export default function AuthScreen() {
-  const router = useRouter();
-  const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signInWithGitHub, loading: authLoading } =
-    useAuth();
-
-  const [mode, setMode] = useState<Mode>("signin");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
+<<<<<<< HEAD
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [alertModalConfig, setAlertModalConfig] = useState<{
     title: string;
@@ -60,49 +75,57 @@ export default function AuthScreen() {
   }
 
   const handleEmailAuth = async () => {
+=======
+  const [emailFocused, setEmailFocused] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
+  const { signIn, signUp, signInWithGoogle, signInWithApple } = useAuth();
+  const router = useRouter();
+
+  const handleSubmit = async () => {
+    console.log('User tapped Sign In / Sign Up button', { isSignUp, email });
+>>>>>>> origin/main
     if (!email || !password) {
-      showAlert("Error", "Please enter email and password");
+      alert('Please enter email and password');
       return;
     }
 
     setLoading(true);
     try {
-      if (mode === "signin") {
-        await signInWithEmail(email, password);
-        router.replace("/");
+      if (isSignUp) {
+        console.log('Attempting sign up');
+        await signUp(email, password);
       } else {
-        await signUpWithEmail(email, password, name);
-        showAlert(
-          "Success",
-          "Account created! Please check your email to verify your account."
-        );
-        router.replace("/");
+        console.log('Attempting sign in');
+        await signIn(email, password);
       }
+      console.log('Auth successful, navigating to home');
+      router.replace('/');
     } catch (error: any) {
-      showAlert("Error", error.message || "Authentication failed");
+      console.error('Auth error:', error);
+      const errorMessage = error?.message || 'Authentication failed';
+      alert(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSocialAuth = async (provider: "google" | "apple" | "github") => {
+  const handleGoogleSignIn = async () => {
+    console.log('User tapped Google sign in button');
     setLoading(true);
     try {
-      if (provider === "google") {
-        await signInWithGoogle();
-      } else if (provider === "apple") {
-        await signInWithApple();
-      } else if (provider === "github") {
-        await signInWithGitHub();
-      }
-      router.replace("/");
+      await signInWithGoogle();
+      console.log('Google auth successful');
+      router.replace('/');
     } catch (error: any) {
-      showAlert("Error", error.message || "Authentication failed");
+      console.error('Google auth error:', error);
+      const errorMessage = error?.message || 'Google sign in failed';
+      alert(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
+<<<<<<< HEAD
   const buttonText = mode === "signin" ? "Sign In" : "Sign Up";
   const switchModeText = mode === "signin"
     ? "Don't have an account? Sign Up"
@@ -211,6 +234,150 @@ export default function AuthScreen() {
               ) : (
                 <Text style={styles.primaryButtonText}>{buttonText}</Text>
               )}
+=======
+  const handleAppleSignIn = async () => {
+    console.log('User tapped Apple sign in button');
+    setLoading(true);
+    try {
+      await signInWithApple();
+      console.log('Apple auth successful');
+      router.replace('/');
+    } catch (error: any) {
+      console.error('Apple auth error:', error);
+      const errorMessage = error?.message || 'Apple sign in failed';
+      alert(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleMode = () => {
+    console.log('User toggled auth mode', { from: isSignUp ? 'signup' : 'signin', to: isSignUp ? 'signin' : 'signup' });
+    setIsSignUp(!isSignUp);
+  };
+
+  const buttonText = isSignUp ? 'Sign Up' : 'Sign In';
+  const toggleText = isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up";
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <Stack.Screen options={{ headerShown: false }} />
+      
+      <View style={styles.content}>
+        {/* Hero Area */}
+        <View style={styles.heroArea}>
+          <Image
+            source={resolveImageSource(require('@/assets/images/final_quest_240x240.png'))}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+          <Text style={styles.appTitle}>GAA Coach Hub</Text>
+          <Text style={styles.appSubtitle}>Your team. Your data.</Text>
+        </View>
+
+        {/* Auth Card */}
+        <View style={styles.card}>
+          {/* Email Input */}
+          <View style={styles.inputContainer}>
+            <View style={styles.inputWrapper}>
+              <IconSymbol
+                ios_icon_name="envelope"
+                android_material_icon_name="email"
+                size={20}
+                color="#6B7280"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Email"
+                placeholderTextColor="#9CA3AF"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                onFocus={() => setEmailFocused(true)}
+                onBlur={() => setEmailFocused(false)}
+              />
+            </View>
+            {emailFocused && <View style={styles.focusBorder} />}
+          </View>
+
+          {/* Password Input */}
+          <View style={styles.inputContainer}>
+            <View style={styles.inputWrapper}>
+              <IconSymbol
+                ios_icon_name="lock"
+                android_material_icon_name="lock"
+                size={20}
+                color="#6B7280"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Password"
+                placeholderTextColor="#9CA3AF"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                onFocus={() => setPasswordFocused(true)}
+                onBlur={() => setPasswordFocused(false)}
+              />
+            </View>
+            {passwordFocused && <View style={styles.focusBorder} />}
+          </View>
+
+          {/* Primary Button */}
+          <TouchableOpacity
+            style={[styles.primaryButton, loading && styles.primaryButtonDisabled]}
+            onPress={handleSubmit}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.primaryButtonText}>{buttonText}</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Toggle Mode */}
+          <TouchableOpacity onPress={toggleMode} disabled={loading}>
+            <Text style={styles.toggleText}>{toggleText}</Text>
+          </TouchableOpacity>
+
+          {/* Divider */}
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>OR</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          {/* Social Login Buttons */}
+          <TouchableOpacity
+            style={styles.googleButton}
+            onPress={handleGoogleSignIn}
+            disabled={loading}
+          >
+            <View style={styles.googleIconContainer}>
+              <Text style={styles.googleIcon}>G</Text>
+            </View>
+            <Text style={styles.googleButtonText}>Continue with Google</Text>
+          </TouchableOpacity>
+
+          {Platform.OS === 'ios' && (
+            <TouchableOpacity
+              style={styles.appleButton}
+              onPress={handleAppleSignIn}
+              disabled={loading}
+            >
+              <IconSymbol
+                ios_icon_name="apple.logo"
+                android_material_icon_name="apple"
+                size={20}
+                color="#FFFFFF"
+                style={styles.appleIcon}
+              />
+              <Text style={styles.appleButtonText}>Continue with Apple</Text>
+>>>>>>> origin/main
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -255,35 +422,15 @@ export default function AuthScreen() {
             )}
           </View>
         </View>
-      </ScrollView>
-
-      {/* Custom Alert Modal */}
-      <Modal
-        visible={showAlertModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowAlertModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.alertModal}>
-            <Text style={styles.alertTitle}>{alertModalConfig?.title}</Text>
-            <Text style={styles.alertMessage}>{alertModalConfig?.message}</Text>
-            <TouchableOpacity
-              style={styles.alertButton}
-              onPress={() => setShowAlertModal(false)}
-            >
-              <Text style={styles.alertButtonText}>OK</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-    </KeyboardAvoidingView>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+<<<<<<< HEAD
     backgroundColor: "#F8F9FA",
   },
   loadingContainer: {
@@ -294,15 +441,23 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+=======
+    backgroundColor: '#F8F9FA',
+>>>>>>> origin/main
   },
   content: {
     flex: 1,
-    padding: 24,
-    justifyContent: "center",
+    paddingHorizontal: 24,
+    paddingTop: 40,
   },
   heroArea: {
+<<<<<<< HEAD
     alignItems: "center",
     marginBottom: 32,
+=======
+    alignItems: 'center',
+    marginBottom: 40,
+>>>>>>> origin/main
   },
   logo: {
     width: 100,
@@ -311,6 +466,7 @@ const styles = StyleSheet.create({
   },
   appTitle: {
     fontSize: 28,
+<<<<<<< HEAD
     fontWeight: "bold",
     color: "#000",
     marginBottom: 4,
@@ -355,16 +511,77 @@ const styles = StyleSheet.create({
   primaryButton: {
     height: 50,
     backgroundColor: "#169B62",
+=======
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  appSubtitle: {
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 2,
+      },
+      web: {
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+      },
+    }),
+  },
+  inputContainer: {
+    marginBottom: 20,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
     borderRadius: 8,
-    justifyContent: "center",
-    alignItems: "center",
+    paddingHorizontal: 12,
+    height: 50,
+  },
+  inputIcon: {
+    marginRight: 12,
+  },
+  input: {
+    flex: 1,
+    fontSize: 16,
+    color: '#111827',
+  },
+  focusBorder: {
+    height: 2,
+    backgroundColor: '#169B62',
+    marginTop: 2,
+    borderRadius: 1,
+  },
+  primaryButton: {
+    backgroundColor: '#169B62',
+>>>>>>> origin/main
+    borderRadius: 8,
+    height: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 8,
   },
-  primaryButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+  primaryButtonDisabled: {
+    opacity: 0.7,
   },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+<<<<<<< HEAD
   buttonDisabled: {
     opacity: 0.6,
   },
@@ -374,38 +591,55 @@ const styles = StyleSheet.create({
   },
   switchModeText: {
     color: "#169B62",
+=======
+  toggleText: {
+    textAlign: 'center',
+    color: '#169B62',
+>>>>>>> origin/main
     fontSize: 14,
+    marginTop: 16,
   },
   divider: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     marginVertical: 24,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "#ddd",
+    backgroundColor: '#E5E7EB',
   },
   dividerText: {
-    marginHorizontal: 12,
-    color: "#666",
+    marginHorizontal: 16,
+    color: '#9CA3AF',
     fontSize: 14,
   },
   googleButton: {
+<<<<<<< HEAD
     height: 50,
+=======
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+>>>>>>> origin/main
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: '#E5E7EB',
     borderRadius: 8,
+<<<<<<< HEAD
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
+=======
+    height: 50,
+>>>>>>> origin/main
     marginBottom: 12,
-    backgroundColor: "#fff",
   },
   googleIconContainer: {
     width: 20,
     height: 20,
     borderRadius: 10,
+<<<<<<< HEAD
     backgroundColor: "#fff",
     justifyContent: "center",
     alignItems: "center",
@@ -417,11 +651,25 @@ const styles = StyleSheet.create({
     color: "#4285F4",
   },
   googleButtonText: {
+=======
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  googleIcon: {
+>>>>>>> origin/main
     fontSize: 16,
-    color: "#000",
-    fontWeight: "500",
+    fontWeight: 'bold',
+    color: '#4285F4',
+  },
+  googleButtonText: {
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '500',
   },
   appleButton: {
+<<<<<<< HEAD
     height: 50,
     backgroundColor: "#000",
     borderRadius: 8,
@@ -473,5 +721,21 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+=======
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#000000',
+    borderRadius: 8,
+    height: 50,
+  },
+  appleIcon: {
+    marginRight: 12,
+  },
+  appleButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
+>>>>>>> origin/main
   },
 });
