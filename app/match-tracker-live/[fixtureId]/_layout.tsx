@@ -819,8 +819,7 @@ export default function MatchTrackerLiveScreen() {
       </Modal>
     </>
   );
-}<write file="app/get-started.tsx">
-import React, { useState } from 'react';
+}
 import {
   View,
   Text,
@@ -835,7 +834,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
+
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { authenticatedPost } from '@/utils/api';
@@ -847,7 +846,7 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
   return source as ImageSourcePropType;
 }
 
-export default function GetStartedScreen() {
+
   const router = useRouter();
   const [showJoinPanel, setShowJoinPanel] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
