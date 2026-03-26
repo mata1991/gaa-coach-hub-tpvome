@@ -369,13 +369,12 @@ export default function MatchTrackerLiveScreen() {
       setHomeSquad(home || null);
       setAwaySquad(away || null);
 
-      // Set running state based on match state
       if (stateData.status === 'IN_PROGRESS') {
         setIsRunning(true);
       }
-    } catch (error: any) {
-      console.error('[MatchTrackerLive] Error fetching data:', error);
-      setError(error?.message || 'Failed to load match data');
+    } catch (err: any) {
+      console.error('[MatchTrackerLive] Error fetching data:', err);
+      setError(err?.message || 'Failed to load match data');
       setShowErrorModal(true);
     } finally {
       setLoading(false);
@@ -409,9 +408,9 @@ export default function MatchTrackerLiveScreen() {
 
       setMatchState((prev) => prev ? { ...prev, status: 'IN_PROGRESS' } : prev);
       setIsRunning(true);
-    } catch (error: any) {
-      console.error('[MatchTrackerLive] Error starting match:', error);
-      setError(error?.message || 'Failed to start match');
+    } catch (err: any) {
+      console.error('[MatchTrackerLive] Error starting match:', err);
+      setError(err?.message || 'Failed to start match');
       setShowErrorModal(true);
     }
   };
@@ -438,11 +437,11 @@ export default function MatchTrackerLiveScreen() {
   const handleUndo = async () => {
     if (!fixtureId) return;
     console.log('[MatchTrackerLive] User tapped Undo');
-    
+
     try {
       const stored = await AsyncStorage.getItem(`pending_events_${fixtureId}`);
       const pendingEvents = stored ? JSON.parse(stored) : [];
-      
+
       if (pendingEvents.length === 0) {
         setError('No events to undo');
         setShowErrorModal(true);
@@ -453,7 +452,6 @@ export default function MatchTrackerLiveScreen() {
       pendingEvents.pop();
       await AsyncStorage.setItem(`pending_events_${fixtureId}`, JSON.stringify(pendingEvents));
 
-      // Revert score if needed
       if (lastEvent.eventType === 'Goal') {
         const goalsKey = lastEvent.side === 'HOME' ? 'homeGoals' : 'awayGoals';
         const newGoals = Math.max(0, (matchState?.[goalsKey] || 0) - 1);
@@ -467,9 +465,9 @@ export default function MatchTrackerLiveScreen() {
       }
 
       console.log('[MatchTrackerLive] Event undone successfully');
-    } catch (error: any) {
-      console.error('[MatchTrackerLive] Error undoing event:', error);
-      setError(error?.message || 'Failed to undo event');
+    } catch (err: any) {
+      console.error('[MatchTrackerLive] Error undoing event:', err);
+      setError(err?.message || 'Failed to undo event');
       setShowErrorModal(true);
     }
   };
@@ -496,9 +494,9 @@ export default function MatchTrackerLiveScreen() {
 
       setShowEndMatchModal(false);
       router.back();
-    } catch (error: any) {
-      console.error('[MatchTrackerLive] Error ending match:', error);
-      setError(error?.message || 'Failed to end match');
+    } catch (err: any) {
+      console.error('[MatchTrackerLive] Error ending match:', err);
+      setError(err?.message || 'Failed to end match');
       setShowErrorModal(true);
     }
   };
@@ -568,7 +566,6 @@ export default function MatchTrackerLiveScreen() {
     );
   }
 
-  // Start gating: check if both squads exist
   const hasHomeSquad = homeSquad && homeSquad.startingSlots.some((s) => s.playerId);
   const hasAwaySquad = awaySquad && awaySquad.startingSlots.some((s) => s.playerId);
   const canStart = hasHomeSquad && hasAwaySquad;
@@ -640,7 +637,7 @@ export default function MatchTrackerLiveScreen() {
   const awayScore = formatScore(matchState.awayGoals, matchState.awayPoints);
   const timeDisplay = formatTime(matchState.matchClock);
   const halfDisplay = matchState.half === 'H2' ? '2nd Half' : '1st Half';
-  const homeTeamName = fixture.homeTeam || 'HOME';
+  const homeTeamName = fixture.homeTeamName || 'HOME';
   const awayTeamName = fixture.opponent || 'AWAY';
 
   return (
@@ -820,445 +817,3 @@ export default function MatchTrackerLiveScreen() {
     </>
   );
 }
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  TextInput,
-  ActivityIndicator,
-  Modal,
-  Image,
-  ImageSourcePropType,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack, useRouter } from 'expo-router';
-
-import { colors } from '@/styles/commonStyles';
-import { IconSymbol } from '@/components/IconSymbol';
-import { authenticatedPost } from '@/utils/api';
-
-// Helper to resolve image sources (handles both local and remote URLs)
-function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
-  if (!source) return { uri: '' };
-  if (typeof source === 'string') return { uri: source };
-  return source as ImageSourcePropType;
-}
-
-
-  const router = useRouter();
-  const [showJoinPanel, setShowJoinPanel] = useState(false);
-  const [inviteCode, setInviteCode] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  console.log('GetStartedScreen: Rendering onboarding screen');
-
-  const handleCreateClub = () => {
-    console.log('User tapped Create a Club button');
-    router.push('/create-club');
-  };
-
-  const handleJoinClub = () => {
-    console.log('User tapped Join a Club button');
-    setShowJoinPanel(true);
-  };
-
-  const handleConfirmJoin = async () => {
-    const trimmedCode = inviteCode.trim();
-    
-    if (!trimmedCode) {
-      setError('Please enter an invite code');
-      return;
-    }
-
-    console.log('User confirming join with invite code:', trimmedCode);
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      await authenticatedPost('/api/clubs/join', { inviteCode: trimmedCode });
-      console.log('Successfully joined club');
-      setShowJoinPanel(false);
-      router.push('/');
-    } catch (err: any) {
-      console.error('Error joining club:', err);
-      setError(err?.message || 'Failed to join club. Please check your invite code.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const logoSource = resolveImageSource(require('@/assets/images/final_quest_240x240.png'));
-
-  return (
-    <>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Welcome to GAA Coach Hub',
-          headerBackVisible: false,
-        }}
-      />
-      <LinearGradient
-        colors={['#FFFFFF', '#F0F7F4']}
-        style={styles.gradient}
-      >
-        <SafeAreaView style={styles.container} edges={['bottom']}>
-          <ScrollView contentContainerStyle={styles.content}>
-            <View style={styles.header}>
-              <Image
-                source={logoSource}
-                style={styles.logo}
-              />
-              <Text style={styles.title}>Get Started</Text>
-              <Text style={styles.subtitle}>
-                Create or join a club to start managing your teams
-              </Text>
-            </View>
-
-            <View style={styles.options}>
-              <TouchableOpacity
-                style={styles.primaryButton}
-                onPress={handleCreateClub}
-              >
-                <IconSymbol
-                  ios_icon_name="plus.circle.fill"
-                  android_material_icon_name="add-circle"
-                  size={24}
-                  color="#fff"
-                />
-                <Text style={styles.primaryButtonText}>Create a Club</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={handleJoinClub}
-              >
-                <IconSymbol
-                  ios_icon_name="person.2.fill"
-                  android_material_icon_name="group"
-                  size={24}
-                  color="#169B62"
-                />
-                <Text style={styles.secondaryButtonText}>Join a Club</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.features}>
-              <View style={styles.featureCard}>
-                <View style={[styles.iconCircle, { backgroundColor: '#169B62' }]}>
-                  <IconSymbol
-                    ios_icon_name="shield.fill"
-                    android_material_icon_name="shield"
-                    size={28}
-                    color="#FFFFFF"
-                  />
-                </View>
-                <View style={styles.featureContent}>
-                  <Text style={styles.featureTitle}>Manage Teams</Text>
-                  <Text style={styles.featureDescription}>
-                    Players, lineups, and injuries in one place
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.featureCard}>
-                <View style={[styles.iconCircle, { backgroundColor: '#2196F3' }]}>
-                  <IconSymbol
-                    ios_icon_name="chart.bar.fill"
-                    android_material_icon_name="bar-chart"
-                    size={28}
-                    color="#FFFFFF"
-                  />
-                </View>
-                <View style={styles.featureContent}>
-                  <Text style={styles.featureTitle}>Track Stats</Text>
-                  <Text style={styles.featureDescription}>
-                    Live match events and season analytics
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.featureCard}>
-                <View style={[styles.iconCircle, { backgroundColor: '#FF9800' }]}>
-                  <IconSymbol
-                    ios_icon_name="calendar"
-                    android_material_icon_name="calendar-today"
-                    size={28}
-                    color="#FFFFFF"
-                  />
-                </View>
-                <View style={styles.featureContent}>
-                  <Text style={styles.featureTitle}>Stay Organised</Text>
-                  <Text style={styles.featureDescription}>
-                    Fixtures, training, and attendance
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </LinearGradient>
-
-      {/* Join Club Bottom Panel Modal */}
-      <Modal
-        visible={showJoinPanel}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowJoinPanel(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.bottomPanel}>
-            <View style={styles.panelHeader}>
-              <Text style={styles.panelTitle}>Join a Club</Text>
-              <TouchableOpacity
-                onPress={() => setShowJoinPanel(false)}
-                style={styles.closeButton}
-              >
-                <IconSymbol
-                  ios_icon_name="xmark"
-                  android_material_icon_name="close"
-                  size={24}
-                  color="#666"
-                />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.panelContent}>
-              <Text style={styles.inputLabel}>Enter invite code</Text>
-              <TextInput
-                style={styles.input}
-                value={inviteCode}
-                onChangeText={setInviteCode}
-                placeholder="e.g. ABC123XYZ"
-                placeholderTextColor="#999"
-                autoCapitalize="characters"
-                autoCorrect={false}
-                editable={!isLoading}
-              />
-
-              {error && (
-                <View style={styles.errorContainer}>
-                  <IconSymbol
-                    ios_icon_name="exclamationmark.circle"
-                    android_material_icon_name="error"
-                    size={16}
-                    color="#dc3545"
-                  />
-                  <Text style={styles.errorText}>{error}</Text>
-                </View>
-              )}
-
-              <TouchableOpacity
-                style={[styles.confirmButton, isLoading && styles.confirmButtonDisabled]}
-                onPress={handleConfirmJoin}
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.confirmButtonText}>Confirm</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </>
-  );
-}
-
-const styles = StyleSheet.create({
-  gradient: {
-    flex: 1,
-  },
-  container: {
-    flex: 1,
-  },
-  content: {
-    padding: 24,
-    alignItems: 'center',
-  },
-  header: {
-    alignItems: 'center',
-    marginTop: 40,
-    marginBottom: 40,
-  },
-  logo: {
-    width: 120,
-    height: 120,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginTop: 20,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    paddingHorizontal: 20,
-  },
-  options: {
-    width: '100%',
-    gap: 16,
-    marginBottom: 40,
-  },
-  primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#169B62',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    gap: 12,
-  },
-  primaryButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  secondaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.card,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#169B62',
-    gap: 12,
-  },
-  secondaryButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#169B62',
-  },
-  features: {
-    width: '100%',
-    gap: 16,
-  },
-  featureCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    padding: 20,
-    borderRadius: 12,
-    gap: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  iconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  featureContent: {
-    flex: 1,
-  },
-  featureTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  featureDescription: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    lineHeight: 20,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  bottomPanel: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingBottom: 40,
-  },
-  panelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  panelTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  closeButton: {
-    padding: 4,
-  },
-  panelContent: {
-    padding: 24,
-  },
-  inputLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: '#F5F5F5',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: colors.text,
-    marginBottom: 16,
-  },
-  errorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-    paddingHorizontal: 4,
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#dc3545',
-    flex: 1,
-  },
-  confirmButton: {
-    backgroundColor: '#169B62',
-    paddingVertical: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-  },
-  confirmButtonDisabled: {
-    backgroundColor: '#A0D4C0',
-  },
-  confirmButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-});
