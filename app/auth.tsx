@@ -30,7 +30,7 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
-  const { signIn, signUp, signInWithGoogle, signInWithApple } = useAuth();
+  const { signInWithEmail: signIn, signUpWithEmail: signUp, signInWithGoogle, signInWithApple } = useAuth();
   const router = useRouter();
 
   const handleSubmit = async () => {
