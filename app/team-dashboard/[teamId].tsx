@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -56,6 +56,9 @@ export default function TeamDashboardScreen() {
   const [upcomingFixturesData, setUpcomingFixturesData] = useState<Fixture[]>([]);
   const [upcomingTrainingData, setUpcomingTrainingData] = useState<any[]>([]);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
+  // Track whether the initial load has completed so useFocusEffect can distinguish
+  // first mount (show full-screen spinner) from subsequent focuses (show header spinner).
+  const hasLoadedOnce = useRef(false);
 
   console.log('TeamDashboardScreen: Rendering team dashboard', { teamId });
 
@@ -98,6 +101,9 @@ export default function TeamDashboardScreen() {
       console.error('Failed to fetch team dashboard:', error);
       Alert.alert('Error', 'Failed to load team dashboard');
     } finally {
+      // Mark that the first load has completed regardless of success/failure,
+      // so subsequent focus events use the lightweight refresh spinner.
+      hasLoadedOnce.current = true;
       if (isRefresh) {
         setRefreshing(false);
       } else {
@@ -129,15 +135,17 @@ export default function TeamDashboardScreen() {
     }
   }, [teamId]);
 
-  useEffect(() => {
-    fetchDashboard();
-  }, [fetchDashboard]);
-
-  // Auto-refresh on screen focus
+  // Single data-fetch trigger: runs on initial mount and every time the screen comes back into focus.
+  // Using useFocusEffect alone (no separate useEffect) avoids the race condition where both fired
+  // concurrently on mount — the useEffect set loading=true, useFocusEffect set refreshing=true,
+  // and whichever finished first left loading stuck as true forever.
   useFocusEffect(
     React.useCallback(() => {
-      console.log('[TeamDashboard] Screen focused, refreshing data');
-      fetchDashboard(true);
+      // On first mount hasLoadedOnce is false → show full-screen spinner (isRefresh=false).
+      // On subsequent focuses it is true → show lightweight header spinner (isRefresh=true).
+      const isRefresh = hasLoadedOnce.current;
+      console.log('[TeamDashboard] Screen focused, fetching data', { isRefresh });
+      fetchDashboard(isRefresh);
     }, [fetchDashboard])
   );
 
