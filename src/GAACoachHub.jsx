@@ -1200,6 +1200,11 @@ function Availability({ state, dispatch, nav, fixtureId }) {
         <RosterStatusList players={shown} statuses={AVAILABILITY_STATUSES} value={map} onChange={change} />
         {filter && shown.length === 0 && <p className="text-center text-[13px] text-zinc-400 py-8">No players marked {filterLabel}.</p>}
       </div>
+      <div className="px-4 py-3 bg-white border-t border-zinc-100" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
+        <button onClick={() => nav.push("lineup", { fixtureId })} className="w-full bg-black text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.99]">
+          <ClipboardList className="w-4 h-4" /> Pick line-out from {counts.AVAILABLE} available <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 }
