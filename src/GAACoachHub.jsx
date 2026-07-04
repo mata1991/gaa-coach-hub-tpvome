@@ -285,7 +285,7 @@ const COLOR_PRESETS = [
   { name: "Purple & Gold", primary: "#6b21a8", accent: "#f59e0b" },
   { name: "Navy & Sky", primary: "#0c4a6e", accent: "#0ea5e9" },
 ];
-const DEFAULT_SETTINGS = { throwInTime: "19:30", homeVenue: "Middletown GAA Grounds", theme: { primary: "#18181b", accent: "#dc2626" }, lastBackup: null };
+const DEFAULT_SETTINGS = { throwInTime: "19:30", homeVenue: "Middletown GAA Grounds", theme: { primary: "#18181b", accent: "#dc2626" }, lastBackup: null, largeText: false };
 // light haptic tap (no-op where unsupported, e.g. iOS Safari)
 const buzz = (ms = 12) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (_) {} };
 
@@ -427,7 +427,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen w-full bg-zinc-200 flex items-center justify-center font-sans">
-      <div className="relative w-full sm:max-w-[420px] h-screen sm:h-[860px] bg-zinc-50 sm:rounded-[40px] overflow-hidden shadow-2xl sm:border-[10px] sm:border-black flex flex-col">
+      <div className="relative w-full sm:max-w-[420px] h-screen sm:h-[860px] bg-zinc-50 sm:rounded-[40px] overflow-hidden shadow-2xl sm:border-[10px] sm:border-black flex flex-col" style={state.settings?.largeText ? { fontSize: "112.5%", zoom: 1.08 } : undefined}>
         {!hydrated ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 bg-black text-white">
             <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center overflow-hidden">
@@ -1870,6 +1870,11 @@ function Reports({ state, nav }) {
     const t = recordedSessions.filter((s) => state.attendance[s.id][p.id] === "TRAINED").length;
     return { id: p.id, name: p.name, trained: t, total: recordedSessions.length, pct: Math.round((t / recordedSessions.length) * 100) };
   }).sort((a, b) => b.pct - a.pct || a.name.localeCompare(b.name)) : []), [state]);
+  const availFixtures = fixtures.filter((f) => state.availability[f.id] && Object.keys(state.availability[f.id]).length);
+  const availRows = useMemo(() => (availFixtures.length ? players.map((p) => {
+    const a = availFixtures.filter((f) => state.availability[f.id][p.id] === "AVAILABLE").length;
+    return { id: p.id, name: p.name, a, total: availFixtures.length, pct: Math.round((a / availFixtures.length) * 100) };
+  }).sort((x, y) => y.pct - x.pct || x.name.localeCompare(y.name)) : []), [state]); // eslint-disable-line react-hooks/exhaustive-deps
   const wins = completed.filter((f) => totalPts(f.result.home.g, f.result.home.p) > totalPts(f.result.away.g, f.result.away.p)).length;
   const scoredFor = completed.reduce((a, f) => a + totalPts(f.result.home.g, f.result.home.p), 0);
   const scoredAgainst = completed.reduce((a, f) => a + totalPts(f.result.away.g, f.result.away.p), 0);
@@ -1937,6 +1942,22 @@ function Reports({ state, nav }) {
                 </button>
               ))}
             </div>
+          </>
+        )}
+
+        {availRows.length > 0 && (
+          <>
+            <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mt-6 mb-3">Match availability</p>
+            <div className="bg-white border border-zinc-200 rounded-2xl divide-y divide-zinc-100">
+              {availRows.slice(0, 10).map((r) => (
+                <button key={r.id} onClick={() => nav.push("playerProfile", { playerId: r.id })} className="w-full flex items-center gap-3 px-4 py-2.5 active:bg-zinc-50 text-left">
+                  <span className="flex-1 font-semibold text-[14px] text-zinc-900 truncate">{r.name}</span>
+                  <div className="w-20 h-2 rounded-full bg-zinc-100 overflow-hidden"><div className="h-full bg-sky-500" style={{ width: `${r.pct}%` }} /></div>
+                  <span className="w-12 text-right text-[12px] text-zinc-500 tabular-nums">{r.a}/{r.total}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[12px] text-zinc-400 mt-1.5">Times marked available across {availFixtures.length} fixture{availFixtures.length === 1 ? "" : "s"} · top 10.</p>
           </>
         )}
 
@@ -2393,8 +2414,8 @@ function SettingsScreen({ state, dispatch, nav }) {
   const [confirmReset, setConfirmReset] = useState(false);
   const pretty = JSON.stringify(state, null, 2);
 
-  const download = () => {
-    if (downloadBackupFile(state)) { dispatch({ type: "SET_SETTINGS", patch: { lastBackup: Date.now() } }); nav.toast("Backup downloaded"); }
+  const download = async () => {
+    if (await downloadBackupFile(state)) { dispatch({ type: "SET_SETTINGS", patch: { lastBackup: Date.now() } }); nav.toast("Backup saved"); }
     else nav.toast("Use Copy instead");
   };
   const copyBackup = async () => { try { await navigator.clipboard.writeText(JSON.stringify(state)); dispatch({ type: "SET_SETTINGS", patch: { lastBackup: Date.now() } }); nav.toast("Backup copied"); } catch (_) { nav.toast("Select the text & copy"); } };
@@ -2452,6 +2473,17 @@ function SettingsScreen({ state, dispatch, nav }) {
             </div>
           </div>
           <p className="text-[12px] text-zinc-400 mt-1.5">Used on the dashboard, the tab bar, the teamsheet and key buttons.</p>
+        </div>
+
+        <div>
+          <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-2">Accessibility</p>
+          <div className="bg-white border border-zinc-200 rounded-2xl divide-y divide-zinc-100">
+            <button onClick={() => dispatch({ type: "SET_SETTINGS", patch: { largeText: !s.largeText } })} className="w-full flex items-center justify-between px-4 py-3.5 active:bg-zinc-50">
+              <span className="text-[14px] text-zinc-700 text-left">Larger text<br /><span className="text-[12px] text-zinc-400">Bigger everything, easier to read on the sideline</span></span>
+              <span className={`shrink-0 w-11 h-6 rounded-full transition-colors relative ${s.largeText ? "bg-emerald-600" : "bg-zinc-300"}`}><span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${s.largeText ? "left-[22px]" : "left-0.5"}`} /></span>
+            </button>
+          </div>
+          <p className="text-[12px] text-zinc-400 mt-1.5">Status colours are always paired with icons (✓ / ! / ✕), so they're clear without relying on colour.</p>
         </div>
 
         <div>
