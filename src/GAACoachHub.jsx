@@ -343,6 +343,19 @@ export default function App() {
   const [hydrated, setHydrated] = useState(false);
   const [stack, setStack] = useState([{ screen: "dashboard" }]);
   const [toast, setToast] = useState(null);
+  const [needRefresh, setNeedRefresh] = useState(false);
+  const updateSWRef = useRef(null);
+
+  // PWA: when a new version is deployed, prompt to refresh instead of silently updating
+  useEffect(() => {
+    let mounted = true;
+    import("virtual:pwa-register")
+      .then(({ registerSW }) => {
+        updateSWRef.current = registerSW({ onNeedRefresh() { if (mounted) setNeedRefresh(true); } });
+      })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, []);
 
   // load persisted state on mount
   useEffect(() => {
@@ -413,6 +426,14 @@ export default function App() {
             </div>
             {MAIN_TABS.includes(view.screen) && <TabBar current={view.screen} go={(scr) => nav.reset(scr)} color={themeOf(state).primary} />}
             <Toast toast={toast} onClose={() => setToast(null)} />
+            {needRefresh && (
+              <div className="absolute left-0 right-0 bottom-28 flex justify-center px-4 z-[80] pointer-events-none">
+                <div className="pointer-events-auto bg-emerald-600 text-white rounded-full pl-4 pr-2 py-2 flex items-center gap-3 shadow-xl">
+                  <span className="text-[13px] font-semibold flex items-center gap-1.5"><Sparkles className="w-4 h-4" /> New version ready</span>
+                  <button onClick={() => { const u = updateSWRef.current; setNeedRefresh(false); if (u) u(true); else location.reload(); }} className="bg-white text-emerald-700 text-[12px] font-bold px-3 py-1.5 rounded-full active:scale-95">Refresh</button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -744,8 +765,8 @@ function Dashboard({ state, dispatch, nav }) {
                 <p className="text-[12px] text-white/60 truncate">{CLUB.name} · <span className="italic">{CLUB.irish}</span></p>
                 <h2 className="text-2xl font-black leading-tight flex items-center gap-1">{team.name}<ChevronDown className="w-5 h-5 text-white/50 shrink-0" /></h2>
                 <div className="flex gap-1.5 mt-1.5 flex-wrap">
-                  {[team.sport, team.grade, team.age].filter(Boolean).map((b) => (
-                    <span key={b} className="text-[10px] font-semibold bg-white/15 px-2 py-0.5 rounded-full">{b}</span>
+                  {[team.sport, team.grade, team.age].filter(Boolean).map((b, i) => (
+                    <span key={i} className="text-[10px] font-semibold bg-white/15 px-2 py-0.5 rounded-full">{b}</span>
                   ))}
                 </div>
               </div>
@@ -1442,6 +1463,8 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
   const [subbing, setSubbing] = useState(false);
   const [subOff, setSubOff] = useState(null);
   const tick = useRef(null);
+  const anchorRef = useRef(null); // ms timestamp that maps to clock === 0 for the running segment
+  const wakeRef = useRef(null);   // screen Wake Lock sentinel
 
   const started = clock > 0 || events.length > 0;
   const startedRef = useRef(false); startedRef.current = started;
@@ -1455,15 +1478,37 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
   useEffect(() => { persist(); /* eslint-disable-next-line */ }, [score, half, events, onPitch]);
   useEffect(() => () => { if (!finishedRef.current) persist(); /* eslint-disable-next-line */ }, []);
 
+  // Timestamp-based clock + screen wake lock while running.
+  // The clock is derived from wall-clock time (not a counter), so it stays
+  // accurate even if the phone locks or the app is backgrounded mid-match.
   useEffect(() => {
-    if (running) tick.current = setInterval(() => setClock((c) => {
-      const n = c + 1;
-      if (n % 20 === 0 && startedRef.current) dispatch({ type: "SAVE_LIVE", fixtureId, data: { ...liveRef.current, clock: n } });
-      return n;
-    }), 1000);
-    else if (tick.current) clearInterval(tick.current);
-    return () => tick.current && clearInterval(tick.current);
-  }, [running]);
+    const acquireWake = async () => { try { if ("wakeLock" in navigator) wakeRef.current = await navigator.wakeLock.request("screen"); } catch (_) {} };
+    const releaseWake = () => { try { if (wakeRef.current) wakeRef.current.release(); } catch (_) {} wakeRef.current = null; };
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || !running || anchorRef.current == null) return;
+      setClock(Math.max(0, Math.round((Date.now() - anchorRef.current) / 1000))); // catch up after being away
+      if (!wakeRef.current) acquireWake(); // wake lock auto-releases when hidden — re-acquire
+    };
+    if (running) {
+      anchorRef.current = Date.now() - clock * 1000;
+      acquireWake();
+      tick.current = setInterval(() => {
+        const n = Math.max(0, Math.round((Date.now() - anchorRef.current) / 1000));
+        setClock(n);
+        if (n % 20 === 0 && startedRef.current) dispatch({ type: "SAVE_LIVE", fixtureId, data: { ...liveRef.current, clock: n } });
+      }, 500);
+      document.addEventListener("visibilitychange", onVisible);
+      window.addEventListener("focus", onVisible);
+    } else {
+      anchorRef.current = null;
+    }
+    return () => {
+      if (tick.current) clearInterval(tick.current);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+      releaseWake();
+    };
+  }, [running]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const player = (id) => roster.find((p) => p.id === id);
   const onPitchPlayers = roster.filter((p) => onPitch.has(p.id));
