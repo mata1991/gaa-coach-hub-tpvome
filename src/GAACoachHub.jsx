@@ -1703,6 +1703,7 @@ function Attendance({ state, dispatch, nav, sessionId }) {
   const session = state.sessions.find((s) => s.id === sessionId);
   const players = state.players.filter((p) => p.teamId === session.teamId);
   const [mode, setMode] = useState("attendance"); // availability | attendance
+  const [filter, setFilter] = useState(null);
 
   const attInit = () => { const b = {}; players.forEach((p) => (b[p.id] = state.attendance[sessionId]?.[p.id] || (p.injured ? "INJURED" : "NO_CONTACT"))); return b; };
   const avInit = () => { const b = {}; players.forEach((p) => (b[p.id] = state.availability[sessionId]?.[p.id] || (p.injured ? "OUT" : "AVAILABLE"))); return b; };
@@ -1721,6 +1722,13 @@ function Attendance({ state, dispatch, nav, sessionId }) {
     else { setAv(n); dispatch({ type: "SET_AVAILABILITY", id: sessionId, map: n }); }
   };
   const counts = statuses.reduce((a, s) => { a[s.value] = Object.values(value).filter((v) => v === s.value).length; return a; }, {});
+  const ordered = players.slice().sort((a, b) => {
+    const ga = POSITION_GROUPS.findIndex((g) => g.value === a.group);
+    const gb = POSITION_GROUPS.findIndex((g) => g.value === b.group);
+    return (ga - gb) || ((a.jerseyNo || 0) - (b.jerseyNo || 0));
+  });
+  const shown = filter ? ordered.filter((p) => value[p.id] === filter) : ordered;
+  const filterLabel = statuses.find((s) => s.value === filter)?.label;
 
   return (
     <div className="flex flex-col h-full">
@@ -1730,17 +1738,19 @@ function Attendance({ state, dispatch, nav, sessionId }) {
         <p className="text-[12px] text-zinc-500">{fmtDate(session.date)} · {session.location}</p>
         <div className="flex gap-1 p-1 bg-zinc-200 rounded-xl my-3">
           {[["availability", "Availability"], ["attendance", "Attendance"]].map(([m, label]) => (
-            <button key={m} onClick={() => setMode(m)} className={`flex-1 py-2 rounded-lg text-[13px] font-semibold transition-colors ${mode === m ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500"}`}>{label}</button>
+            <button key={m} onClick={() => { setMode(m); setFilter(null); }} className={`flex-1 py-2 rounded-lg text-[13px] font-semibold transition-colors ${mode === m ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500"}`}>{label}</button>
           ))}
         </div>
-        <StatusCountsBar statuses={statuses} counts={counts} />
+        <StatusCountsBar statuses={statuses} counts={counts} active={filter} onSelect={(v) => setFilter((f) => (f === v ? null : v))} />
+        {filter && <button onClick={() => setFilter(null)} className="text-[12px] text-zinc-500 mt-2 w-full text-center">Showing <span className="font-bold text-zinc-700">{filterLabel}</span> only · tap to show all</button>}
         <div className="flex gap-2 mt-3">
           <button onClick={() => bulk(mode === "attendance" ? "TRAINED" : "AVAILABLE")} className="flex-1 bg-emerald-600 text-white text-[12px] font-semibold py-2 rounded-lg active:scale-[0.98]">{mode === "attendance" ? "Mark all trained" : "Mark all available"}</button>
           <button onClick={() => bulk(mode === "attendance" ? "NO_CONTACT" : "OUT")} className="flex-1 bg-zinc-200 text-zinc-700 text-[12px] font-semibold py-2 rounded-lg active:scale-[0.98]">Reset</button>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">
-        <RosterStatusList players={players} statuses={statuses} value={value} onChange={change} />
+        <RosterStatusList players={shown} statuses={statuses} value={value} onChange={change} />
+        {filter && shown.length === 0 && <p className="text-center text-[13px] text-zinc-400 py-8">No players marked {filterLabel}.</p>}
       </div>
     </div>
   );
