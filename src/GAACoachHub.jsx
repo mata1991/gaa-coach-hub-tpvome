@@ -1514,6 +1514,7 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
   const [chosen, setChosen] = useState(null);
   const [subbing, setSubbing] = useState(false);
   const [subOff, setSubOff] = useState(null);
+  const [confirmReset, setConfirmReset] = useState(false);
   const tick = useRef(null);
   const anchorRef = useRef(null); // ms timestamp that maps to clock === 0 for the running segment
   const wakeRef = useRef(null);   // screen Wake Lock sentinel
@@ -1610,6 +1611,19 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
     nav.toast("Match saved to reports");
   };
 
+  // wipe the in-progress match back to 0-0 (accidental open / testing / fresh start)
+  const resetMatch = () => {
+    setRunning(false);
+    setScore({ home: { g: 0, p: 0 }, away: { g: 0, p: 0 } });
+    setClock(0); setHalf("H1"); setEvents([]); setHt(null);
+    setOnPitch(new Set(startingIds));
+    anchorRef.current = null;
+    dispatch({ type: "CLEAR_LIVE", fixtureId });
+    setConfirmReset(false);
+    buzz(20);
+    nav.toast("Match reset to 0-0");
+  };
+
   const homeTotal = totalPts(score.home.g, score.home.p);
   const awayTotal = totalPts(score.away.g, score.away.p);
   const POINT = SCORING_EVENTS[0], GOAL = SCORING_EVENTS[1];
@@ -1630,10 +1644,17 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
           <div className="flex flex-col items-center px-1"><Clock className="w-4 h-4 text-red-500 mb-1" /><p className="text-2xl font-black text-red-500 tabular-nums leading-none">{fmtClock(clock)}</p></div>
           <div className="text-center"><p className="text-[12px] text-zinc-400 mb-1 truncate">{fixture.opponent}</p><p className="text-4xl font-black text-white tabular-nums leading-none">{fmtScore(score.away.g, score.away.p)}</p><p className="text-[12px] text-zinc-500 mt-1 tabular-nums">({awayTotal})</p></div>
         </div>
+        {ht && <p className="text-center text-[11px] text-zinc-500 mt-2">Half-time · {HOME_NAME} {fmtScore(ht.home.g, ht.home.p)} – {fmtScore(ht.away.g, ht.away.p)} {fixture.opponent}</p>}
         <div className="flex gap-2 mt-4">
           {!running ? <button onClick={() => setRunning(true)} className="flex-1 bg-red-600 text-white font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 active:scale-[0.99]"><Play className="w-4 h-4 fill-white" /> {clock === 0 ? "Start" : "Resume"}</button>
             : <button onClick={() => { setRunning(false); persist(); }} className="flex-1 bg-zinc-800 text-white font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 active:scale-[0.99]"><Pause className="w-4 h-4 fill-white" /> Pause</button>}
-          <button onClick={() => { if (half === "H1") { if (!ht) setHt(score); setHalf("H2"); } else setHalf("H1"); }} className="px-4 bg-zinc-800 text-zinc-300 font-semibold py-2.5 rounded-xl text-[13px]">{half === "H1" ? "→ H2" : "→ H1"}</button>
+          <button onClick={() => {
+            if (half === "H1") {
+              const snap = ht || score; if (!ht) setHt(score);
+              setHalf("H2"); setRunning(false); buzz([15, 30, 15]);
+              nav.toast(`Half-time · ${HOME_NAME} ${fmtScore(snap.home.g, snap.home.p)} – ${fmtScore(snap.away.g, snap.away.p)} ${fixture.opponent}`);
+            } else setHalf("H1");
+          }} className="px-4 bg-zinc-800 text-zinc-300 font-semibold py-2.5 rounded-xl text-[13px]">{half === "H1" ? "→ H2" : "→ H1"}</button>
           <button onClick={() => { dispatch({ type: "SAVE_LIVE", fixtureId, data: liveRef.current }); nav.toast("Match saved"); }} aria-label="Save now" className="px-3 bg-zinc-800 text-zinc-300 font-semibold py-2.5 rounded-xl text-[13px] flex items-center gap-1.5"><Check className="w-4 h-4" /> Save</button>
           <button onClick={undo} disabled={!events.length} className="px-4 bg-zinc-800 disabled:opacity-40 text-zinc-300 py-2.5 rounded-xl"><RotateCcw className="w-4 h-4" /></button>
         </div>
@@ -1681,7 +1702,12 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
         )}
       </div>
 
-      <div className="p-4 border-t border-zinc-800"><button onClick={finish} className="w-full bg-white text-black font-bold py-3 rounded-2xl active:scale-[0.99]">End match & save result</button></div>
+      <div className="p-4 border-t border-zinc-800 space-y-2">
+        <button onClick={finish} className="w-full bg-white text-black font-bold py-3 rounded-2xl active:scale-[0.99]">End match & save result</button>
+        <button onClick={() => setConfirmReset(true)} className="w-full text-zinc-500 font-semibold py-2 rounded-2xl text-[13px] flex items-center justify-center gap-1.5 active:text-zinc-300"><RotateCcw className="w-3.5 h-3.5" /> Restart match (clear to 0-0)</button>
+      </div>
+
+      {confirmReset && <Confirm title="Restart match?" confirmLabel="Restart" message="This clears the clock, score and all logged events back to 0-0. Use it if you opened this by accident or want to start fresh. It can't be undone." onConfirm={resetMatch} onClose={() => setConfirmReset(false)} />}
 
       {picker && (
         <DarkSheet onClose={() => { setPicker(null); setStep("event"); setChosen(null); }} title={step === "event" ? "Choose event" : `${chosen?.name} — choose player`}>
