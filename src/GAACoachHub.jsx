@@ -1628,6 +1628,20 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
   const awayTotal = totalPts(score.away.g, score.away.p);
   const POINT = SCORING_EVENTS[0], GOAL = SCORING_EVENTS[1];
 
+  // live shooting efficiency (scores vs shots) and scorers, derived from the feed
+  const SHOT_MISS = new Set(["Wide", "Free Missed", "Saved", "Dropped Short"]);
+  const shootStats = (sd) => {
+    const evs = events.filter((e) => e.side === sd);
+    const scored = evs.filter((e) => e.score).length;
+    const shots = scored + evs.filter((e) => SHOT_MISS.has(e.type)).length;
+    return { scored, shots, pct: shots ? Math.round((scored / shots) * 100) : 0 };
+  };
+  const homeShot = shootStats("HOME"), awayShot = shootStats("AWAY");
+  const scorers = Object.values(events.filter((e) => e.side === "HOME" && e.score && e.playerId).reduce((m, e) => {
+    const cur = m[e.playerId] || (m[e.playerId] = { id: e.playerId, name: e.player, g: 0, p: 0 });
+    cur.g += e.score.goals || 0; cur.p += e.score.points || 0; return m;
+  }, {})).sort((a, b) => totalPts(b.g, b.p) - totalPts(a.g, a.p));
+
   return (
     <div className="flex flex-col h-full bg-black">
       <StatusBar />
@@ -1676,6 +1690,21 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
           <button onClick={() => setSubbing(true)} className="w-full bg-zinc-900 border border-zinc-700 text-zinc-300 font-semibold py-2.5 rounded-xl text-[13px] flex items-center justify-center gap-2 active:scale-95">
             <ArrowLeftRight className="w-4 h-4" /> Substitution · {onPitch.size} on pitch
           </button>
+        </div>
+      )}
+
+      {(homeShot.shots > 0 || awayShot.shots > 0) && (
+        <div className="mx-4 mb-2 bg-zinc-900 rounded-xl px-3 py-2 flex items-center justify-around text-center">
+          <div><p className="text-[9px] text-zinc-500 uppercase font-bold truncate max-w-[110px]">{HOME_NAME}</p><p className="text-[13px] font-bold text-white tabular-nums">{homeShot.scored}/{homeShot.shots} <span className="text-emerald-400">{homeShot.pct}%</span></p></div>
+          <div className="text-[9px] text-zinc-600 font-bold uppercase tracking-wide">Shooting</div>
+          <div><p className="text-[9px] text-zinc-500 uppercase font-bold truncate max-w-[110px]">{fixture.opponent}</p><p className="text-[13px] font-bold text-white tabular-nums">{awayShot.scored}/{awayShot.shots} <span className="text-emerald-400">{awayShot.pct}%</span></p></div>
+        </div>
+      )}
+      {scorers.length > 0 && (
+        <div className="mx-4 mb-2 flex flex-wrap gap-1.5">
+          {scorers.map((s) => (
+            <span key={s.id} className="text-[11px] bg-zinc-900 text-zinc-300 rounded-full px-2 py-1">{forename(s.name)} <span className="font-bold text-white tabular-nums">{s.g}-{String(s.p).padStart(2, "0")}</span></span>
+          ))}
         </div>
       )}
 
