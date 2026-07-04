@@ -69,6 +69,9 @@ const SCORING_EVENTS = [
   { name: "Red Card" },
 ];
 
+// event types that count as a shot at the posts but didn't score (for conversion %)
+const SHOT_MISS_TYPES = ["Wide", "Free Missed", "Saved", "Dropped Short"];
+
 const TRAINING_STATUSES = [
   { value: "TRAINED", label: "Trained", color: "#16a34a", icon: Check },
   { value: "INJURED", label: "Injured", color: "#dc2626", icon: Stethoscope },
@@ -239,7 +242,7 @@ function reducer(state, action) {
       return {
         ...state,
         events: { ...state.events, [action.fixtureId]: action.events },
-        fixtures: state.fixtures.map((f) => f.id === action.fixtureId ? { ...f, status: "completed", result: action.result, ht: action.ht || null } : f),
+        fixtures: state.fixtures.map((f) => f.id === action.fixtureId ? { ...f, status: "completed", result: action.result, ht: action.ht || null, fullClock: action.fullClock || 0 } : f),
       };
     default: return state;
   }
@@ -288,6 +291,40 @@ const COLOR_PRESETS = [
 const DEFAULT_SETTINGS = { throwInTime: "19:30", homeVenue: "Middletown GAA Grounds", theme: { primary: "#18181b", accent: "#dc2626" }, lastBackup: null, largeText: false };
 // light haptic tap (no-op where unsupported, e.g. iOS Safari)
 const buzz = (ms = 12) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (_) {} };
+
+const xmlEsc = (s = "") => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// Rasterise an SVG string to a PNG and share it via the share sheet (falling
+// back to a download). Used to share a clean teamsheet / report image.
+async function shareImage(svg, filename, w, h) {
+  return new Promise((resolve) => {
+    try {
+      const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+      const img = new Image();
+      img.onload = () => {
+        const scale = 2;
+        const canvas = document.createElement("canvas");
+        canvas.width = w * scale; canvas.height = h * scale;
+        const ctx = canvas.getContext("2d");
+        ctx.scale(scale, scale); ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        canvas.toBlob(async (png) => {
+          if (!png) { resolve(false); return; }
+          const file = new File([png], filename, { type: "image/png" });
+          try {
+            if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); resolve(true); return; }
+          } catch (e) { if (e && e.name === "AbortError") { resolve(false); return; } }
+          try {
+            const a = document.createElement("a"); a.href = URL.createObjectURL(png); a.download = filename;
+            document.body.appendChild(a); a.click(); a.remove(); resolve(true);
+          } catch (_) { resolve(false); }
+        }, "image/png");
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(false); };
+      img.src = url;
+    } catch (_) { resolve(false); }
+  });
+}
 
 async function downloadBackupFile(state) {
   const json = JSON.stringify(state, null, 2);
@@ -1346,6 +1383,29 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
     nav.toast("Teamsheet ready");
   };
 
+  const shareTeamsheetImage = async () => {
+    if (filled === 0) { nav.toast("Pick some players first"); return; }
+    const primary = theme.primary || "#18181b";
+    const rowH = 34, top = 150, w = 640;
+    const startRows = GAA_POSITIONS.map((pos) => {
+      const id = slots[pos.no]; const p = id ? roster.find((x) => x.id === id) : null;
+      const mark = p ? ((p.captaincy === "C" ? " (C)" : p.captaincy === "VC" ? " (VC)" : "") + (p.freeTaker ? " (F)" : "")) : "";
+      return `${pos.no}. ${p ? p.name : "—"}${mark}`;
+    });
+    const subLines = subs.map((p, i) => `${16 + i}. ${p.name}`);
+    const h = top + (startRows.length + (subLines.length ? subLines.length + 1 : 0)) * rowH + 34;
+    let y = top;
+    const rowsSVG = startRows.map((t) => { const l = `<text x="36" y="${y}" font-size="20" font-family="Arial, sans-serif" fill="#18181b">${xmlEsc(t)}</text>`; y += rowH; return l; }).join("");
+    let subsSVG = "";
+    if (subLines.length) {
+      y += 6; subsSVG += `<text x="36" y="${y}" font-size="14" font-weight="bold" font-family="Arial, sans-serif" fill="#a1a1aa">SUBS</text>`; y += rowH;
+      subsSVG += subLines.map((t) => { const l = `<text x="36" y="${y}" font-size="18" font-family="Arial, sans-serif" fill="#52525b">${xmlEsc(t)}</text>`; y += rowH; return l; }).join("");
+    }
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect width="${w}" height="${h}" fill="#ffffff"/><rect width="${w}" height="110" fill="${primary}"/><text x="36" y="48" font-size="26" font-weight="bold" font-family="Arial, sans-serif" fill="#ffffff">${xmlEsc(HOME_NAME)} — Team Line-Out</text><text x="36" y="84" font-size="18" font-family="Arial, sans-serif" fill="#e4e4e7">vs ${xmlEsc(fixture.opponent)} · ${xmlEsc(fmtDate(fixture.date))} ${xmlEsc(fmtTime(fixture.date))}</text>${rowsSVG}${subsSVG}<text x="${w - 36}" y="${h - 14}" text-anchor="end" font-size="13" font-family="Arial, sans-serif" fill="#a1a1aa">PanelPro</text></svg>`;
+    const ok = await shareImage(svg, `lineout-${fixture.opponent.replace(/\s+/g, "-")}.png`, w, h);
+    if (ok) nav.toast("Teamsheet image ready"); else nav.toast("Couldn't create image");
+  };
+
   return (
     <div className="flex flex-col h-full">
       <StatusBar />
@@ -1457,8 +1517,9 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
           <p className="text-center text-[12px] text-zinc-400 mt-2">Tap a position to assign · screenshot to share</p>
         </div>
       )}
-      <div className="p-4 border-t border-zinc-200 bg-white">
-        <button onClick={() => { dispatch({ type: "SET_LINEUP", fixtureId, lineup: slots }); nav.toast("Line-out saved"); nav.pop(); }} className="w-full text-white font-bold py-3.5 rounded-2xl active:scale-[0.99]" style={{ background: theme.primary }}>Save line out</button>
+      <div className="p-4 border-t border-zinc-200 bg-white flex gap-2">
+        <button onClick={shareTeamsheetImage} className="shrink-0 bg-zinc-100 text-zinc-800 font-bold py-3.5 px-4 rounded-2xl active:scale-[0.99] flex items-center gap-2 text-[14px]"><Share2 className="w-4 h-4" /> Image</button>
+        <button onClick={() => { dispatch({ type: "SET_LINEUP", fixtureId, lineup: slots }); nav.toast("Line-out saved"); nav.pop(); }} className="flex-1 text-white font-bold py-3.5 rounded-2xl active:scale-[0.99]" style={{ background: theme.primary }}>Save line out</button>
       </div>
       {picking !== null && (
         <Sheet onClose={() => setPicking(null)} title={`Pick ${GAA_POSITIONS.find((p) => p.no === picking).name}`}>
@@ -1606,7 +1667,7 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
   const finish = () => {
     finishedRef.current = true;
     dispatch({ type: "CLEAR_LIVE", fixtureId });
-    dispatch({ type: "COMPLETE_MATCH", fixtureId, result: score, events, ht });
+    dispatch({ type: "COMPLETE_MATCH", fixtureId, result: score, events, ht, fullClock: clock });
     nav.reset("fixtures");
     nav.toast("Match saved to reports");
   };
@@ -1934,6 +1995,11 @@ function Reports({ state, nav }) {
   const scoredFor = completed.reduce((a, f) => a + totalPts(f.result.home.g, f.result.home.p), 0);
   const scoredAgainst = completed.reduce((a, f) => a + totalPts(f.result.away.g, f.result.away.p), 0);
   const avgFor = completed.length ? (scoredFor / completed.length).toFixed(1) : "0";
+  const seasonEvents = completed.flatMap((f) => state.events[f.id] || []);
+  const seasonScores = seasonEvents.filter((e) => e.side === "HOME" && e.score).length;
+  const seasonMisses = seasonEvents.filter((e) => e.side === "HOME" && SHOT_MISS_TYPES.includes(e.type)).length;
+  const seasonShots = seasonScores + seasonMisses;
+  const seasonConv = seasonShots ? Math.round((seasonScores / seasonShots) * 100) : null;
 
   const resultOf = (f) => { const h = totalPts(f.result.home.g, f.result.home.p), a = totalPts(f.result.away.g, f.result.away.p); return h > a ? "W" : h < a ? "L" : "D"; };
   const form = [...completed].sort((a, b) => new Date(a.date) - new Date(b.date)).slice(-5).map(resultOf);
@@ -1961,6 +2027,14 @@ function Reports({ state, nav }) {
                 <span key={i} className={`w-8 h-8 rounded-lg flex items-center justify-center text-[13px] font-black text-white ${r === "W" ? "bg-emerald-600" : r === "L" ? "bg-red-600" : "bg-zinc-400"}`}>{r}</span>
               ))}
             </div>
+          </div>
+        )}
+
+        {seasonConv !== null && (
+          <div className="mt-3 bg-white border border-zinc-200 rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-1.5"><span className="text-[12px] font-semibold text-zinc-500">Season shot conversion</span><span className="text-[13px] font-bold tabular-nums">{seasonConv}%</span></div>
+            <div className="h-2.5 rounded-full bg-zinc-100 overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${seasonConv}%` }} /></div>
+            <p className="text-[11px] text-zinc-400 mt-1.5">{seasonScores} scored · {seasonMisses} off target · {seasonShots} shots across {completed.length} game{completed.length === 1 ? "" : "s"}</p>
           </div>
         )}
 
@@ -2084,13 +2158,45 @@ function MatchReport({ state, dispatch, nav, fixtureId }) {
     setShowText(true);
   };
 
+  const shareReportImage = async () => {
+    const w = 640, rowH = 28, top = 150;
+    const bodyLines = reportText.split("\n").slice(1).filter((l) => l !== "");
+    const h = top + bodyLines.length * rowH + 44;
+    let y = top;
+    const body = bodyLines.map((t) => { const l = `<text x="36" y="${y}" font-size="16" font-family="Arial, sans-serif" fill="#3f3f46">${xmlEsc(t)}</text>`; y += rowH; return l; }).join("");
+    const scoreline = `${HOME_NAME} ${fmtScore(fixture.result.home.g, fixture.result.home.p)} – ${fmtScore(fixture.result.away.g, fixture.result.away.p)} ${fixture.opponent}`;
+    const badge = draw ? "DRAW" : won ? "WIN" : "LOSS";
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect width="${w}" height="${h}" fill="#ffffff"/><rect width="${w}" height="120" fill="#18181b"/><text x="36" y="52" font-size="24" font-weight="bold" font-family="Arial, sans-serif" fill="#ffffff">${xmlEsc(scoreline)}</text><text x="36" y="90" font-size="16" font-family="Arial, sans-serif" fill="#a1a1aa">${xmlEsc(badge)} · ${xmlEsc(fixture.competition)} · ${xmlEsc(fmtDate(fixture.date))}</text>${body}<text x="${w - 36}" y="${h - 16}" text-anchor="end" font-size="13" font-family="Arial, sans-serif" fill="#a1a1aa">PanelPro</text></svg>`;
+    const ok = await shareImage(svg, `report-${fixture.opponent.replace(/\s+/g, "-")}.png`, w, h);
+    if (ok) nav.toast("Report image ready"); else nav.toast("Couldn't create image");
+  };
+
   const homeWides = events.filter((e) => e.side === "HOME" && e.type === "Wide").length;
   const subs = events.filter((e) => e.type === "Substitution");
   const goalsN = events.filter((e) => e.side === "HOME" && e.type === "Goal").length;
   const pointsN = events.filter((e) => e.side === "HOME" && e.type === "Point").length;
   const freesN = events.filter((e) => e.side === "HOME" && e.type === "Free Converted").length;
   const scoresN = goalsN + pointsN + freesN;
-  const conv = scoresN + homeWides > 0 ? Math.round((scoresN / (scoresN + homeWides)) * 100) : null;
+  const homeMisses = events.filter((e) => e.side === "HOME" && SHOT_MISS_TYPES.includes(e.type)).length;
+  const shotsN = scoresN + homeMisses;
+  const conv = shotsN > 0 ? Math.round((scoresN / shotsN) * 100) : null;
+
+  // game time per player (minutes on the pitch), from the line-out, subs and final clock
+  const starterIds = new Set(Object.values(lineupMap || {}).filter(Boolean));
+  const fullClock = fixture.fullClock || events.reduce((m, e) => Math.max(m, e.clock || 0), 0);
+  const nameToId = {}; teamPlayers.forEach((p) => { if (!(p.name in nameToId)) nameToId[p.name] = p.id; });
+  const onAt = {}, offAt = {};
+  starterIds.forEach((id) => { onAt[id] = 0; });
+  subs.slice().sort((a, b) => a.clock - b.clock).forEach((e) => {
+    const offId = nameToId[e.off], onId = nameToId[e.on];
+    if (offId != null && offAt[offId] === undefined) offAt[offId] = e.clock;
+    if (onId != null && onAt[onId] === undefined) onAt[onId] = e.clock;
+  });
+  const gameTime = teamPlayers.map((p) => {
+    const on = onAt[p.id]; if (on === undefined) return null;
+    const off = offAt[p.id] !== undefined ? offAt[p.id] : fullClock;
+    return { id: p.id, name: p.name, mins: Math.max(0, Math.round((off - on) / 60)), starter: starterIds.has(p.id), subbedOff: offAt[p.id] !== undefined };
+  }).filter(Boolean).sort((a, b) => b.mins - a.mins);
 
   return (
     <div className="flex flex-col h-full">
@@ -2157,9 +2263,26 @@ function MatchReport({ state, dispatch, nav, fixtureId }) {
                 <div className="mt-2 bg-white border border-zinc-200 rounded-2xl p-4">
                   <div className="flex items-center justify-between mb-1.5"><span className="text-[12px] text-zinc-500">Shot conversion</span><span className="text-[13px] font-bold tabular-nums">{conv}%</span></div>
                   <div className="h-2.5 rounded-full bg-zinc-100 overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${conv}%` }} /></div>
-                  <p className="text-[11px] text-zinc-400 mt-1.5">{scoresN} scored · {homeWides} wide</p>
+                  <p className="text-[11px] text-zinc-400 mt-1.5">{scoresN} scored · {homeMisses} off target · {shotsN} shots</p>
                 </div>
               )}
+            </div>
+          )}
+
+          {gameTime.length > 0 && (
+            <div className="mt-5">
+              <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-2">Game time</p>
+              <div className="bg-white border border-zinc-200 rounded-2xl divide-y divide-zinc-100">
+                {gameTime.map((r) => (
+                  <button key={r.id} onClick={() => nav.push("playerProfile", { playerId: r.id })} className="w-full flex items-center gap-3 px-4 py-2.5 active:bg-zinc-50 text-left">
+                    <span className="flex-1 font-semibold text-[14px] text-zinc-900 truncate">{r.name}</span>
+                    {!r.starter && <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded">SUB ON</span>}
+                    {r.subbedOff && <span className="text-[10px] font-bold text-zinc-500 bg-zinc-100 px-1.5 py-0.5 rounded">OFF</span>}
+                    <span className="w-12 text-right text-[13px] font-bold text-zinc-700 tabular-nums">{r.mins}'</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-1.5">Minutes on the pitch, from the line-out and substitutions.</p>
             </div>
           )}
 
@@ -2204,9 +2327,14 @@ function MatchReport({ state, dispatch, nav, fixtureId }) {
             {notes !== (fixture.notes || "") && <button onClick={() => { dispatch({ type: "UPDATE_FIXTURE", id: fixture.id, patch: { notes: notes.trim() } }); nav.toast("Notes saved"); }} className="w-full mt-2 bg-zinc-900 text-white font-semibold py-2.5 rounded-xl text-[13px] active:scale-[0.99]">Save notes</button>}
           </div>
 
-          <button onClick={share} className="w-full mt-5 bg-black text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.99]">
-            <Share2 className="w-4 h-4" /> {copied ? "Copied to clipboard ✓" : "Share match report"}
-          </button>
+          <div className="flex gap-2 mt-5">
+            <button onClick={share} className="flex-1 bg-black text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.99]">
+              <Share2 className="w-4 h-4" /> {copied ? "Copied ✓" : "Share text"}
+            </button>
+            <button onClick={shareReportImage} className="flex-1 bg-zinc-100 text-zinc-800 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.99]">
+              <Share2 className="w-4 h-4" /> Share image
+            </button>
+          </div>
 
           {potmPick && (
             <Sheet title="Player of the Match" onClose={() => setPotmPick(false)}>
