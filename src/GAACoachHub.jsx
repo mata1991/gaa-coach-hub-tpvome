@@ -1686,6 +1686,21 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
   const onPitchPlayers = roster.filter((p) => onPitch.has(p.id));
   const benchPlayers = roster.filter((p) => !onPitch.has(p.id) && !p.injured);
 
+  // current occupant of each pitch position — the starter, or whoever replaced them
+  const pitchByPos = (() => {
+    const occ = {};
+    GAA_POSITIONS.forEach((pos) => { occ[pos.no] = lineup ? (lineup[pos.no] || null) : null; });
+    const nameId = {}; roster.forEach((p) => { if (!(p.name in nameId)) nameId[p.name] = p.id; });
+    [...events].filter((e) => e.type === "Substitution").reverse().forEach((e) => {
+      const offId = nameId[e.off], onId = nameId[e.on];
+      const posNo = GAA_POSITIONS.find((pos) => occ[pos.no] === offId)?.no;
+      if (posNo != null) occ[posNo] = onId;
+    });
+    return occ;
+  })();
+  // rows top→bottom: full-forwards … midfield … full-backs, GK (attacking up the pitch)
+  const FORMATION_ROWS = [[13, 14, 15], [10, 11, 12], [8, 9], [5, 6, 7], [2, 3, 4], [1]];
+
   const apply = (side, ev) => {
     if (!ev.score) return;
     setScore((s) => {
@@ -1866,15 +1881,25 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
               ))}
             </div>
           ) : (
-            <div className="space-y-1.5 max-h-[45vh] overflow-y-auto">
-              <button onClick={() => logEvent(picker.side, chosen, null)} className="w-full bg-zinc-700 text-white font-semibold py-3 rounded-xl">Skip — no player</button>
-              {onPitchPlayers.map((p) => (
-                <button key={p.id} onClick={() => logEvent(picker.side, chosen, p)} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl active:bg-zinc-800">
-                  <span className="w-7 h-7 rounded-lg bg-zinc-700 flex items-center justify-center font-black text-[12px] text-white tabular-nums">{initials(p.name)}</span>
-                  <span className="font-semibold text-[14px] text-white flex-1 text-left">{p.name}</span>
-                  <span className="text-[11px] text-zinc-500">{posByPlayer[p.id] || ""}</span>
-                </button>
-              ))}
+            <div>
+              <button onClick={() => logEvent(picker.side, chosen, null)} className="w-full bg-zinc-700 text-white font-semibold py-2.5 rounded-xl mb-3 text-[14px]">Skip — no player</button>
+              <div className="space-y-2">
+                {FORMATION_ROWS.map((row, ri) => (
+                  <div key={ri} className="flex justify-center gap-2">
+                    {row.map((no) => {
+                      const pid = pitchByPos[no];
+                      const p = pid ? roster.find((x) => x.id === pid) : null;
+                      return (
+                        <button key={no} disabled={!p} onClick={() => p && logEvent(picker.side, chosen, p)} className="flex-1 max-w-[104px] bg-zinc-800 rounded-xl py-2 flex flex-col items-center justify-center gap-1 disabled:opacity-25 active:bg-zinc-700">
+                          <span className="w-9 h-9 rounded-full bg-zinc-700 flex items-center justify-center font-black text-[12px] text-white">{p ? initials(p.name) : no}</span>
+                          <span className="text-[10px] text-white font-semibold truncate max-w-[92px] leading-tight text-center">{p ? surname(p.name) : "—"}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+              <p className="text-center text-[10px] text-zinc-500 mt-3">Pitch view · goalkeeper at the bottom</p>
             </div>
           )}
         </DarkSheet>
