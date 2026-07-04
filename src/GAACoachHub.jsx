@@ -92,85 +92,14 @@ const HOME_NAME = "Middletown";
 
 /* ============================ seed data ============================ */
 
-const SEED_PLAYER_NAMES = [
-  "Cahal Carvill", "Caíonn Hughes", "Charlie McArdle", "Conor Gormley",
-  "Conor Lappin", "Dean Gaffney", "Fintan Woods", "Jake Toal",
-  "JJ Hughes", "Kieran McKernan", "Liam Woods", "Martin Maguire",
-  "Martin Moan", "Nathan Curry", "Odhrán Curry", "Paddy McBride",
-  "Pádraig Lappin", "Pádraig Mallon", "Ryan Gaffney", "Seán Óg McGuinness",
-  "Shaun Toal", "Shéa Gaffney", "Shea McNaughton", "Tiarnán Nevin",
-  "Aaron Grimes", "Brian Mallon", "Charlie Lennon", "Colm Moran",
-  "Diarmuid Hughes", "Liam McCann", "Nathan Hunt", "Peadar McBride",
-  "Peter Keegan", "Ronnie Monahan", "Ruairí Mallon", "Shay Monahan",
-];
+// Baked-in club data (real squad, fixtures, line-out, availability & settings).
+// makeSeed() returns a fresh deep copy each call — also used by the Reset action.
+const SEED_STATE_JSON = `{"version":1,"activeTeamId":"t_senior","teams":[{"id":"t_senior","name":"Senior Hurling","sport":"Hurling","grade":"Senior","age":"Senior"},{"id":"t_u21","name":"Under-21 Hurling","sport":"Hurling","grade":"U21","age":"Under-21"}],"players":[{"id":"p5","teamId":"t_senior","name":"Dean Gaffney","jerseyNo":6,"role":"WF","group":"FWD","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p23","teamId":"t_senior","name":"Tiarnán Nevin","jerseyNo":24,"role":"FB","group":"BACK","injured":false,"injuryNote":"","notes":"","captaincy":"C","freeTaker":false},{"id":"p0","teamId":"t_senior","name":"Cahal Carvill","jerseyNo":1,"role":"CF","group":"FWD","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p2","teamId":"t_senior","name":"Charlie McArdle","jerseyNo":3,"role":"WF","group":"FWD","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p4","teamId":"t_senior","name":"Conor Lappin","jerseyNo":5,"role":"WF","group":"FWD","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p13","teamId":"t_senior","name":"Nathan Curry","jerseyNo":14,"role":"CTF","group":"FWD","injured":false,"injuryNote":"","notes":"","captaincy":"VC","freeTaker":false},{"id":"p6","teamId":"t_senior","name":"Fintan Woods","jerseyNo":7,"role":"GK","group":"GK","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p21","teamId":"t_senior","name":"Shéa Gaffney","jerseyNo":22,"role":"MID","group":"MID","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p8","teamId":"t_senior","name":"JJ Hughes","jerseyNo":9,"role":"GK","group":"GK","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p9","teamId":"t_senior","name":"Kieran McKernan","jerseyNo":10,"role":"CB","group":"BACK","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p14","teamId":"t_senior","name":"Odhrán Curry","jerseyNo":15,"role":"CB","group":"BACK","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p18","teamId":"t_senior","name":"Ryan Gaffney","jerseyNo":19,"role":"CF","group":"FWD","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p11","teamId":"t_senior","name":"Martin Maguire","jerseyNo":12,"role":"FF","group":"FWD","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p19","teamId":"t_senior","name":"Seán Óg McGuinness","jerseyNo":20,"role":"FF","group":"FWD","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p1","teamId":"t_senior","name":"Caíonn Hughes","jerseyNo":2,"role":"WB","group":"BACK","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p16","teamId":"t_senior","name":"Pádraig Lappin","jerseyNo":17,"role":"CTB","group":"BACK","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p15","teamId":"t_senior","name":"Paddy McBride","jerseyNo":16,"role":"WB","group":"BACK","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p22","teamId":"t_senior","name":"Shea McNaughton","jerseyNo":23,"role":"CB","group":"BACK","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p3","teamId":"t_senior","name":"Conor Gormley","jerseyNo":4,"role":"CF","group":"FWD","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p12","teamId":"t_senior","name":"Martin Moan","jerseyNo":13,"role":"CF","group":"FWD","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p20","teamId":"t_senior","name":"Shaun Toal","jerseyNo":21,"role":"MID","group":"MID","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p7","teamId":"t_senior","name":"Jake Toal","jerseyNo":8,"role":"MID","group":"MID","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p10","teamId":"t_senior","name":"Liam Woods","jerseyNo":11,"role":"CB","group":"BACK","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p17","teamId":"t_senior","name":"Pádraig Mallon","jerseyNo":18,"role":"WB","group":"BACK","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p26","teamId":"t_senior","name":"Charlie Lennon","jerseyNo":27,"role":"WF","group":"FWD","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p32","teamId":"t_senior","name":"Peter Keegan","jerseyNo":33,"role":"WB","group":"BACK","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p30","teamId":"t_senior","name":"Nathan Hunt","jerseyNo":31,"role":"CTF","group":"FWD","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p27","teamId":"t_senior","name":"Colm Moran","jerseyNo":28,"role":"CB","group":"BACK","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p29","teamId":"t_senior","name":"Liam McCann","jerseyNo":30,"role":"CF","group":"FWD","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p28","teamId":"t_senior","name":"Diarmuid Hughes","jerseyNo":29,"role":"CF","group":"FWD","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p33","teamId":"t_senior","name":"Ronnie Monahan","jerseyNo":34,"role":"CF","group":"FWD","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p31","teamId":"t_senior","name":"Peadar McBride","jerseyNo":32,"role":"MID","group":"MID","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p35","teamId":"t_senior","name":"Shay Monahan","jerseyNo":36,"role":"CB","group":"BACK","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p24","teamId":"t_senior","name":"Aaron Grimes","jerseyNo":25,"role":"CF","group":"FWD","injured":true,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p34","teamId":"t_senior","name":"Ruairí Mallon","jerseyNo":35,"role":"GK","group":"GK","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false},{"id":"p25","teamId":"t_senior","name":"Brian Mallon","jerseyNo":26,"role":"CB","group":"BACK","injured":false,"injuryNote":"","notes":"","captaincy":null,"freeTaker":false}],"fixtures":[{"id":"f1783177114751","teamId":"t_senior","status":"scheduled","opponent":"Derrynoose","venue":"Derrynoose GAA Grounds","competition":"Championship","notes":"Round Round - Round 1","date":"2026-07-28T16:30:00.000Z"},{"id":"f1783177142142","teamId":"t_senior","status":"scheduled","opponent":"Cuchulians","venue":"Middletown GAA Grounds","competition":"Championship","notes":"Round Robin - Round 2","date":"2026-08-04T16:30:00.000Z"},{"id":"f1783177174686","teamId":"t_senior","status":"scheduled","opponent":"Killeavy","venue":"Middletown GAA Grounds","competition":"Championship","notes":"Round Robin - Round 2","date":"2026-08-11T16:30:00.000Z"},{"id":"f1783177227660","teamId":"t_senior","status":"scheduled","opponent":"Craobh Rua","venue":"Camlough GAA Grounds","competition":"Championship","notes":"Round Robin - Round 4","date":"2026-08-18T16:30:00.000Z"},{"id":"f1783177251372","teamId":"t_senior","status":"scheduled","opponent":"Keady","venue":"Middletown GAA Grounds","competition":"Championship","notes":"Round Robin - Round 5","date":"2026-08-25T16:30:00.000Z"}],"sessions":[{"id":"s0","teamId":"t_senior","date":"2026-06-11T16:30:00.000Z","location":"Middletown GAA Grounds","focus":"First touch & striking drills"},{"id":"s1","teamId":"t_senior","date":"2026-06-18T16:30:00.000Z","location":"Middletown GAA Grounds","focus":"Puckout strategy & press"},{"id":"s2","teamId":"t_senior","date":"2026-06-25T16:30:00.000Z","location":"Astro, Middletown","focus":"Conditioned games"}],"lineups":{"f1783177114751":{"1":"p6","2":"p9","3":"p23","4":"p14","5":"p1","6":"p16","7":"p15","8":"p21","9":"p20","10":"p5","11":"p13","12":"p2","13":"p0","14":"p11","15":"p18"}},"attendance":{"s0":{"p0":"EXCUSED","p1":"TRAINED","p2":"TRAINED","p3":"TRAINED","p4":"INJURED","p5":"TRAINED","p6":"EXCUSED","p7":"TRAINED","p8":"TRAINED","p9":"TRAINED","p10":"TRAINED","p11":"TRAINED","p12":"EXCUSED","p13":"INJURED","p14":"TRAINED","p15":"TRAINED","p16":"TRAINED","p17":"TRAINED","p18":"EXCUSED","p19":"TRAINED","p20":"TRAINED","p21":"TRAINED","p22":"INJURED","p23":"TRAINED","p24":"EXCUSED","p25":"TRAINED","p26":"TRAINED","p27":"TRAINED","p28":"TRAINED","p29":"TRAINED","p30":"EXCUSED","p31":"INJURED","p32":"TRAINED","p33":"TRAINED","p34":"TRAINED","p35":"TRAINED"}},"availability":{"f1783177114751":{"p5":"AVAILABLE","p23":"AVAILABLE","p0":"AVAILABLE","p2":"AVAILABLE","p4":"AVAILABLE","p13":"AVAILABLE","p6":"AVAILABLE","p21":"AVAILABLE","p8":"AVAILABLE","p9":"AVAILABLE","p14":"AVAILABLE","p18":"AVAILABLE","p11":"AVAILABLE","p19":"AVAILABLE","p1":"AVAILABLE","p16":"AVAILABLE","p15":"AVAILABLE","p22":"OUT","p3":"AVAILABLE","p12":"OUT","p20":"OUT","p7":"AVAILABLE","p10":"AVAILABLE","p17":"AVAILABLE","p26":"AVAILABLE","p32":"OUT","p30":"AVAILABLE","p27":"DOUBT","p29":"DOUBT","p28":"DOUBT","p33":"DOUBT","p31":"DOUBT","p35":"DOUBT","p24":"OUT","p34":"DOUBT","p25":"OUT"}},"events":{},"hints":{"tapEdit":true},"liveMatches":{"f1783177114751":{"score":{"home":{"g":0,"p":0},"away":{"g":0,"p":0}},"clock":0,"half":"H1","events":[{"id":1783177407293.5864,"side":"HOME","type":"Free Missed","half":"H1","clock":0,"player":null,"playerId":null,"playerNo":null,"score":null}],"onPitch":[],"ht":null}},"extraWork":{"p8":[{"id":"xw_g1","type":"Gym","date":"2026-07-02T14:48:27.840Z"},{"id":"xw_s1","type":"Stick Work","date":"2026-06-30T14:48:27.840Z"},{"id":"xw_r1","type":"Run","date":"2026-06-28T14:48:27.840Z"}]},"settings":{"throwInTime":"19:30","homeVenue":"Middletown GAA Grounds","theme":{"primary":"#18181b","accent":"#dc2626"},"lastBackup":1783178278653}}`;
 
 function makeSeed() {
-  const TID = "t_senior";
-  const teams = [
-    { id: TID, name: "Senior Hurling", sport: "Hurling", grade: "Senior", age: "Senior" },
-    { id: "t_u21", name: "Under-21 Hurling", sport: "Hurling", grade: "U21", age: "Under-21" },
-  ];
-
-  const SEED_ROLES = ["CF", "WB", "CB", "CTB", "WB", "FB", "MID", "CB", "CTF", "MID", "WF", "CTB", "WB", "CB", "WF", "FB", "MID", "CB", "CF", "FF", "WF", "CF", "GK", "CTF", "GK", "CB", "WF", "MID", "CTB", "WB", "FF", "FB", "MID", "CF", "CB", "FF"];
-  const LEAD = { "JJ Hughes": "C", "Cahal Carvill": "VC" };
-  const FREE = new Set(["Tiarnán Nevin"]);
-  const players = SEED_PLAYER_NAMES.map((name, i) => {
-    const role = SEED_ROLES[i] || "MID";
-    return { id: "p" + i, teamId: TID, name, jerseyNo: i + 1, role, group: groupOfRole(role), injured: false, injuryNote: "", notes: "", captaincy: LEAD[name] || null, freeTaker: FREE.has(name) };
-  });
-  const att0 = {}; players.forEach((p, i) => { att0[p.id] = (i % 6 === 0 ? "EXCUSED" : i % 9 === 4 ? "INJURED" : "TRAINED"); });
-
-  const iso = (y, m, d, hh = 19, mm = 30) => new Date(y, m - 1, d, hh, mm).toISOString();
-
-  const fixtures = [
-    { id: "f0", teamId: TID, opponent: "Keady", venue: "Middletown GAA Grounds", date: iso(2026, 6, 1), competition: "League", status: "completed", result: { home: { g: 1, p: 8 }, away: { g: 0, p: 10 } }, ht: { home: { g: 1, p: 4 }, away: { g: 0, p: 6 } }, potm: null },
-    { id: "f1", teamId: TID, opponent: "Cúchulainn's", venue: "Mullaghbawn", date: iso(2026, 6, 8), competition: "League", status: "completed", result: { home: { g: 2, p: 4 }, away: { g: 1, p: 12 } }, ht: { home: { g: 2, p: 2 }, away: { g: 0, p: 7 } }, potm: null },
-    { id: "f2", teamId: TID, opponent: "Killeavy", venue: "Killeavy GAA Grounds", date: iso(2026, 6, 16), competition: "Championship", status: "scheduled" },
-    { id: "f3", teamId: TID, opponent: "Ballymacnab", venue: "Middletown GAA Grounds", date: iso(2026, 6, 23), competition: "Championship", status: "scheduled" },
-    { id: "f4", teamId: TID, opponent: "Éire Óg", venue: "Sandy Hill", date: iso(2026, 6, 30), competition: "League", status: "scheduled" },
-  ];
-
-  const sessions = [
-    { id: "s0", teamId: TID, date: iso(2026, 6, 11), location: "Middletown GAA Grounds", focus: "First touch & striking drills" },
-    { id: "s1", teamId: TID, date: iso(2026, 6, 18), location: "Middletown GAA Grounds", focus: "Puckout strategy & press" },
-    { id: "s2", teamId: TID, date: iso(2026, 6, 25), location: "Astro, Middletown", focus: "Conditioned games" },
-  ];
-
-  // pre-seed events for the two completed games so the report/stats screens have content
-  const idByName = {}; players.forEach((p) => (idByName[p.name] = p.id));
-  const ev = (playerName, type, half, clock) => ({ id: type + clock + playerName, side: "HOME", player: playerName, playerId: idByName[playerName] || null, type, half, clock });
-  const events = {
-    f0: [
-      ev("Cahal Carvill", "Point", "H1", 240), ev("JJ Hughes", "Goal", "H1", 600),
-      ev("Liam Woods", "Point", "H1", 720), ev("JJ Hughes", "Point", "H1", 1080),
-      ev("Tiarnán Nevin", "Free Converted", "H1", 1260), ev("Liam Woods", "Wide", "H1", 1400),
-      ev("JJ Hughes", "Point", "H2", 2100), ev("Charlie Lennon", "Point", "H2", 2400),
-      ev("Tiarnán Nevin", "Free Converted", "H2", 2600), ev("Liam Woods", "Point", "H2", 2900),
-      ev("Peadar McBride", "Yellow Card", "H2", 2750),
-    ],
-    f1: [
-      ev("JJ Hughes", "Goal", "H1", 300), ev("Liam Woods", "Goal", "H1", 1500),
-      ev("Tiarnán Nevin", "Free Converted", "H1", 800), ev("Charlie Lennon", "Point", "H2", 1900),
-      ev("JJ Hughes", "Point", "H2", 2200), ev("Cahal Carvill", "Point", "H2", 2500),
-      ev("Kieran McKernan", "Yellow Card", "H1", 1100), ev("Ruairí Mallon", "Red Card", "H2", 2400),
-    ],
-  };
-
-  const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
-  const extraWork = {};
-  const jjId = idByName["JJ Hughes"];
-  if (jjId) extraWork[jjId] = [
-    { id: "xw_g1", type: "Gym", date: daysAgo(2) },
-    { id: "xw_s1", type: "Stick Work", date: daysAgo(4) },
-    { id: "xw_r1", type: "Run", date: daysAgo(6) },
-  ];
-
-  return {
-    version: 1,
-    activeTeamId: TID,
-    teams, players, fixtures, sessions,
-    lineups: {}, attendance: { s0: att0 }, availability: {}, events, hints: {}, liveMatches: {}, extraWork, settings: { ...DEFAULT_SETTINGS },
-  };
+  const s = JSON.parse(SEED_STATE_JSON);
+  s.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
+  return s;
 }
 
 /* ============================ persistence ============================ */
