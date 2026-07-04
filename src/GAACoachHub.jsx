@@ -537,12 +537,11 @@ function Router({ state, dispatch, nav }) {
 
 /* ============================ shared UI ============================ */
 
-function StatusBar() {
-  return (
-    <div className="h-6 bg-white flex items-center justify-between px-5 text-[11px] font-semibold text-zinc-900 shrink-0">
-      <span>9:41</span><span className="tracking-tight">PanelPro</span><span>●●●</span>
-    </div>
-  );
+// Reserves the space under the iPhone status bar / Dynamic Island so the header
+// and its buttons are never hidden behind the real clock/battery. Collapses to
+// nothing in a normal browser (where the inset is 0).
+function StatusBar({ dark }) {
+  return <div aria-hidden className={`shrink-0 ${dark ? "bg-black" : "bg-white"}`} style={{ height: "env(safe-area-inset-top)" }} />;
 }
 
 function Header({ title, onBack, right }) {
@@ -589,7 +588,7 @@ const TABS = [
 ];
 function TabBar({ current, go, color = "#18181b" }) {
   return (
-    <div className="shrink-0 bg-white border-t border-zinc-200 grid grid-cols-5 pb-1">
+    <div className="shrink-0 bg-white border-t border-zinc-200 grid grid-cols-5" style={{ paddingBottom: "max(0.25rem, env(safe-area-inset-bottom))" }}>
       {TABS.map((t) => {
         const active = current === t.key;
         return (
@@ -625,7 +624,7 @@ function Sheet({ title, children, onClose }) {
   return (
     <div className="absolute inset-0 z-50 flex items-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" />
-      <div onClick={(e) => e.stopPropagation()} className="relative w-full bg-white rounded-t-3xl p-5 pb-8 max-h-[88%] overflow-y-auto">
+      <div onClick={(e) => e.stopPropagation()} className="relative w-full bg-white rounded-t-3xl p-5 max-h-[88%] overflow-y-auto" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}>
         <div className="w-10 h-1 bg-zinc-300 rounded-full mx-auto mb-4" />
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-[18px] font-bold text-zinc-900">{title}</h3>
@@ -641,7 +640,7 @@ function DarkSheet({ title, children, onClose }) {
   return (
     <div className="absolute inset-0 z-50 flex items-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
-      <div onClick={(e) => e.stopPropagation()} className="relative w-full bg-zinc-900 rounded-t-3xl p-5 pb-8 max-h-[88%] overflow-y-auto">
+      <div onClick={(e) => e.stopPropagation()} className="relative w-full bg-zinc-900 rounded-t-3xl p-5 max-h-[88%] overflow-y-auto" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}>
         <div className="w-10 h-1 bg-zinc-700 rounded-full mx-auto mb-4" />
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-[18px] font-bold text-white">{title}</h3>
@@ -1070,9 +1069,12 @@ function Players({ state, dispatch, nav }) {
                           {p.captaincy && <span className="shrink-0 text-[9px] font-black text-white bg-zinc-900 rounded px-1 py-0.5 leading-none">{p.captaincy}</span>}
                           {p.freeTaker && <span title="Free-taker" className="shrink-0 text-[9px] font-black text-amber-700 bg-amber-100 rounded px-1 py-0.5 leading-none">F</span>}
                           {suspended.has(p.id) && <span className="shrink-0 text-[9px] font-black text-white bg-red-600 rounded px-1 py-0.5 leading-none">SUSP</span>}
+                          {!p.injured && p.limited && <span className="shrink-0 text-[9px] font-black text-white bg-amber-500 rounded px-1 py-0.5 leading-none">LTD</span>}
                         </div>
                         {p.injured
                           ? <p className="text-[12px] text-red-500 truncate">{roleLabel(p.role)} · injured</p>
+                          : p.limited
+                          ? <p className="text-[12px] text-amber-600 truncate">{roleLabel(p.role)} · limited</p>
                           : <p className="text-[12px] text-zinc-400 truncate">{roleLabel(p.role)}</p>}
                       </div>
                     </button>
@@ -1101,6 +1103,7 @@ function PlayerForm({ initial, nextNo, onClose, onSave, onDelete, onBulk }) {
   const [name, setName] = useState(initial?.name || "");
   const [role, setRole] = useState(initial?.role || (initial?.group ? defaultRole(initial.group) : ""));
   const [injured, setInjured] = useState(initial?.injured || false);
+  const [limited, setLimited] = useState(initial?.limited || false);
   const [captaincy, setCaptaincy] = useState(initial?.captaincy || null);
   const [freeTaker, setFreeTaker] = useState(initial?.freeTaker || false);
   const [notes, setNotes] = useState(initial?.notes || initial?.injuryNote || "");
@@ -1127,10 +1130,12 @@ function PlayerForm({ initial, nextNo, onClose, onSave, onDelete, onBulk }) {
         </div>
       </Field>
       <Field label="Status">
-        <div className="grid grid-cols-2 gap-2">
-          <button onClick={() => setInjured(false)} className={`py-2.5 rounded-xl text-[14px] font-semibold border ${!injured ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-zinc-700 border-zinc-200"}`}>Fit</button>
-          <button onClick={() => setInjured(true)} className={`py-2.5 rounded-xl text-[14px] font-semibold border ${injured ? "bg-red-600 text-white border-red-600" : "bg-white text-zinc-700 border-zinc-200"}`}>Injured</button>
+        <div className="grid grid-cols-3 gap-2">
+          <button onClick={() => { setInjured(false); setLimited(false); }} className={`py-2.5 rounded-xl text-[13px] font-semibold border ${!injured && !limited ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-zinc-700 border-zinc-200"}`}>Fit</button>
+          <button onClick={() => { setInjured(false); setLimited(true); }} className={`py-2.5 rounded-xl text-[13px] font-semibold border ${limited && !injured ? "bg-amber-500 text-white border-amber-500" : "bg-white text-zinc-700 border-zinc-200"}`}>Limited</button>
+          <button onClick={() => { setInjured(true); setLimited(false); }} className={`py-2.5 rounded-xl text-[13px] font-semibold border ${injured ? "bg-red-600 text-white border-red-600" : "bg-white text-zinc-700 border-zinc-200"}`}>Injured</button>
         </div>
+        {limited && !injured && <p className="text-[11px] text-amber-600 mt-1.5">Available but carrying a knock / limited minutes — still picked in line-outs.</p>}
       </Field>
       <Field label="Leadership">
         <div className="grid grid-cols-3 gap-2">
@@ -1145,7 +1150,7 @@ function PlayerForm({ initial, nextNo, onClose, onSave, onDelete, onBulk }) {
       <Field label="Notes">
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="e.g. Away on holidays 12–19 Jul · Back from injury ~5 Aug · Strong free-taker" className="w-full bg-zinc-100 rounded-xl px-3.5 py-3 text-[14px] leading-snug outline-none focus:ring-2 ring-black resize-none" />
       </Field>
-      <button disabled={!name.trim() || !role} onClick={() => onSave({ name: name.trim(), role, group: groupOfRole(role), injured, captaincy, freeTaker, notes: notes.trim() })} className="w-full bg-black disabled:bg-zinc-300 text-white font-bold py-3.5 rounded-2xl mt-1 active:scale-[0.99]">{isEdit ? "Save changes" : "Add player"}</button>
+      <button disabled={!name.trim() || !role} onClick={() => onSave({ name: name.trim(), role, group: groupOfRole(role), injured, limited, captaincy, freeTaker, notes: notes.trim() })} className="w-full bg-black disabled:bg-zinc-300 text-white font-bold py-3.5 rounded-2xl mt-1 active:scale-[0.99]">{isEdit ? "Save changes" : "Add player"}</button>
       {isEdit && onDelete && <button onClick={() => setConfirmDel(true)} className="w-full text-center text-[13px] text-red-600 font-semibold py-1">Remove from squad</button>}
       {confirmDel && <Confirm title="Remove player?" confirmLabel="Remove" message={`Remove ${initial.name} from the squad? They'll also be cleared from any saved line-outs.`} onConfirm={onDelete} onClose={() => setConfirmDel(false)} />}
     </Sheet>
@@ -2563,8 +2568,8 @@ function PlayerProfile({ state, dispatch, nav, playerId }) {
         <div className="px-4 -mt-4">
           <div className="bg-white border border-zinc-200 rounded-2xl p-3 flex items-center justify-between shadow-sm">
             <span className="text-[13px] font-semibold text-zinc-500">Status</span>
-            <button onClick={() => dispatch({ type: "TOGGLE_INJURY", id: player.id })} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold ${player.injured ? "bg-red-600 text-white" : "bg-emerald-600 text-white"}`}>
-              <Stethoscope className="w-4 h-4" />{player.injured ? "Injured" : "Fit"}
+            <button onClick={() => dispatch({ type: "TOGGLE_INJURY", id: player.id })} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold ${player.injured ? "bg-red-600 text-white" : player.limited ? "bg-amber-500 text-white" : "bg-emerald-600 text-white"}`}>
+              <Stethoscope className="w-4 h-4" />{player.injured ? "Injured" : player.limited ? "Limited" : "Fit"}
             </button>
           </div>
         </div>
