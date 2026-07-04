@@ -286,12 +286,28 @@ const COLOR_PRESETS = [
   { name: "Navy & Sky", primary: "#0c4a6e", accent: "#0ea5e9" },
 ];
 const DEFAULT_SETTINGS = { throwInTime: "19:30", homeVenue: "Middletown GAA Grounds", theme: { primary: "#18181b", accent: "#dc2626" }, lastBackup: null };
-function downloadBackupFile(state) {
+// light haptic tap (no-op where unsupported, e.g. iOS Safari)
+const buzz = (ms = 12) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (_) {} };
+
+async function downloadBackupFile(state) {
+  const json = JSON.stringify(state, null, 2);
+  const filename = `panelpro-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  // Prefer the share sheet with a real file — lets you send the backup to
+  // email / WhatsApp / Files straight from the phone.
   try {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    if (navigator.canShare) {
+      const file = new File([json], filename, { type: "application/json" });
+      if (navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "PanelPro backup" }); return true; }
+    }
+  } catch (e) {
+    if (e && e.name === "AbortError") return false; // user closed the share sheet
+    // otherwise fall through to a plain download
+  }
+  try {
+    const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `gaa-coach-hub-${new Date().toISOString().slice(0, 10)}.json`;
+    a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     return true;
   } catch (_) { return false; }
@@ -731,7 +747,7 @@ function Dashboard({ state, dispatch, nav }) {
   const lastBackup = state.settings && state.settings.lastBackup;
   const daysSince = lastBackup ? Math.floor((Date.now() - lastBackup) / 86400000) : null;
   const needBackup = !hideBackup && (players.length > 0 || completedFx.length > 0) && (!lastBackup || daysSince >= 7);
-  const backupNow = () => { const ok = downloadBackupFile(state); dispatch({ type: "SET_SETTINGS", patch: { lastBackup: Date.now() } }); if (ok) nav.toast("Backup downloaded"); else { nav.toast("Opening backup options"); nav.push("settings"); } };
+  const backupNow = async () => { const ok = await downloadBackupFile(state); if (ok) { dispatch({ type: "SET_SETTINGS", patch: { lastBackup: Date.now() } }); nav.toast("Backup saved"); } };
 
   const handleAction = (to) => {
     if (to === "lineupPick" || to === "matchPick") {
@@ -1203,13 +1219,29 @@ function Availability({ state, dispatch, nav, fixtureId }) {
   });
   const shown = filter ? ordered.filter((p) => map[p.id] === filter) : ordered;
   const filterLabel = AVAILABILITY_STATUSES.find((s) => s.value === filter)?.label;
+  const prevAvail = useMemo(() => {
+    const others = state.fixtures
+      .filter((f) => f.teamId === fixture.teamId && f.id !== fixtureId && state.availability[f.id] && Object.keys(state.availability[f.id]).length)
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+    return others[0] ? { fx: others[0], map: state.availability[others[0].id] } : null;
+  }, [state.fixtures, state.availability, fixtureId, fixture.teamId]);
+  const copyPrev = () => {
+    if (!prevAvail) return;
+    const next = {}; players.forEach((p) => { next[p.id] = prevAvail.map[p.id] || (p.injured ? "OUT" : "AVAILABLE"); });
+    setMap(next); dispatch({ type: "SET_AVAILABILITY", id: fixtureId, map: next }); nav.toast(`Copied availability from vs ${prevAvail.fx.opponent}`);
+  };
   return (
     <div className="flex flex-col h-full">
       <StatusBar />
       <Header title="Availability" onBack={nav.pop} />
       <div className="px-4 py-3 bg-white border-b border-zinc-100">
-        <p className="font-bold text-[15px] text-zinc-900">{HOME_NAME} vs {fixture.opponent}</p>
-        <p className="text-[12px] text-zinc-500">{fmtDate(fixture.date)} · {fixture.venue}</p>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="font-bold text-[15px] text-zinc-900 truncate">{HOME_NAME} vs {fixture.opponent}</p>
+            <p className="text-[12px] text-zinc-500">{fmtDate(fixture.date)} · {fixture.venue}</p>
+          </div>
+          {prevAvail && <button onClick={copyPrev} className="shrink-0 text-[11px] font-semibold text-zinc-600 bg-zinc-100 px-2.5 py-1.5 rounded-full active:scale-95 flex items-center gap-1"><Upload className="w-3 h-3" /> Copy last game</button>}
+        </div>
         <div className="mt-3"><StatusCountsBar statuses={AVAILABILITY_STATUSES} counts={counts} active={filter} onSelect={(v) => setFilter((f) => (f === v ? null : v))} /></div>
         {filter ? (
           <button onClick={() => setFilter(null)} className="text-[12px] text-zinc-500 mt-2 w-full text-center">Showing <span className="font-bold text-zinc-700">{filterLabel}</span> only · tap to show all</button>
@@ -1264,6 +1296,23 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
     </button>
   );
 
+  const prevLineup = useMemo(() => {
+    const others = state.fixtures
+      .filter((f) => f.teamId === fixture.teamId && f.id !== fixtureId && state.lineups[f.id] && Object.keys(state.lineups[f.id]).length)
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+    return others[0] ? { fx: others[0], slots: state.lineups[others[0].id] } : null;
+  }, [state.fixtures, state.lineups, fixtureId, fixture.teamId]);
+  const copyPrevLineup = () => {
+    if (!prevLineup) return;
+    const next = {};
+    GAA_POSITIONS.forEach((pos) => {
+      const id = prevLineup.slots[pos.no];
+      const p = id ? roster.find((x) => x.id === id) : null;
+      next[pos.no] = (p && !p.injured && avail[p.id] !== "OUT") ? id : null; // skip anyone now injured/unavailable
+    });
+    setSlots(next); nav.toast(`Copied line-out from vs ${prevLineup.fx.opponent}`);
+  };
+
   const autoPick = () => {
     const used = new Set(Object.values(slots).filter(Boolean));
     const pool = roster.filter((p) => !p.injured && avail[p.id] !== "OUT"); // depth-chart order
@@ -1307,9 +1356,12 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
             <button key={k} onClick={() => setView(k)} className={`px-3 py-1 rounded-md text-[12px] font-semibold ${view === k ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500"}`}>{l}</button>
           ))}
         </div>
-        <button onClick={autoPick} className="shrink-0 flex items-center gap-1.5 bg-black text-white text-[12px] font-bold px-3 py-1.5 rounded-full active:scale-95">
-          <Sparkles className="w-3.5 h-3.5" /> Auto-pick
-        </button>
+        <div className="shrink-0 flex items-center gap-2">
+          {prevLineup && <button onClick={copyPrevLineup} className="flex items-center gap-1.5 bg-zinc-100 text-zinc-700 text-[12px] font-bold px-3 py-1.5 rounded-full active:scale-95"><Upload className="w-3.5 h-3.5" /> Copy last</button>}
+          <button onClick={autoPick} className="flex items-center gap-1.5 bg-black text-white text-[12px] font-bold px-3 py-1.5 rounded-full active:scale-95">
+            <Sparkles className="w-3.5 h-3.5" /> Auto-pick
+          </button>
+        </div>
       </div>
       {issueCount > 0 && (
         <div className="mx-3 mt-2 flex items-center gap-2 bg-amber-50 text-amber-800 rounded-xl px-3 py-2">
@@ -1523,6 +1575,7 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
   };
 
   const logEvent = (side, ev, pl) => {
+    buzz(ev.score ? [20, 40, 20] : 12); // a stronger triple-buzz for a score
     setEvents((e) => [{ id: Date.now() + Math.random(), side, type: ev.name, half, clock, player: pl?.name || null, playerId: pl?.id || null, playerNo: pl?.jerseyNo || null, score: ev.score || null }, ...e]);
     apply(side, ev);
     setPicker(null); setStep("event"); setChosen(null);
@@ -1542,6 +1595,7 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
   };
 
   const doSub = (onId) => {
+    buzz(18);
     const off = player(subOff), on = player(onId);
     setOnPitch((set) => { const n = new Set(set); n.delete(subOff); n.add(onId); return n; });
     setEvents((e) => [{ id: Date.now() + Math.random(), side: "HOME", type: "Substitution", half, clock, off: off?.name, on: on?.name }, ...e]);
