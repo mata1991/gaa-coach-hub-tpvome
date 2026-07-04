@@ -517,7 +517,7 @@ function Router({ state, dispatch, nav }) {
 function StatusBar() {
   return (
     <div className="h-6 bg-white flex items-center justify-between px-5 text-[11px] font-semibold text-zinc-900 shrink-0">
-      <span>9:41</span><span className="tracking-tight">GAA Coach Hub</span><span>●●●</span>
+      <span>9:41</span><span className="tracking-tight">PanelPro</span><span>●●●</span>
     </div>
   );
 }
@@ -699,15 +699,28 @@ function SwipeRow({ children, onDelete, radius = "rounded-2xl" }) {
 }
 
 // generic roster status list (used by availability + attendance)
-function StatusCountsBar({ statuses, counts }) {
+function StatusCountsBar({ statuses, counts, active, onSelect }) {
   return (
     <div className="flex gap-2">
-      {statuses.map((s) => (
-        <div key={s.value} className="flex-1 rounded-xl py-1.5 flex flex-col items-center" style={{ background: s.color + "14" }}>
-          <span className="font-black text-[16px] tabular-nums" style={{ color: s.color }}>{counts[s.value] || 0}</span>
-          <span className="text-[9px] font-semibold" style={{ color: s.color }}>{s.label}</span>
-        </div>
-      ))}
+      {statuses.map((s) => {
+        const isActive = active === s.value;
+        const content = (
+          <>
+            <span className="font-black text-[16px] tabular-nums" style={{ color: s.color }}>{counts[s.value] || 0}</span>
+            <span className="text-[9px] font-semibold" style={{ color: s.color }}>{s.label}</span>
+          </>
+        );
+        const cls = "flex-1 rounded-xl py-1.5 flex flex-col items-center border-2";
+        if (!onSelect) {
+          return <div key={s.value} className={cls} style={{ background: s.color + "14", borderColor: "transparent" }}>{content}</div>;
+        }
+        return (
+          <button key={s.value} onClick={() => onSelect(s.value)} className={cls}
+            style={{ background: s.color + (isActive ? "26" : "14"), borderColor: isActive ? s.color : "transparent" }}>
+            {content}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -1232,6 +1245,14 @@ function Availability({ state, dispatch, nav, fixtureId }) {
   });
   const change = (id, status) => { const next = { ...map, [id]: status }; setMap(next); dispatch({ type: "SET_AVAILABILITY", id: fixtureId, map: next }); };
   const counts = AVAILABILITY_STATUSES.reduce((a, s) => { a[s.value] = Object.values(map).filter((v) => v === s.value).length; return a; }, {});
+  const [filter, setFilter] = useState(null);
+  const ordered = players.slice().sort((a, b) => {
+    const ga = POSITION_GROUPS.findIndex((g) => g.value === a.group);
+    const gb = POSITION_GROUPS.findIndex((g) => g.value === b.group);
+    return (ga - gb) || ((a.jerseyNo || 0) - (b.jerseyNo || 0));
+  });
+  const shown = filter ? ordered.filter((p) => map[p.id] === filter) : ordered;
+  const filterLabel = AVAILABILITY_STATUSES.find((s) => s.value === filter)?.label;
   return (
     <div className="flex flex-col h-full">
       <StatusBar />
@@ -1239,11 +1260,16 @@ function Availability({ state, dispatch, nav, fixtureId }) {
       <div className="px-4 py-3 bg-white border-b border-zinc-100">
         <p className="font-bold text-[15px] text-zinc-900">{HOME_NAME} vs {fixture.opponent}</p>
         <p className="text-[12px] text-zinc-500">{fmtDate(fixture.date)} · {fixture.venue}</p>
-        <div className="mt-3"><StatusCountsBar statuses={AVAILABILITY_STATUSES} counts={counts} /></div>
-        <p className="text-[12px] text-zinc-500 mt-2 text-center"><span className="font-bold text-emerald-600">{counts.AVAILABLE}</span> available {counts.AVAILABLE >= 15 ? "— enough for a full team ✓" : `— need ${15 - counts.AVAILABLE} more for 15`}</p>
+        <div className="mt-3"><StatusCountsBar statuses={AVAILABILITY_STATUSES} counts={counts} active={filter} onSelect={(v) => setFilter((f) => (f === v ? null : v))} /></div>
+        {filter ? (
+          <button onClick={() => setFilter(null)} className="text-[12px] text-zinc-500 mt-2 w-full text-center">Showing <span className="font-bold text-zinc-700">{filterLabel}</span> only · tap to show all</button>
+        ) : (
+          <p className="text-[12px] text-zinc-500 mt-2 text-center"><span className="font-bold text-emerald-600">{counts.AVAILABLE}</span> available {counts.AVAILABLE >= 15 ? "— enough for a full team ✓" : `— need ${15 - counts.AVAILABLE} more for 15`}</p>
+        )}
       </div>
       <div className="flex-1 overflow-y-auto">
-        <RosterStatusList players={players} statuses={AVAILABILITY_STATUSES} value={map} onChange={change} />
+        <RosterStatusList players={shown} statuses={AVAILABILITY_STATUSES} value={map} onChange={change} />
+        {filter && shown.length === 0 && <p className="text-center text-[13px] text-zinc-400 py-8">No players marked {filterLabel}.</p>}
       </div>
     </div>
   );
@@ -2407,7 +2433,7 @@ function SettingsScreen({ state, dispatch, nav }) {
           <button onClick={() => setConfirmReset(true)} className="w-full bg-white border border-red-200 rounded-2xl p-4 text-left text-red-600 font-semibold text-[15px] active:bg-red-50">Reset all data</button>
         </div>
 
-        <p className="text-center text-[12px] text-zinc-400 pt-1">GAA Coach Hub · {CLUB.name}</p>
+        <p className="text-center text-[12px] text-zinc-400 pt-1">PanelPro · {CLUB.name}</p>
       </div>
 
       {exportOpen && (

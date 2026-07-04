@@ -11,8 +11,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["apple-touch-icon.png", "favicon.ico"],
       manifest: {
-        name: "GAA Coach Hub",
-        short_name: "Coach Hub",
+        name: "PanelPro",
+        short_name: "PanelPro",
         description: "Squad, line-outs, live match tracking and reports for your club.",
         theme_color: "#18181b",
         background_color: "#18181b",
