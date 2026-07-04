@@ -53,6 +53,25 @@ const roleLabel = (v) => ROLES.find((r) => r.value === v)?.label || "";
 const groupOfRole = (v) => ROLES.find((r) => r.value === v)?.group || "FWD";
 const defaultRole = (g) => ({ GK: "GK", BACK: "CB", MID: "MID", FWD: "CF" }[g] || "MID");
 
+// Number the substitutes for a teamsheet. Convention: 16 is always the reserve
+// goalkeeper and the last number the third-choice keeper; outfield subs fill the
+// numbers in between, in the coach's chosen order (`order` = array of player ids).
+function numberSubs(subsList, order = []) {
+  const gks = subsList.filter((p) => p.group === "GK");
+  const outfield = subsList.filter((p) => p.group !== "GK");
+  const rank = (id) => { const i = order.indexOf(id); return i === -1 ? 1e9 : i; };
+  const outfieldOrdered = outfield.slice().sort((a, b) => (rank(a.id) - rank(b.id)));
+  const lastNum = 15 + subsList.length;
+  const slots = {};
+  if (gks[0]) slots[16] = gks[0];                 // reserve keeper → 16
+  if (gks[1] && lastNum > 16) slots[lastNum] = gks[1]; // third keeper → last number
+  const pool = [...outfieldOrdered, ...gks.slice(2)];
+  for (let n = 16; n <= lastNum; n++) { if (slots[n]) continue; if (pool.length) slots[n] = pool.shift(); }
+  const result = [];
+  for (let n = 16; n <= lastNum; n++) if (slots[n]) result.push({ no: n, player: slots[n] });
+  return result;
+}
+
 // score: how the event changes the score; scoring:true marks attributable scores
 const SCORING_EVENTS = [
   { name: "Point", score: { points: 1 }, scoring: true },
@@ -237,6 +256,7 @@ function reducer(state, action) {
     case "SET_LINEUP": return { ...state, lineups: { ...state.lineups, [action.fixtureId]: action.lineup } };
     case "SET_ATTENDANCE": return { ...state, attendance: { ...state.attendance, [action.id]: action.map } };
     case "SET_AVAILABILITY": return { ...state, availability: { ...state.availability, [action.id]: action.map } };
+    case "SET_SUB_ORDER": return { ...state, subOrders: { ...(state.subOrders || {}), [action.fixtureId]: action.order } };
 
     case "COMPLETE_MATCH":
       return {
@@ -1318,6 +1338,16 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
   const issueCount = GAA_POSITIONS.filter((pos) => issueFor(slots[pos.no])).length;
   const startIds = new Set(Object.values(slots).filter(Boolean));
   const subs = roster.filter((p) => !startIds.has(p.id) && !p.injured && avail[p.id] !== "OUT");
+  const subOrder = (state.subOrders || {})[fixtureId] || [];
+  const numberedSubs = numberSubs(subs, subOrder);
+  const outfieldOrder = numberedSubs.filter((s) => s.player.group !== "GK").map((s) => s.player.id);
+  const moveSub = (id, dir) => {
+    const arr = outfieldOrder.slice();
+    const i = arr.indexOf(id), j = i + dir;
+    if (i < 0 || j < 0 || j >= arr.length) return;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    dispatch({ type: "SET_SUB_ORDER", fixtureId, order: arr });
+  };
   const pName = (id) => roster.find((p) => p.id === id)?.name;
   const groupLabelOf = (g) => POSITION_GROUPS.find((x) => x.value === g)?.label || "";
 
@@ -1372,9 +1402,9 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
       const mark = p ? (p.captaincy === "C" ? " (C)" : p.captaincy === "VC" ? " (VC)" : "") + (p.freeTaker ? " (F)" : "") : "";
       return `${pos.no}. ${id ? pName(id) : "—"}${mark}`;
     });
-    const subLines = subs.map((p, i) => {
-      const mark = (p.captaincy === "C" ? " (C)" : p.captaincy === "VC" ? " (VC)" : "") + (p.freeTaker ? " (F)" : "");
-      return `${16 + i}. ${p.name}${mark}`;
+    const subLines = numberedSubs.map(({ no, player: p }) => {
+      const mark = (p.group === "GK" ? " (GK)" : "") + (p.captaincy === "C" ? " (C)" : p.captaincy === "VC" ? " (VC)" : "") + (p.freeTaker ? " (F)" : "");
+      return `${no}. ${p.name}${mark}`;
     });
     const text = `${HOME_NAME} — Team Line Out\nvs ${fixture.opponent} · ${fmtDate(fixture.date)} ${fmtTime(fixture.date)}\n\n${lines.join("\n")}` +
       (subLines.length ? `\n\nSubs:\n${subLines.join("\n")}` : "");
@@ -1392,7 +1422,7 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
       const mark = p ? ((p.captaincy === "C" ? " (C)" : p.captaincy === "VC" ? " (VC)" : "") + (p.freeTaker ? " (F)" : "")) : "";
       return `${pos.no}. ${p ? p.name : "—"}${mark}`;
     });
-    const subLines = subs.map((p, i) => `${16 + i}. ${p.name}`);
+    const subLines = numberedSubs.map(({ no, player: p }) => `${no}. ${p.name}${p.group === "GK" ? " (GK)" : ""}`);
     const h = top + (startRows.length + (subLines.length ? subLines.length + 1 : 0)) * rowH + 34;
     let y = top;
     const rowsSVG = startRows.map((t) => { const l = `<text x="36" y="${y}" font-size="20" font-family="Arial, sans-serif" fill="#18181b">${xmlEsc(t)}</text>`; y += rowH; return l; }).join("");
@@ -1444,6 +1474,34 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
               </button>
             );
           })}
+          {numberedSubs.length > 0 && (
+            <div className="pt-3">
+              <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wide mb-2 px-1">Subs · arrows set the numbers</p>
+              <div className="space-y-1.5">
+                {numberedSubs.map(({ no, player: p }) => {
+                  const isGK = p.group === "GK";
+                  return (
+                    <div key={p.id} className="w-full flex items-center gap-3 bg-white border border-zinc-200 rounded-xl px-3 py-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-zinc-800 text-white flex items-center justify-center font-black text-[14px] tabular-nums">{no}</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-[15px] text-zinc-900 truncate">{p.name}</p>
+                        <p className="text-[11px] text-zinc-400">{isGK ? "Reserve goalkeeper · fixed number" : roleLabel(p.role)}</p>
+                      </div>
+                      {isGK ? (
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 rounded px-1.5 py-0.5">GK</span>
+                      ) : (
+                        <div className="flex flex-col -my-1">
+                          <button onClick={() => moveSub(p.id, -1)} aria-label="Move up" className="p-0.5 rounded active:bg-zinc-100"><ChevronUp className="w-4 h-4 text-zinc-500" /></button>
+                          <button onClick={() => moveSub(p.id, 1)} aria-label="Move down" className="p-0.5 rounded active:bg-zinc-100"><ChevronDown className="w-4 h-4 text-zinc-500" /></button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-2 px-1">16 is always the reserve keeper; the last number is the third keeper.</p>
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-3">
@@ -1500,14 +1558,14 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
             </div>
             <div className="px-3 py-3">
               <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wide mb-2">Subs</p>
-              {subs.length === 0 ? (
+              {numberedSubs.length === 0 ? (
                 <p className="text-[12px] text-zinc-400">No subs available</p>
               ) : (
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                  {subs.map((p, i) => (
+                  {numberedSubs.map(({ no, player: p }) => (
                     <div key={p.id} className="flex items-center gap-2 min-w-0">
-                      <span className="w-5 shrink-0 text-right text-[11px] font-bold text-zinc-400 tabular-nums">{16 + i}</span>
-                      <span className="text-[12px] text-zinc-800 truncate">{p.name}{p.captaincy ? ` (${p.captaincy})` : ""}</span>
+                      <span className="w-5 shrink-0 text-right text-[11px] font-bold text-zinc-400 tabular-nums">{no}</span>
+                      <span className="text-[12px] text-zinc-800 truncate">{p.name}{p.group === "GK" ? " (GK)" : ""}{p.captaincy ? ` (${p.captaincy})` : ""}</span>
                     </div>
                   ))}
                 </div>
