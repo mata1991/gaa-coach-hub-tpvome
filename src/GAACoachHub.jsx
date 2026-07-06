@@ -566,6 +566,7 @@ function Router({ state, dispatch, nav }) {
     case "dashboard": return <Dashboard state={state} dispatch={dispatch} nav={nav} />;
     case "players": return <Players state={state} dispatch={dispatch} nav={nav} initialFilter={view.filter} />;
     case "fixtures": return <Fixtures state={state} dispatch={dispatch} nav={nav} initialTab={view.tab} />;
+    case "fixtureDetail": return <FixtureDetail state={state} nav={nav} fixtureId={view.fixtureId} />;
     case "lineup": return <Lineup state={state} dispatch={dispatch} nav={nav} fixtureId={view.fixtureId} />;
     case "live": return <LiveMatch state={state} dispatch={dispatch} nav={nav} fixtureId={view.fixtureId} />;
     case "training": return <Training state={state} dispatch={dispatch} nav={nav} />;
@@ -849,6 +850,83 @@ function RosterStatusList({ players, statuses, value, onChange }) {
 
 /* ============================ dashboard ============================ */
 
+// Full "next up" game card — the opponent, venue/time and the
+// Availability / Line-out / Start actions with their status pills.
+function NextFixtureCard({ state, nav, fixture, accent }) {
+  const avail = state.availability[fixture.id];
+  const avSet = avail && Object.keys(avail).length > 0;
+  const lineup = state.lineups[fixture.id];
+  const named = lineup ? Object.values(lineup).filter(Boolean).length : 0;
+  const live = state.liveMatches && state.liveMatches[fixture.id];
+  const counts = { AVAILABLE: 0, DOUBT: 0, OUT: 0 };
+  if (avail) Object.values(avail).forEach((v) => { if (counts[v] !== undefined) counts[v]++; });
+  return (
+    <div className="bg-white border border-zinc-200 rounded-2xl p-4">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: accent, backgroundColor: tint(accent, 0.12) }}>{fixture.competition}</span>
+        <span className="text-[11px] font-bold text-zinc-900 bg-zinc-100 px-2.5 py-0.5 rounded-full capitalize">{countdown(fixture.date)}</span>
+      </div>
+      <p className="font-black text-[19px] text-zinc-900 leading-tight">vs {fixture.opponent}</p>
+      <p className="text-[12px] text-zinc-500 flex items-center gap-1 mt-0.5"><MapPin className="w-3.5 h-3.5" /> {fixture.venue} · {fmtDate(fixture.date)} {fmtTime(fixture.date)}</p>
+      <div className="grid grid-cols-3 gap-2 mt-3">
+        <button onClick={() => nav.push("availability", { fixtureId: fixture.id })} className="py-2.5 rounded-xl bg-zinc-100 text-zinc-700 text-[12px] font-semibold flex flex-col items-center gap-1 active:scale-95"><UserCheck className="w-4 h-4" /> Availability</button>
+        <button onClick={() => nav.push("lineup", { fixtureId: fixture.id })} className="py-2.5 rounded-xl bg-zinc-100 text-zinc-700 text-[12px] font-semibold flex flex-col items-center gap-1 active:scale-95"><ClipboardList className="w-4 h-4" /> Line-out</button>
+        <button onClick={() => nav.push("live", { fixtureId: fixture.id })} className="py-2.5 rounded-xl text-white text-[12px] font-bold flex flex-col items-center gap-1 active:scale-95" style={{ background: accent }}><Activity className="w-4 h-4" /> {live ? "Resume" : "Start"}</button>
+      </div>
+      <div className="flex gap-2 mt-2">
+        <button onClick={() => nav.push("availability", { fixtureId: fixture.id })} className={`flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold py-1.5 rounded-lg ${avSet ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+          {avSet ? <Check className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />} {avSet ? `✓${counts.AVAILABLE} ?${counts.DOUBT} ✗${counts.OUT}` : "Set availability"}
+        </button>
+        <button onClick={() => nav.push("lineup", { fixtureId: fixture.id })} className={`flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold py-1.5 rounded-lg ${named === 15 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+          {named === 15 ? <Check className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />} Line-out {named}/15
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Compact "next up" game card (used when the game isn't the very next event) —
+// just the opponent; tap to open the full fixture with all its details.
+function CompactFixtureCard({ nav, fixture, accent }) {
+  return (
+    <button onClick={() => nav.push("fixtureDetail", { fixtureId: fixture.id })} className="w-full bg-white border border-zinc-200 rounded-2xl p-3.5 flex items-center gap-3 text-left active:bg-zinc-50">
+      <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: tint(accent, 0.12) }}><Trophy className="w-5 h-5" style={{ color: accent }} /></div>
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-[15px] text-zinc-900 truncate">vs {fixture.opponent}</p>
+        <p className="text-[12px] text-zinc-500 truncate">{fixture.competition} · {fmtDate(fixture.date)} {fmtTime(fixture.date)}</p>
+      </div>
+      <span className="text-[11px] font-bold text-zinc-900 bg-zinc-100 px-2.5 py-0.5 rounded-full capitalize shrink-0">{countdown(fixture.date)}</span>
+    </button>
+  );
+}
+
+function CompactSessionCard({ nav, session }) {
+  return (
+    <button onClick={() => nav.push("attendance", { sessionId: session.id })} className="w-full bg-white border border-zinc-200 rounded-2xl p-3.5 flex items-center gap-3 text-left active:bg-zinc-50">
+      <div className="w-11 h-11 rounded-xl bg-zinc-100 flex items-center justify-center shrink-0"><Dumbbell className="w-5 h-5 text-zinc-500" /></div>
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-[15px] text-zinc-900 truncate">{session.focus}</p>
+        <p className="text-[12px] text-zinc-500 truncate">Training · {fmtDate(session.date)} {fmtTime(session.date)}</p>
+      </div>
+      <span className="text-[11px] font-bold text-zinc-900 bg-zinc-100 px-2.5 py-0.5 rounded-full capitalize shrink-0">{countdown(session.date)}</span>
+    </button>
+  );
+}
+
+function FixtureDetail({ state, nav, fixtureId }) {
+  const fixture = state.fixtures.find((f) => f.id === fixtureId);
+  const accent = themeOf(state).accent;
+  return (
+    <div className="flex flex-col h-full">
+      <StatusBar />
+      <Header title={fixture ? `vs ${fixture.opponent}` : "Fixture"} onBack={nav.pop} />
+      <div className="flex-1 overflow-y-auto p-4">
+        {fixture ? <NextFixtureCard state={state} nav={nav} fixture={fixture} accent={accent} /> : <Empty text="Fixture not found" icon={Trophy} />}
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({ state, dispatch, nav }) {
   const { team, players, fixtures, sessions } = teamData(state);
   const [switching, setSwitching] = useState(false);
@@ -859,20 +937,17 @@ function Dashboard({ state, dispatch, nav }) {
   const upcomingFixtures = fixtures.filter((f) => f.status !== "completed").sort((a, b) => new Date(a.date) - new Date(b.date));
   const upcomingSessions = sessions.filter((s) => new Date(s.date) > new Date()).sort((a, b) => new Date(a.date) - new Date(b.date));
   const nextFixture = upcomingFixtures[0];
-  const nextSession = upcomingSessions[0];
-  const nfAvail = nextFixture && state.availability[nextFixture.id];
-  const nfAvSet = nfAvail && Object.keys(nfAvail).length > 0;
-  const nfLineup = nextFixture && state.lineups[nextFixture.id];
-  const nfNamed = nfLineup ? Object.values(nfLineup).filter(Boolean).length : 0;
-  const nfLive = nextFixture && state.liveMatches && state.liveMatches[nextFixture.id];
+  // The next two events overall — game or training — in chronological order.
+  const nextEvents = [
+    ...upcomingFixtures.map((f) => ({ kind: "fixture", date: f.date, data: f })),
+    ...upcomingSessions.map((s) => ({ kind: "session", date: s.date, data: s })),
+  ].sort((a, b) => new Date(a.date) - new Date(b.date)).slice(0, 2);
   const theme = themeOf(state);
   const { primary, accent } = theme;
   const completedFx = fixtures.filter((f) => f.status === "completed");
   const resultOf = (f) => { const h = totalPts(f.result.home.g, f.result.home.p), a = totalPts(f.result.away.g, f.result.away.p); return h > a ? "W" : h < a ? "L" : "D"; };
   const rec = { W: 0, D: 0, L: 0 }; completedFx.forEach((f) => rec[resultOf(f)]++);
   const form = [...completedFx].sort((a, b) => new Date(a.date) - new Date(b.date)).slice(-5).map(resultOf);
-  const avCounts = nfAvail ? { AVAILABLE: 0, DOUBT: 0, OUT: 0 } : null;
-  if (nfAvail) Object.values(nfAvail).forEach((v) => { if (avCounts[v] !== undefined) avCounts[v]++; });
   const lastBackup = state.settings && state.settings.lastBackup;
   const daysSince = lastBackup ? Math.floor((Date.now() - lastBackup) / 86400000) : null;
   const needBackup = !hideBackup && (players.length > 0 || completedFx.length > 0) && (!lastBackup || daysSince >= 7);
@@ -952,41 +1027,18 @@ function Dashboard({ state, dispatch, nav }) {
         {/* next up */}
         <div className="px-4 pt-5">
           <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-3">Next up</p>
-          {nextFixture ? (
-            <div className="bg-white border border-zinc-200 rounded-2xl p-4">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: accent, backgroundColor: tint(accent, 0.12) }}>{nextFixture.competition}</span>
-                <span className="text-[11px] font-bold text-zinc-900 bg-zinc-100 px-2.5 py-0.5 rounded-full capitalize">{countdown(nextFixture.date)}</span>
-              </div>
-              <p className="font-black text-[19px] text-zinc-900 leading-tight">vs {nextFixture.opponent}</p>
-              <p className="text-[12px] text-zinc-500 flex items-center gap-1 mt-0.5"><MapPin className="w-3.5 h-3.5" /> {nextFixture.venue} · {fmtDate(nextFixture.date)} {fmtTime(nextFixture.date)}</p>
-              <div className="grid grid-cols-3 gap-2 mt-3">
-                <button onClick={() => nav.push("availability", { fixtureId: nextFixture.id })} className="py-2.5 rounded-xl bg-zinc-100 text-zinc-700 text-[12px] font-semibold flex flex-col items-center gap-1 active:scale-95"><UserCheck className="w-4 h-4" /> Availability</button>
-                <button onClick={() => nav.push("lineup", { fixtureId: nextFixture.id })} className="py-2.5 rounded-xl bg-zinc-100 text-zinc-700 text-[12px] font-semibold flex flex-col items-center gap-1 active:scale-95"><ClipboardList className="w-4 h-4" /> Line-out</button>
-                <button onClick={() => nav.push("live", { fixtureId: nextFixture.id })} className="py-2.5 rounded-xl text-white text-[12px] font-bold flex flex-col items-center gap-1 active:scale-95" style={{ background: accent }}><Activity className="w-4 h-4" /> {nfLive ? "Resume" : "Start"}</button>
-              </div>
-              <div className="flex gap-2 mt-2">
-                <button onClick={() => nav.push("availability", { fixtureId: nextFixture.id })} className={`flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold py-1.5 rounded-lg ${nfAvSet ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-                  {nfAvSet ? <Check className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />} {nfAvSet ? `✓${avCounts.AVAILABLE} ?${avCounts.DOUBT} ✗${avCounts.OUT}` : "Set availability"}
-                </button>
-                <button onClick={() => nav.push("lineup", { fixtureId: nextFixture.id })} className={`flex-1 flex items-center justify-center gap-1 text-[11px] font-semibold py-1.5 rounded-lg ${nfNamed === 15 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-                  {nfNamed === 15 ? <Check className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />} Line-out {nfNamed}/15
-                </button>
-              </div>
+          {nextEvents.length ? (
+            <div className="space-y-2.5">
+              {nextEvents.map((ev, i) => (
+                ev.kind === "fixture"
+                  ? (i === 0
+                      ? <NextFixtureCard key={ev.data.id} state={state} nav={nav} fixture={ev.data} accent={accent} />
+                      : <CompactFixtureCard key={ev.data.id} nav={nav} fixture={ev.data} accent={accent} />)
+                  : <CompactSessionCard key={ev.data.id} nav={nav} session={ev.data} />
+              ))}
             </div>
           ) : (
-            <Empty text="No upcoming fixtures" icon={Trophy} actionLabel="Add a fixture" onAction={() => nav.reset("fixtures")} />
-          )}
-
-          {nextSession && (
-            <button onClick={() => nav.push("attendance", { sessionId: nextSession.id })} className="w-full mt-2.5 bg-white border border-zinc-200 rounded-2xl p-3.5 flex items-center gap-3 text-left active:bg-zinc-50">
-              <div className="w-11 h-11 rounded-xl bg-zinc-100 flex items-center justify-center"><Dumbbell className="w-5 h-5 text-zinc-500" /></div>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-[15px] text-zinc-900 truncate">{nextSession.focus}</p>
-                <p className="text-[12px] text-zinc-500">Training · {fmtDate(nextSession.date)} {fmtTime(nextSession.date)}</p>
-              </div>
-              <span className="text-[11px] font-bold text-zinc-900 bg-zinc-100 px-2.5 py-0.5 rounded-full capitalize">{countdown(nextSession.date)}</span>
-            </button>
+            <Empty text="Nothing scheduled" icon={Trophy} actionLabel="Add a fixture" onAction={() => nav.reset("fixtures")} />
           )}
         </div>
 
