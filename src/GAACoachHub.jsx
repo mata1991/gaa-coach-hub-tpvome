@@ -1963,6 +1963,7 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
   const [step, setStep] = useState("event");        // event | sub | player
   const [chosen, setChosen] = useState(null);       // the picked MATCH_EVENTS entry
   const [chosenOpt, setChosenOpt] = useState(null); // the picked sub-option, if any
+  const [customNo, setCustomNo] = useState("");     // opponent custom jersey number
   const [subbing, setSubbing] = useState(false);
   const [subOff, setSubOff] = useState(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -2041,22 +2042,20 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
     });
   };
 
-  const closePicker = () => { setPicker(null); setStep("event"); setChosen(null); setChosenOpt(null); };
+  const closePicker = () => { setPicker(null); setStep("event"); setChosen(null); setChosenOpt(null); setCustomNo(""); };
 
-  // `r` is a resolved event ({ type, detail, score }).
+  // `r` is a resolved event ({ type, detail, score }); `pl` a home player object,
+  // or `{ jerseyNo }` for an opponent number.
   const logEvent = (side, r, pl) => {
     buzz(r.score ? [20, 40, 20] : 12); // a stronger triple-buzz for a score
     setEvents((e) => [{ id: Date.now() + Math.random(), side, type: r.type, detail: r.detail || null, half, clock, player: pl?.name || null, playerId: pl?.id || null, playerNo: pl?.jerseyNo || null, score: r.score || null }, ...e]);
     apply(side, r);
     closePicker();
   };
+  const logOppNo = (no) => { const n = parseInt(no, 10); if (n > 0) logEvent(picker.side, resolveEvent(chosen, chosenOpt), { jerseyNo: n }); };
 
-  // After an event (and any sub-option) is chosen: attribute to a player when it's
-  // a home player event, otherwise log straight away.
-  const proceed = (side, ev, opt) => {
-    if (ev.player && side === "HOME" && onPitchPlayers.length) { setPicker({ side }); setChosen(ev); setChosenOpt(opt); setStep("player"); }
-    else logEvent(side, resolveEvent(ev, opt), null);
-  };
+  // Every event is attributed to a player: home via the pitch, opponent via number.
+  const proceed = (side, ev, opt) => { setPicker({ side }); setChosen(ev); setChosenOpt(opt); setStep("player"); };
   const chooseEvent = (ev) => { if (ev.options) { setChosen(ev); setStep("sub"); } else proceed(picker.side, ev, null); };
   const chooseOption = (opt) => proceed(picker.side, chosen, opt);
 
@@ -2196,7 +2195,7 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
                 ) : (
                   <>
                     <span className="text-[14px] font-semibold text-white flex-1">{eventLabel(e)}</span>
-                    {e.player && <span className="text-[12px] text-zinc-400 truncate max-w-[90px]">{e.player}</span>}
+                    {(e.player || e.playerNo != null) && <span className="text-[12px] text-zinc-400 truncate max-w-[90px]">{e.player || `#${e.playerNo}`}</span>}
                   </>
                 )}
                 <span className="text-[10px] text-zinc-600 font-bold">{e.half}</span>
@@ -2227,9 +2226,8 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
                 <button key={opt.label} onClick={() => chooseOption(opt)} className="bg-zinc-800 text-white font-semibold py-3 rounded-xl text-[14px] active:bg-zinc-700">{opt.label}</button>
               ))}
             </div>
-          ) : (
+          ) : picker.side === "HOME" ? (
             <div>
-              <button onClick={() => logEvent(picker.side, resolveEvent(chosen, chosenOpt), null)} className="w-full bg-zinc-700 text-white font-semibold py-2.5 rounded-xl mb-3 text-[14px]">Skip — no player</button>
               <div className="space-y-2">
                 {FORMATION_ROWS.map((row, ri) => (
                   <div key={ri} className="flex justify-center gap-2">
@@ -2246,7 +2244,27 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
                   </div>
                 ))}
               </div>
-              <p className="text-center text-[10px] text-zinc-500 mt-3">Pitch view · goalkeeper at the bottom</p>
+              <button onClick={() => logEvent(picker.side, resolveEvent(chosen, chosenOpt), null)} className="w-full text-zinc-500 font-semibold py-2 mt-3 text-[13px] active:text-zinc-300">Skip — no player</button>
+            </div>
+          ) : (
+            <div>
+              <p className="text-[11px] text-zinc-500 mb-2 text-center">{fixture.opponent} · tap the number</p>
+              <div className="space-y-2">
+                {FORMATION_ROWS.map((row, ri) => (
+                  <div key={ri} className="flex justify-center gap-2">
+                    {row.map((no) => (
+                      <button key={no} onClick={() => logEvent(picker.side, resolveEvent(chosen, chosenOpt), { jerseyNo: no })} className="flex-1 max-w-[104px] bg-zinc-800 rounded-xl py-2.5 flex items-center justify-center active:bg-zinc-700">
+                        <span className="w-9 h-9 rounded-full bg-zinc-700 flex items-center justify-center font-black text-[14px] text-white tabular-nums">{no}</span>
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 flex gap-2">
+                <input type="number" inputMode="numeric" min="1" value={customNo} onChange={(e) => setCustomNo(e.target.value)} placeholder="Custom number" className="flex-1 bg-zinc-800 text-white rounded-xl px-3.5 py-3 text-[15px] outline-none focus:ring-2 ring-red-600 placeholder:text-zinc-500" />
+                <button disabled={!customNo} onClick={() => logOppNo(customNo)} className="shrink-0 bg-red-600 disabled:bg-zinc-700 text-white font-bold px-5 rounded-xl active:scale-95">Log</button>
+              </div>
+              <button onClick={() => logEvent(picker.side, resolveEvent(chosen, chosenOpt), null)} className="w-full text-zinc-500 font-semibold py-2 mt-3 text-[13px] active:text-zinc-300">Skip — no number</button>
             </div>
           )}
         </DarkSheet>
