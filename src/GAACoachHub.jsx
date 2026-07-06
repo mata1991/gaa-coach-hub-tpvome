@@ -2304,61 +2304,113 @@ function SessionForm({ initial, settings, onClose, onSave }) {
   );
 }
 
-/* ============================ attendance (+availability toggle) ============================ */
+/* ============================ attendance ============================ */
 
 function Attendance({ state, dispatch, nav, sessionId }) {
   const session = state.sessions.find((s) => s.id === sessionId);
+  const team = state.teams.find((t) => t.id === session.teamId) || {};
   const players = state.players.filter((p) => p.teamId === session.teamId);
-  const [mode, setMode] = useState("attendance"); // availability | attendance
+  const theme = themeOf(state);
   const [filter, setFilter] = useState(null);
+  const [preview, setPreview] = useState(null);
 
   const attInit = () => { const b = {}; players.forEach((p) => (b[p.id] = state.attendance[sessionId]?.[p.id] || (p.injured ? "INJURED" : "NO_CONTACT"))); return b; };
-  const avInit = () => { const b = {}; players.forEach((p) => (b[p.id] = state.availability[sessionId]?.[p.id] || (p.injured ? "OUT" : "AVAILABLE"))); return b; };
   const [att, setAtt] = useState(attInit);
-  const [av, setAv] = useState(avInit);
-
-  const statuses = mode === "attendance" ? TRAINING_STATUSES : AVAILABILITY_STATUSES;
-  const value = mode === "attendance" ? att : av;
-  const change = (id, status) => {
-    if (mode === "attendance") { const n = { ...att, [id]: status }; setAtt(n); dispatch({ type: "SET_ATTENDANCE", id: sessionId, map: n }); }
-    else { const n = { ...av, [id]: status }; setAv(n); dispatch({ type: "SET_AVAILABILITY", id: sessionId, map: n }); }
-  };
-  const bulk = (status) => {
-    const n = {}; players.forEach((p) => (n[p.id] = status));
-    if (mode === "attendance") { setAtt(n); dispatch({ type: "SET_ATTENDANCE", id: sessionId, map: n }); }
-    else { setAv(n); dispatch({ type: "SET_AVAILABILITY", id: sessionId, map: n }); }
-  };
-  const counts = statuses.reduce((a, s) => { a[s.value] = Object.values(value).filter((v) => v === s.value).length; return a; }, {});
-  const ordered = players.slice().sort((a, b) => {
-    const ga = POSITION_GROUPS.findIndex((g) => g.value === a.group);
-    const gb = POSITION_GROUPS.findIndex((g) => g.value === b.group);
-    return (ga - gb) || ((a.jerseyNo || 0) - (b.jerseyNo || 0));
-  });
-  const shown = filter ? ordered.filter((p) => value[p.id] === filter) : ordered;
+  const statuses = TRAINING_STATUSES;
+  const change = (id, status) => { const n = { ...att, [id]: status }; setAtt(n); dispatch({ type: "SET_ATTENDANCE", id: sessionId, map: n }); };
+  const bulk = (status) => { const n = {}; players.forEach((p) => (n[p.id] = status)); setAtt(n); dispatch({ type: "SET_ATTENDANCE", id: sessionId, map: n }); };
+  const counts = statuses.reduce((a, s) => { a[s.value] = Object.values(att).filter((v) => v === s.value).length; return a; }, {});
+  // Sorted by first name so the whole squad is easy to scan / find.
+  const byFirst = (a, b) => forename(a.name).localeCompare(forename(b.name)) || a.name.localeCompare(b.name);
+  const ordered = players.slice().sort(byFirst);
+  const shown = filter ? ordered.filter((p) => att[p.id] === filter) : ordered;
   const filterLabel = statuses.find((s) => s.value === filter)?.label;
+
+  const previewUrl = useMemo(() => (preview ? URL.createObjectURL(new Blob([preview.svg], { type: "image/svg+xml;charset=utf-8" })) : null), [preview]);
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
+
+  const buildAttendanceSvg = () => {
+    const esc = xmlEsc;
+    const W = 1080, M = 36, IW = W - 2 * M;
+    const accent = theme.accent || "#dc2626";
+    const crest = team.crest || CREST;
+    const groups = statuses.map((s) => ({ ...s, players: ordered.filter((p) => att[p.id] === s.value) }));
+    let body = "", y = M;
+    // header
+    const hH = 196;
+    body += `<rect x="${M}" y="${y}" width="${IW}" height="${hH}" rx="22" fill="#101013" stroke="#26262c" stroke-width="1.5"/>`;
+    body += `<image href="${crest}" x="${M + 28}" y="${y + 30}" width="90" height="90" preserveAspectRatio="xMidYMid meet"/>`;
+    body += `<text x="${M + 146}" y="${y + 54}" font-family="Arial" font-size="24" font-weight="800" letter-spacing="2" fill="#8b8b93">${esc((team.name || "").toUpperCase())}</text>`;
+    body += `<text x="${M + 146}" y="${y + 100}" font-family="Arial" font-size="42" font-weight="800" fill="#ffffff">TRAINING ATTENDANCE</text>`;
+    body += `<text x="${M + 146}" y="${y + 146}" font-family="Arial" font-size="23" font-weight="600" fill="#9a9aa2">${esc(session.focus)} · ${esc(fmtDate(session.date))} · ${esc(fmtTime(session.date))}</text>`;
+    if (session.location) body += `<text x="${M + 146}" y="${y + 176}" font-family="Arial" font-size="20" font-weight="600" fill="#6b6b73">${esc(session.location.toUpperCase())}</text>`;
+    y += hH + 20;
+    // one section per status, players listed by first name in two columns
+    groups.forEach((g) => {
+      const barH = 54, rowH = 46, colW = (IW - 52) / 2;
+      const rows = Math.ceil(g.players.length / 2);
+      const secH = barH + (g.players.length ? rows * rowH + 14 : 40);
+      body += `<rect x="${M}" y="${y}" width="${IW}" height="${secH}" rx="18" fill="#101013" stroke="#26262c" stroke-width="1.5"/>`;
+      body += `<circle cx="${M + 34}" cy="${y + 30}" r="7" fill="${g.color}"/>`;
+      body += `<text x="${M + 54}" y="${y + 38}" font-family="Arial" font-size="24" font-weight="800" letter-spacing="1.5" fill="${g.color}">${esc(g.label.toUpperCase())}</text>`;
+      body += `<text x="${W - M - 28}" y="${y + 38}" text-anchor="end" font-family="Arial" font-size="24" font-weight="800" fill="#e4e4e7">${g.players.length}</text>`;
+      body += `<line x1="${M + 24}" y1="${y + barH - 8}" x2="${W - M - 24}" y2="${y + barH - 8}" stroke="#26262c" stroke-width="1.5"/>`;
+      if (!g.players.length) {
+        body += `<text x="${M + 54}" y="${y + barH + 24}" font-family="Arial" font-size="20" font-weight="600" fill="#5b5b63">None</text>`;
+      } else {
+        g.players.forEach((p, i) => {
+          const col = i % 2, rowN = Math.floor(i / 2);
+          const px = M + 34 + col * colW, py = y + barH + 22 + rowN * rowH;
+          body += `<text x="${px}" y="${py}" font-family="Arial" font-size="26" font-weight="600" fill="#e8e8ea">${esc(p.name)}</text>`;
+        });
+      }
+      y += secH + 18;
+    });
+    const H = y + 60;
+    body += `<image href="${crest}" x="${W / 2 - 20}" y="${H - 52}" width="40" height="40" preserveAspectRatio="xMidYMid meet"/>`;
+    body += `<text x="${W / 2}" y="${H - 6}" text-anchor="middle" font-family="Arial" font-size="17" font-weight="700" letter-spacing="2" fill="#8b8b93">${esc((CLUB.irish || "").toUpperCase())}  ·  PANELPRO</text>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#0a0a0c"/><rect x="6" y="6" width="${W - 12}" height="${H - 12}" rx="26" fill="none" stroke="${accent}" stroke-width="2" opacity="0.35"/>${body}</svg>`;
+    return { svg, W, H, filename: `attendance-${(session.focus || "training").replace(/\s+/g, "-")}.png` };
+  };
+  const sharePreview = async () => {
+    if (!preview) return;
+    const ok = await shareImage(preview.svg, preview.filename, preview.W, preview.H);
+    if (ok) { nav.toast("Attendance sent"); setPreview(null); } else nav.toast("Couldn't create image");
+  };
 
   return (
     <div className="flex flex-col h-full">
       <StatusBar />
-      <Header title={session.focus} onBack={nav.pop} />
+      <Header title={session.focus} onBack={nav.pop} right={<button onClick={() => setPreview(buildAttendanceSvg())} className="flex items-center gap-1 text-[13px] font-semibold text-zinc-700 bg-zinc-100 px-3 py-1.5 rounded-full active:scale-95"><Share2 className="w-4 h-4" /> Export</button>} />
       <div className="px-4 py-3 bg-white border-b border-zinc-100">
         <p className="text-[12px] text-zinc-500">{fmtDate(session.date)} · {session.location}</p>
-        <div className="flex gap-1 p-1 bg-zinc-200 rounded-xl my-3">
-          {[["availability", "Availability"], ["attendance", "Attendance"]].map(([m, label]) => (
-            <button key={m} onClick={() => { setMode(m); setFilter(null); }} className={`flex-1 py-2 rounded-lg text-[13px] font-semibold transition-colors ${mode === m ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500"}`}>{label}</button>
-          ))}
-        </div>
-        <StatusCountsBar statuses={statuses} counts={counts} active={filter} onSelect={(v) => setFilter((f) => (f === v ? null : v))} />
+        <div className="mt-3"><StatusCountsBar statuses={statuses} counts={counts} active={filter} onSelect={(v) => setFilter((f) => (f === v ? null : v))} /></div>
         {filter && <button onClick={() => setFilter(null)} className="text-[12px] text-zinc-500 mt-2 w-full text-center">Showing <span className="font-bold text-zinc-700">{filterLabel}</span> only · tap to show all</button>}
         <div className="flex gap-2 mt-3">
-          <button onClick={() => bulk(mode === "attendance" ? "TRAINED" : "AVAILABLE")} className="flex-1 bg-emerald-600 text-white text-[12px] font-semibold py-2 rounded-lg active:scale-[0.98]">{mode === "attendance" ? "Mark all trained" : "Mark all available"}</button>
-          <button onClick={() => bulk(mode === "attendance" ? "NO_CONTACT" : "OUT")} className="flex-1 bg-zinc-200 text-zinc-700 text-[12px] font-semibold py-2 rounded-lg active:scale-[0.98]">Reset</button>
+          <button onClick={() => bulk("TRAINED")} className="flex-1 bg-emerald-600 text-white text-[12px] font-semibold py-2 rounded-lg active:scale-[0.98]">Mark all trained</button>
+          <button onClick={() => bulk("NO_CONTACT")} className="flex-1 bg-zinc-200 text-zinc-700 text-[12px] font-semibold py-2 rounded-lg active:scale-[0.98]">Reset</button>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">
-        <RosterStatusList players={shown} statuses={statuses} value={value} onChange={change} />
+        <RosterStatusList players={shown} statuses={statuses} value={att} onChange={change} />
         {filter && shown.length === 0 && <p className="text-center text-[13px] text-zinc-400 py-8">No players marked {filterLabel}.</p>}
       </div>
+      {preview && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col" style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
+          <div className="flex items-center justify-between px-4 py-3 shrink-0">
+            <button onClick={() => setPreview(null)} className="text-white/80 font-semibold text-[15px] flex items-center gap-1 active:opacity-70"><ChevronLeft className="w-5 h-5" /> Back</button>
+            <span className="text-white/60 text-[13px] font-medium">Preview</span>
+            <span className="w-14" />
+          </div>
+          <div className="flex-1 overflow-auto px-3 flex items-start justify-center">
+            <img src={previewUrl} alt="Attendance list preview" className="w-full max-w-[520px] rounded-xl shadow-2xl" style={{ height: "auto" }} />
+          </div>
+          <div className="px-4 pt-3 pb-1 shrink-0 space-y-2">
+            <p className="text-center text-white/50 text-[12px]">Every player listed under their tab — check it, then send.</p>
+            <button onClick={sharePreview} className="w-full text-white font-bold py-3.5 rounded-2xl active:scale-[0.99] flex items-center justify-center gap-2 text-[15px]" style={{ background: theme.primary }}><Share2 className="w-5 h-5" /> Share to WhatsApp</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
