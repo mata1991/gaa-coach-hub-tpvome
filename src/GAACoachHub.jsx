@@ -1352,6 +1352,25 @@ function Availability({ state, dispatch, nav, fixtureId }) {
 
 /* ============================ lineup ============================ */
 
+function MatchDetailsSheet({ initial, defaultThrowIn, onClose, onSave }) {
+  const [f, setF] = useState({ changingRooms: initial.changingRooms || "", pitch: initial.pitch || "", warmUp: initial.warmUp || "", throwIn: initial.throwIn || defaultThrowIn || "", ref: initial.ref || "" });
+  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  const field = (k, label, ph) => (
+    <Field label={label}><input value={f[k]} onChange={(e) => set(k, e.target.value)} placeholder={ph} className="w-full bg-zinc-100 rounded-xl px-3.5 py-3 text-[15px] outline-none focus:ring-2 ring-black" /></Field>
+  );
+  return (
+    <Sheet title="Match details" onClose={onClose}>
+      <p className="text-[13px] text-zinc-500 -mt-1">These show on the shareable teamsheet poster.</p>
+      {field("changingRooms", "Changing rooms for", "e.g. 6:50")}
+      {field("pitch", "Pitch for", "e.g. 7:05")}
+      {field("warmUp", "Warm up", "e.g. 7:15")}
+      {field("throwIn", "Throw-in", "e.g. 7:45")}
+      {field("ref", "Referee", "e.g. Barry Winters")}
+      <button onClick={() => onSave(f)} className="w-full bg-black text-white font-bold py-3.5 rounded-2xl mt-1 active:scale-[0.99]">Save details</button>
+    </Sheet>
+  );
+}
+
 function Lineup({ state, dispatch, nav, fixtureId }) {
   const fixture = state.fixtures.find((f) => f.id === fixtureId);
   const theme = themeOf(state);
@@ -1360,6 +1379,8 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
   const [slots, setSlots] = useState(() => { const base = {}; GAA_POSITIONS.forEach((p) => (base[p.no] = init[p.no] || null)); return base; });
   const [picking, setPicking] = useState(null);
   const [view, setView] = useState("list");
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const details = fixture.details || {};
 
   const assigned = new Set(Object.values(slots).filter(Boolean));
   const avail = state.availability[fixtureId] || {};
@@ -1446,24 +1467,98 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
 
   const shareTeamsheetImage = async () => {
     if (filled === 0) { nav.toast("Pick some players first"); return; }
-    const primary = theme.primary || "#18181b";
-    const rowH = 34, top = 150, w = 640;
-    const startRows = GAA_POSITIONS.map((pos) => {
-      const id = slots[pos.no]; const p = id ? roster.find((x) => x.id === id) : null;
-      const mark = p ? ((p.captaincy === "C" ? " (C)" : p.captaincy === "VC" ? " (VC)" : "") + (p.freeTaker ? " (F)" : "")) : "";
-      return `${pos.no}. ${p ? p.name : "—"}${mark}`;
+    const team = state.teams.find((t) => t.id === fixture.teamId) || {};
+    const accent = theme.accent || "#dc2626";
+    const gold = "#e0b83f";
+    const esc = xmlEsc;
+    const W = 1080, OP = 28, IW = W - 2 * OP, PI = 40;
+    const d = fixture.details || {};
+    const isHome = (fixture.venue || "").trim() === (state.settings?.homeVenue || "").trim();
+    const roundM = (fixture.notes || "").match(/round\s*(\d+)/i);
+    const roundLabel = roundM ? `ROUND ${roundM[1]}` : (fixture.competition || "").toUpperCase();
+    const dateLabel = `${fmtDate(fixture.date).toUpperCase()} · ${fmtTime(fixture.date)}`;
+    const oppInitials = (fixture.opponent || "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+
+    const chipAt = (x, y, label, bg, fg = "#ffffff") => { const w = 20 + label.length * 15; return `<rect x="${x}" y="${y}" width="${w}" height="34" rx="9" fill="${bg}"/><text x="${x + w / 2}" y="${y + 23}" text-anchor="middle" font-family="Arial" font-size="19" font-weight="800" fill="${fg}">${label}</text>`; };
+    const chipCenter = (cx, y, label, bg, fg) => chipAt(cx - (20 + label.length * 15) / 2, y, label, bg, fg);
+
+    const card = (x, y, w, h, no, p) => {
+      const isC = p && p.captaincy === "C", isVC = p && p.captaincy === "VC", isGK = p && p.group === "GK";
+      const border = isC ? gold : isVC ? accent : "#2b2b31", bw = (isC || isVC) ? 3 : 1.5;
+      const fn = p ? forename(p.name).toUpperCase() : "", sn = p ? surname(p.name).toUpperCase() : "—";
+      let ch = "";
+      if (isGK) ch = chipAt(x + w - 74, y + 16, "GK", accent);
+      else if (isC) ch = chipAt(x + w - 52, y + 16, "C", gold, "#0a0a0c");
+      else if (isVC) ch = chipAt(x + w - 64, y + 16, "VC", accent);
+      return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="16" fill="#141417" stroke="${border}" stroke-width="${bw}"/>`
+        + (isGK && !isC && !isVC ? `<rect x="${x + 1}" y="${y + 2}" width="7" height="${h - 4}" rx="3.5" fill="${accent}"/>` : "")
+        + `<text x="${x + 32}" y="${y + h / 2 + 17}" font-family="Arial" font-size="48" font-weight="800" fill="#ffffff">${no}</text>`
+        + `<line x1="${x + 98}" y1="${y + 24}" x2="${x + 98}" y2="${y + h - 24}" stroke="#2b2b31" stroke-width="2"/>`
+        + `<text x="${x + 116}" y="${y + h / 2 - 6}" font-family="Arial" font-size="18" font-weight="700" letter-spacing="1.5" fill="#8b8b93">${esc(fn)}</text>`
+        + `<text x="${x + 116}" y="${y + h / 2 + 27}" font-family="Arial" font-size="35" font-weight="800" fill="${isC ? gold : "#ffffff"}">${esc(sn)}</text>` + ch;
+    };
+    const pAt = (no) => { const id = slots[no]; return id ? roster.find((x) => x.id === id) : null; };
+
+    const cardW = 330, cardH = 96, G = 16, rowGap = 15;
+    const x3 = [OP, OP + cardW + G, OP + 2 * (cardW + G)];
+    const midX = OP + (IW - (2 * cardW + G)) / 2, x2 = [midX, midX + cardW + G];
+    const gkW = 430, gkX = OP + (IW - gkW) / 2;
+
+    // ---- header ----
+    const hY = OP, hH = 452, cx = W / 2;
+    let hdr = `<rect x="${OP}" y="${hY}" width="${IW}" height="${hH}" rx="24" fill="#101013" stroke="#26262c" stroke-width="1.5"/>`;
+    hdr += `<text x="${OP + PI}" y="${hY + 58}" font-family="Arial" font-size="24" font-weight="800" letter-spacing="2"><tspan fill="#ffffff">${esc((team.name || "").toUpperCase())}</tspan><tspan fill="${accent}">  ·  ${esc(roundLabel)}</tspan></text>`;
+    hdr += `<text x="${W - OP - PI}" y="${hY + 58}" text-anchor="end" font-family="Arial" font-size="22" font-weight="700" letter-spacing="1" fill="#9a9aa2">${esc(dateLabel)}</text>`;
+    hdr += `<line x1="${OP + PI}" y1="${hY + 82}" x2="${W - OP - PI}" y2="${hY + 82}" stroke="#26262c" stroke-width="1.5"/>`;
+    hdr += `<image href="${CREST}" x="${OP + PI}" y="${hY + 112}" width="120" height="120" preserveAspectRatio="xMidYMid meet"/>`;
+    const homeLen = Math.max(4, HOME_NAME.length), awayLen = Math.max(4, (fixture.opponent || "team").length);
+    const nameFont = Math.max(30, Math.min(58, Math.floor(Math.min(((cx - 58) - (OP + PI + 120 + 22)) / (0.62 * homeLen), ((W - OP - PI) - (cx + 58)) / (0.62 * awayLen)))));
+    hdr += chipCenter(cx - 232, hY + 120, isHome ? "HOME" : "AWAY", isHome ? accent : "#2b2b31");
+    hdr += chipCenter(cx + 232, hY + 120, isHome ? "AWAY" : "HOME", isHome ? "#2b2b31" : accent);
+    hdr += `<text x="${cx - 58}" y="${hY + 200}" text-anchor="end" font-family="Arial" font-size="${nameFont}" font-weight="800" fill="#ffffff">${esc(HOME_NAME.toUpperCase())}</text>`;
+    hdr += `<text x="${cx}" y="${hY + 194}" text-anchor="middle" font-family="Arial" font-size="34" font-weight="800" fill="${accent}">VS</text>`;
+    hdr += `<text x="${cx + 58}" y="${hY + 200}" text-anchor="start" font-family="Arial" font-size="${nameFont}" font-weight="800" fill="#ffffff">${esc((fixture.opponent || "").toUpperCase())}</text>`;
+    hdr += `<line x1="${OP + PI}" y1="${hY + 252}" x2="${W - OP - PI}" y2="${hY + 252}" stroke="${accent}" stroke-width="2" opacity="0.5"/>`;
+    const infos = [["CHANGING ROOMS", d.changingRooms || "—"], ["PITCH", d.pitch || "—"], ["WARM UP", d.warmUp || "—"], ["THROW-IN", d.throwIn || fmtTime(fixture.date)]];
+    const colW = (IW - 2 * PI) / 4;
+    infos.forEach(([lab, val], i) => {
+      const c = OP + PI + colW * (i + 0.5);
+      hdr += `<circle cx="${c - 90}" cy="${hY + 300}" r="7" fill="none" stroke="${accent}" stroke-width="2.5"/>`;
+      hdr += `<text x="${c - 74}" y="${hY + 294}" font-family="Arial" font-size="16" font-weight="700" letter-spacing="1" fill="#8b8b93">${esc(lab)}</text>`;
+      hdr += `<text x="${c - 74}" y="${hY + 326}" font-family="Arial" font-size="30" font-weight="800" fill="#ffffff">${esc(val)}</text>`;
     });
-    const subLines = numberedSubs.map(({ no, player: p }) => `${no}. ${p.name}${p.group === "GK" ? " (GK)" : ""}`);
-    const h = top + (startRows.length + (subLines.length ? subLines.length + 1 : 0)) * rowH + 34;
-    let y = top;
-    const rowsSVG = startRows.map((t) => { const l = `<text x="36" y="${y}" font-size="20" font-family="Arial, sans-serif" fill="#18181b">${xmlEsc(t)}</text>`; y += rowH; return l; }).join("");
-    let subsSVG = "";
-    if (subLines.length) {
-      y += 6; subsSVG += `<text x="36" y="${y}" font-size="14" font-weight="bold" font-family="Arial, sans-serif" fill="#a1a1aa">SUBS</text>`; y += rowH;
-      subsSVG += subLines.map((t) => { const l = `<text x="36" y="${y}" font-size="18" font-family="Arial, sans-serif" fill="#52525b">${xmlEsc(t)}</text>`; y += rowH; return l; }).join("");
-    }
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect width="${w}" height="${h}" fill="#ffffff"/><rect width="${w}" height="110" fill="${primary}"/><text x="36" y="48" font-size="26" font-weight="bold" font-family="Arial, sans-serif" fill="#ffffff">${xmlEsc(HOME_NAME)} — Team Line-Out</text><text x="36" y="84" font-size="18" font-family="Arial, sans-serif" fill="#e4e4e7">vs ${xmlEsc(fixture.opponent)} · ${xmlEsc(fmtDate(fixture.date))} ${xmlEsc(fmtTime(fixture.date))}</text>${rowsSVG}${subsSVG}<text x="${w - 36}" y="${h - 14}" text-anchor="end" font-size="13" font-family="Arial, sans-serif" fill="#a1a1aa">PanelPro</text></svg>`;
-    const ok = await shareImage(svg, `lineout-${fixture.opponent.replace(/\s+/g, "-")}.png`, w, h);
+    hdr += `<text x="${cx}" y="${hY + 400}" text-anchor="middle" font-family="Arial" font-size="20" font-weight="700" letter-spacing="1" fill="#9a9aa2">${esc((fixture.venue || "").toUpperCase())}${d.ref ? ` · REF: ${esc(d.ref.toUpperCase())}` : ""}</text>`;
+
+    // ---- formation ----
+    let y = hY + hH + 30, form = "";
+    form += card(gkX, y, gkW, cardH, 1, pAt(1)); y += cardH + rowGap;
+    [[2, 3, 4], [5, 6, 7]].forEach((row) => { row.forEach((no, i) => { form += card(x3[i], y, cardW, cardH, no, pAt(no)); }); y += cardH + rowGap; });
+    [8, 9].forEach((no, i) => { form += card(x2[i], y, cardW, cardH, no, pAt(no)); }); y += cardH + rowGap;
+    [[10, 11, 12], [13, 14, 15]].forEach((row) => { row.forEach((no, i) => { form += card(x3[i], y, cardW, cardH, no, pAt(no)); }); y += cardH + rowGap; });
+
+    // ---- subs ----
+    y += 18;
+    let subs = `<text x="${OP + 4}" y="${y}" font-family="Arial" font-size="26" font-weight="800" letter-spacing="3" fill="#ffffff">SUBSTITUTES</text><text x="${OP + 4 + 320}" y="${y}" font-family="Arial" font-size="20" font-weight="700" fill="#8b8b93"> / ${numberedSubs.length}</text>`;
+    subs += `<line x1="${OP + 4}" y1="${y + 18}" x2="${W - OP - 4}" y2="${y + 18}" stroke="#26262c" stroke-width="1.5"/>`;
+    y += 58;
+    const subColW = IW / 3;
+    numberedSubs.forEach(({ no, player: p }, i) => {
+      const col = i % 3, rowN = Math.floor(i / 3);
+      const sx = OP + col * subColW, sy = y + rowN * 60;
+      subs += `<text x="${sx + 4}" y="${sy}" font-family="Arial" font-size="26" font-weight="800" fill="${accent}">${no}</text>`;
+      subs += `<text x="${sx + 52}" y="${sy}" font-family="Arial" font-size="25" font-weight="700" fill="#e4e4e7">${esc(p.name.toUpperCase())}</text>`;
+      if (p.group === "GK") subs += chipAt(sx + subColW - 74, sy - 24, "GK", accent);
+    });
+    y += Math.ceil(numberedSubs.length / 3) * 60 + 20;
+
+    // ---- footer ----
+    const H = y + 96;
+    let ftr = `<line x1="${OP + PI}" y1="${y + 8}" x2="${W - OP - PI}" y2="${y + 8}" stroke="#26262c" stroke-width="1.5"/>`;
+    ftr += `<image href="${CREST}" x="${cx - 26}" y="${y + 24}" width="52" height="52" preserveAspectRatio="xMidYMid meet"/>`;
+    ftr += `<text x="${cx}" y="${H - 6}" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" letter-spacing="2" fill="#8b8b93">${esc((CLUB.irish || "").toUpperCase())}  ·  PANELPRO</text>`;
+
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#0a0a0c"/><rect x="6" y="6" width="${W - 12}" height="${H - 12}" rx="28" fill="none" stroke="${accent}" stroke-width="2" opacity="0.35"/>${hdr}${form}${subs}${ftr}</svg>`;
+    const ok = await shareImage(svg, `lineout-${(fixture.opponent || "team").replace(/\s+/g, "-")}.png`, W, H);
     if (ok) nav.toast("Teamsheet image ready"); else nav.toast("Couldn't create image");
   };
 
@@ -1606,10 +1701,12 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
           <p className="text-center text-[12px] text-zinc-400 mt-2">Tap a position to assign · screenshot to share</p>
         </div>
       )}
-      <div className="p-4 border-t border-zinc-200 bg-white flex gap-2">
-        <button onClick={shareTeamsheetImage} className="shrink-0 bg-zinc-100 text-zinc-800 font-bold py-3.5 px-4 rounded-2xl active:scale-[0.99] flex items-center gap-2 text-[14px]"><Share2 className="w-4 h-4" /> Image</button>
-        <button onClick={() => { dispatch({ type: "SET_LINEUP", fixtureId, lineup: slots }); nav.toast("Line-out saved"); nav.pop(); }} className="flex-1 text-white font-bold py-3.5 rounded-2xl active:scale-[0.99]" style={{ background: theme.primary }}>Save line out</button>
+      <div className="p-4 border-t border-zinc-200 bg-white flex gap-2" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
+        <button onClick={() => setDetailsOpen(true)} className="shrink-0 bg-zinc-100 text-zinc-800 font-bold py-3.5 px-3.5 rounded-2xl active:scale-[0.99] flex items-center gap-1.5 text-[13px]"><Clock className="w-4 h-4" /> Details</button>
+        <button onClick={shareTeamsheetImage} className="shrink-0 bg-zinc-100 text-zinc-800 font-bold py-3.5 px-3.5 rounded-2xl active:scale-[0.99] flex items-center gap-1.5 text-[13px]"><Share2 className="w-4 h-4" /> Poster</button>
+        <button onClick={() => { dispatch({ type: "SET_LINEUP", fixtureId, lineup: slots }); nav.toast("Line-out saved"); nav.pop(); }} className="flex-1 text-white font-bold py-3.5 rounded-2xl active:scale-[0.99]" style={{ background: theme.primary }}>Save</button>
       </div>
+      {detailsOpen && <MatchDetailsSheet initial={details} defaultThrowIn={fmtTime(fixture.date)} onClose={() => setDetailsOpen(false)} onSave={(f) => { dispatch({ type: "UPDATE_FIXTURE", id: fixtureId, patch: { details: f } }); setDetailsOpen(false); nav.toast("Match details saved"); }} />}
       {picking !== null && (
         <Sheet onClose={() => setPicking(null)} title={`Pick ${GAA_POSITIONS.find((p) => p.no === picking).name}`}>
           <div className="space-y-1.5 max-h-[58vh] overflow-y-auto -mx-1 px-1">
@@ -2848,7 +2945,7 @@ function SettingsScreen({ state, dispatch, nav }) {
         </Sheet>
       )}
       {confirmReset && <Confirm title="Reset everything?" confirmLabel="Reset" message="This restores the original demo data. Anything you've added or imported will be lost." onConfirm={() => { dispatch({ type: "RESET" }); setConfirmReset(false); nav.reset("dashboard"); nav.toast("Data reset"); }} onClose={() => setConfirmReset(false)} />}
-      {delTeam && <Confirm title={`Delete ${delTeam.name}?`} confirmLabel="Delete team" message={`This permanently removes ${delTeam.name} and all of its players, fixtures, line-outs, sessions and stats. This can't be undone.`} onConfirm={() => { const nm = delTeam.name; dispatch({ type: "DELETE_TEAM", id: delTeam.id }); setDelTeam(null); nav.toast(`${nm} deleted`); }} onClose={() => setDelTeam(null)} />}
+      {delTeam && <Confirm title={`Delete ${delTeam.name}?`} confirmLabel="Delete team" message={`This permanently removes ${delTeam.name} and all of its players, fixtures, line-outs, sessions and stats.`} onConfirm={() => { const nm = delTeam.name; const snapshot = state; dispatch({ type: "DELETE_TEAM", id: delTeam.id }); setDelTeam(null); nav.toast(`${nm} deleted`, { label: "Undo", onAction: () => dispatch({ type: "HYDRATE", state: snapshot }) }); }} onClose={() => setDelTeam(null)} />}
     </div>
   );
 }
