@@ -1477,7 +1477,6 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
     const roundM = (fixture.notes || "").match(/round\s*(\d+)/i);
     const roundLabel = roundM ? `ROUND ${roundM[1]}` : (fixture.competition || "").toUpperCase();
     const dateLabel = `${fmtDate(fixture.date).toUpperCase()} · ${fmtTime(fixture.date)}`;
-    const oppInitials = (fixture.opponent || "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
 
     const chipAt = (x, y, label, bg, fg = "#ffffff") => { const w = 20 + label.length * 15; return `<rect x="${x}" y="${y}" width="${w}" height="34" rx="9" fill="${bg}"/><text x="${x + w / 2}" y="${y + 23}" text-anchor="middle" font-family="Arial" font-size="19" font-weight="800" fill="${fg}">${label}</text>`; };
     const chipCenter = (cx, y, label, bg, fg) => chipAt(cx - (20 + label.length * 15) / 2, y, label, bg, fg);
@@ -1505,29 +1504,36 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
     const gkW = 430, gkX = OP + (IW - gkW) / 2;
 
     // ---- header ----
-    const hY = OP, hH = 452, cx = W / 2;
+    const hY = OP, hH = 462, cx = W / 2;
     let hdr = `<rect x="${OP}" y="${hY}" width="${IW}" height="${hH}" rx="24" fill="#101013" stroke="#26262c" stroke-width="1.5"/>`;
-    hdr += `<text x="${OP + PI}" y="${hY + 58}" font-family="Arial" font-size="24" font-weight="800" letter-spacing="2"><tspan fill="#ffffff">${esc((team.name || "").toUpperCase())}</tspan><tspan fill="${accent}">  ·  ${esc(roundLabel)}</tspan></text>`;
-    hdr += `<text x="${W - OP - PI}" y="${hY + 58}" text-anchor="end" font-family="Arial" font-size="22" font-weight="700" letter-spacing="1" fill="#9a9aa2">${esc(dateLabel)}</text>`;
-    hdr += `<line x1="${OP + PI}" y1="${hY + 82}" x2="${W - OP - PI}" y2="${hY + 82}" stroke="#26262c" stroke-width="1.5"/>`;
-    hdr += `<image href="${CREST}" x="${OP + PI}" y="${hY + 112}" width="120" height="120" preserveAspectRatio="xMidYMid meet"/>`;
-    const homeLen = Math.max(4, HOME_NAME.length), awayLen = Math.max(4, (fixture.opponent || "team").length);
-    const nameFont = Math.max(30, Math.min(58, Math.floor(Math.min(((cx - 58) - (OP + PI + 120 + 22)) / (0.62 * homeLen), ((W - OP - PI) - (cx + 58)) / (0.62 * awayLen)))));
-    hdr += chipCenter(cx - 232, hY + 120, isHome ? "HOME" : "AWAY", isHome ? accent : "#2b2b31");
-    hdr += chipCenter(cx + 232, hY + 120, isHome ? "AWAY" : "HOME", isHome ? "#2b2b31" : accent);
-    hdr += `<text x="${cx - 58}" y="${hY + 200}" text-anchor="end" font-family="Arial" font-size="${nameFont}" font-weight="800" fill="#ffffff">${esc(HOME_NAME.toUpperCase())}</text>`;
-    hdr += `<text x="${cx}" y="${hY + 194}" text-anchor="middle" font-family="Arial" font-size="34" font-weight="800" fill="${accent}">VS</text>`;
-    hdr += `<text x="${cx + 58}" y="${hY + 200}" text-anchor="start" font-family="Arial" font-size="${nameFont}" font-weight="800" fill="#ffffff">${esc((fixture.opponent || "").toUpperCase())}</text>`;
-    hdr += `<line x1="${OP + PI}" y1="${hY + 252}" x2="${W - OP - PI}" y2="${hY + 252}" stroke="${accent}" stroke-width="2" opacity="0.5"/>`;
+    hdr += `<text x="${OP + PI}" y="${hY + 52}" font-family="Arial" font-size="23" font-weight="800" letter-spacing="2"><tspan fill="#ffffff">${esc((team.name || "").toUpperCase())}</tspan><tspan fill="${accent}">  ·  ${esc(roundLabel)}</tspan></text>`;
+    hdr += `<text x="${W - OP - PI}" y="${hY + 52}" text-anchor="end" font-family="Arial" font-size="21" font-weight="700" letter-spacing="1" fill="#9a9aa2">${esc(dateLabel)}</text>`;
+    hdr += `<line x1="${OP + PI}" y1="${hY + 76}" x2="${W - OP - PI}" y2="${hY + 76}" stroke="#26262c" stroke-width="1.5"/>`;
+    // crest centred above the matchup
+    hdr += `<image href="${CREST}" x="${cx - 41}" y="${hY + 88}" width="82" height="82" preserveAspectRatio="xMidYMid meet"/>`;
+    // balanced matchup with chips aligned above each team name
+    const home = HOME_NAME.toUpperCase(), away = (fixture.opponent || "").toUpperCase();
+    const nameFont = Math.max(28, Math.min(50, Math.floor((IW - 2 * PI - 130) / (0.6 * Math.max(home.length + away.length, 10)))));
+    const cw = 0.6 * nameFont, homeW = home.length * cw, awayW = away.length * cw, vsGap = 118;
+    const sx = cx - (homeW + vsGap + awayW) / 2;
+    const homeCx = sx + homeW / 2, vsCx = sx + homeW + vsGap / 2, awayCx = sx + homeW + vsGap + awayW / 2;
+    const nameY = hY + 278, chipY = hY + 182;
+    hdr += chipCenter(homeCx, chipY, isHome ? "HOME" : "AWAY", isHome ? accent : "#2b2b31");
+    hdr += chipCenter(awayCx, chipY, isHome ? "AWAY" : "HOME", isHome ? "#2b2b31" : accent);
+    hdr += `<text x="${homeCx}" y="${nameY}" text-anchor="middle" font-family="Arial" font-size="${nameFont}" font-weight="800" fill="#ffffff">${esc(home)}</text>`;
+    hdr += `<text x="${vsCx}" y="${nameY - 5}" text-anchor="middle" font-family="Arial" font-size="30" font-weight="800" fill="${accent}">VS</text>`;
+    hdr += `<text x="${awayCx}" y="${nameY}" text-anchor="middle" font-family="Arial" font-size="${nameFont}" font-weight="800" fill="#ffffff">${esc(away)}</text>`;
+    hdr += `<line x1="${OP + PI}" y1="${hY + 306}" x2="${W - OP - PI}" y2="${hY + 306}" stroke="${accent}" stroke-width="2" opacity="0.5"/>`;
+    // info row: 4 centred columns with subtle separators
     const infos = [["CHANGING ROOMS", d.changingRooms || "—"], ["PITCH", d.pitch || "—"], ["WARM UP", d.warmUp || "—"], ["THROW-IN", d.throwIn || fmtTime(fixture.date)]];
     const colW = (IW - 2 * PI) / 4;
+    for (let i = 1; i < 4; i++) { const xl = OP + PI + colW * i; hdr += `<line x1="${xl}" y1="${hY + 330}" x2="${xl}" y2="${hY + 392}" stroke="#26262c" stroke-width="1.5"/>`; }
     infos.forEach(([lab, val], i) => {
       const c = OP + PI + colW * (i + 0.5);
-      hdr += `<circle cx="${c - 90}" cy="${hY + 300}" r="7" fill="none" stroke="${accent}" stroke-width="2.5"/>`;
-      hdr += `<text x="${c - 74}" y="${hY + 294}" font-family="Arial" font-size="16" font-weight="700" letter-spacing="1" fill="#8b8b93">${esc(lab)}</text>`;
-      hdr += `<text x="${c - 74}" y="${hY + 326}" font-family="Arial" font-size="30" font-weight="800" fill="#ffffff">${esc(val)}</text>`;
+      hdr += `<text x="${c}" y="${hY + 350}" text-anchor="middle" font-family="Arial" font-size="16" font-weight="700" letter-spacing="1.5" fill="#8b8b93">${esc(lab)}</text>`;
+      hdr += `<text x="${c}" y="${hY + 384}" text-anchor="middle" font-family="Arial" font-size="30" font-weight="800" fill="#ffffff">${esc(val)}</text>`;
     });
-    hdr += `<text x="${cx}" y="${hY + 400}" text-anchor="middle" font-family="Arial" font-size="20" font-weight="700" letter-spacing="1" fill="#9a9aa2">${esc((fixture.venue || "").toUpperCase())}${d.ref ? ` · REF: ${esc(d.ref.toUpperCase())}` : ""}</text>`;
+    hdr += `<text x="${cx}" y="${hY + 430}" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" letter-spacing="1" fill="#9a9aa2">${esc((fixture.venue || "").toUpperCase())}${d.ref ? ` · REF: ${esc(d.ref.toUpperCase())}` : ""}</text>`;
 
     // ---- formation ----
     let y = hY + hH + 30, form = "";
