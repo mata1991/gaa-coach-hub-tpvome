@@ -151,6 +151,8 @@ function reducer(state, action) {
       return { ...state, teams: [...state.teams, { id, ...action.team }], activeTeamId: id };
     }
     case "SET_ACTIVE_TEAM": return { ...state, activeTeamId: action.id };
+    case "UPDATE_TEAM":
+      return { ...state, teams: state.teams.map((t) => (t.id === action.id ? { ...t, ...action.patch } : t)) };
 
     case "DELETE_TEAM": {
       const tid = action.id;
@@ -334,6 +336,29 @@ const DEFAULT_SETTINGS = { throwInTime: "19:30", homeVenue: "Middletown GAA Grou
 const buzz = (ms = 12) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (_) {} };
 
 const xmlEsc = (s = "") => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// Read an uploaded image and shrink it to a small square-ish PNG data URL so it
+// fits comfortably in localStorage while still looking crisp on the poster.
+function fileToImageDataUrl(file, max = 400) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, max / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        try { resolve(canvas.toDataURL("image/png")); } catch (e) { reject(e); }
+      };
+      img.onerror = reject;
+      img.src = String(reader.result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 // Rasterise an SVG string to a PNG and share it via the share sheet (falling
 // back to a download). Used to share a clean teamsheet / report image.
@@ -677,6 +702,33 @@ function Field({ label, children }) {
   return <div><label className="block text-[13px] font-semibold text-zinc-500 mb-1.5">{label}</label>{children}</div>;
 }
 
+// Tap-to-upload image tile used for crests and jerseys. Shows the current image
+// (or a placeholder) and lets you replace or remove it.
+function ImagePicker({ value, onChange, label, hint }) {
+  const inputRef = useRef(null);
+  const pick = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    try { onChange(await fileToImageDataUrl(f)); } catch (_) {}
+  };
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <button type="button" onClick={() => inputRef.current && inputRef.current.click()} className="relative w-full aspect-square rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50 flex items-center justify-center overflow-hidden active:bg-zinc-100">
+        {value
+          ? <img src={value} alt={label} className="w-full h-full object-contain p-2" />
+          : <span className="flex flex-col items-center gap-1 text-zinc-400"><Upload className="w-6 h-6" /><span className="text-[11px] font-semibold">Add</span></span>}
+      </button>
+      <div className="flex items-center gap-1.5">
+        <span className="text-[12px] font-semibold text-zinc-600">{label}</span>
+        {value && <button type="button" onClick={() => onChange(null)} className="text-[11px] font-semibold text-red-500 active:opacity-70">Remove</button>}
+      </div>
+      {hint && !value && <span className="text-[10px] text-zinc-400 -mt-1">{hint}</span>}
+      <input ref={inputRef} type="file" accept="image/*" onChange={pick} className="hidden" />
+    </div>
+  );
+}
+
 function Confirm({ title, message, confirmLabel = "Delete", onConfirm, onClose }) {
   return (
     <div className="absolute inset-0 z-[60] flex items-center justify-center p-6" onClick={onClose}>
@@ -852,7 +904,7 @@ function Dashboard({ state, dispatch, nav }) {
           <div className="flex items-start gap-3">
             <button onClick={() => setSwitching(true)} className="flex items-center gap-3 text-left flex-1 min-w-0">
               <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center overflow-hidden shrink-0">
-                <img src={CREST} alt="" className="w-14 h-14 object-contain" />
+                <img src={team.crest || CREST} alt="" className="w-14 h-14 object-contain" />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-[12px] text-white/60 truncate">{CLUB.name} · <span className="italic">{CLUB.irish}</span></p>
@@ -979,7 +1031,7 @@ function TeamSwitcher({ state, dispatch, onClose }) {
             <button key={t.id} onClick={() => { dispatch({ type: "SET_ACTIVE_TEAM", id: t.id }); onClose(); }}
               className={`w-full flex items-center gap-3 p-3 rounded-2xl border ${active ? "border-black bg-zinc-50" : "border-zinc-200 bg-white"}`}>
               <div className="w-10 h-10 rounded-xl bg-white border border-zinc-200 flex items-center justify-center overflow-hidden">
-                <img src={CREST} alt="" className="w-8 h-8 object-contain" />
+                <img src={t.crest || CREST} alt="" className="w-8 h-8 object-contain" />
               </div>
               <div className="flex-1 text-left">
                 <p className="font-bold text-[15px] text-zinc-900">{t.name}</p>
@@ -1266,6 +1318,8 @@ function FixtureForm({ initial, settings, onClose, onSave }) {
   const [dt, setDt] = useState(initial ? toLocalInput(initial.date) : toLocalInput(nextDateAt(7, settings?.throwInTime)));
   const [notes, setNotes] = useState(initial?.notes || "");
   const [details, setDetails] = useState(() => { const d = initial?.details || {}; return { changingRooms: d.changingRooms || "", pitch: d.pitch || "", warmUp: d.warmUp || "", throwIn: d.throwIn || "", ref: d.ref || "" }; });
+  const [oppCrest, setOppCrest] = useState(initial?.opponentCrest || null);
+  const [oppJersey, setOppJersey] = useState(initial?.opponentJersey || null);
   const setD = (k, v) => setDetails((s) => ({ ...s, [k]: v }));
   const timeField = (k, label, ph) => (
     <div>
@@ -1295,8 +1349,15 @@ function FixtureForm({ initial, settings, onClose, onSave }) {
         </div>
         <div className="mt-2">{timeField("ref", "Referee", "e.g. Barry Winters")}</div>
       </Field>
+      <Field label="Opponent crest & jersey">
+        <p className="text-[12px] text-zinc-400 -mt-1 mb-2">Show alongside yours on the teamsheet poster.</p>
+        <div className="grid grid-cols-2 gap-4">
+          <ImagePicker value={oppCrest} onChange={setOppCrest} label={`${opponent.trim() || "Opponent"} crest`} />
+          <ImagePicker value={oppJersey} onChange={setOppJersey} label={`${opponent.trim() || "Opponent"} jersey`} />
+        </div>
+      </Field>
       <Field label="Notes"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="e.g. Press their puckout · mark their no.11" className="w-full bg-zinc-100 rounded-xl px-3.5 py-3 text-[14px] outline-none focus:ring-2 ring-black resize-none" /></Field>
-      <button disabled={!opponent.trim()} onClick={() => onSave({ opponent: opponent.trim(), venue, competition, notes: notes.trim(), date: dt ? fromLocalInput(dt) : nextDateAt(7, settings?.throwInTime), details })} className="w-full bg-black disabled:bg-zinc-300 text-white font-bold py-3.5 rounded-2xl mt-2 active:scale-[0.99]">{isEdit ? "Save changes" : "Create fixture"}</button>
+      <button disabled={!opponent.trim()} onClick={() => onSave({ opponent: opponent.trim(), venue, competition, notes: notes.trim(), date: dt ? fromLocalInput(dt) : nextDateAt(7, settings?.throwInTime), details, opponentCrest: oppCrest, opponentJersey: oppJersey })} className="w-full bg-black disabled:bg-zinc-300 text-white font-bold py-3.5 rounded-2xl mt-2 active:scale-[0.99]">{isEdit ? "Save changes" : "Create fixture"}</button>
     </Sheet>
   );
 }
@@ -1388,6 +1449,7 @@ function MatchDetailsSheet({ initial, defaultThrowIn, onClose, onSave }) {
 function Lineup({ state, dispatch, nav, fixtureId }) {
   const fixture = state.fixtures.find((f) => f.id === fixtureId);
   const theme = themeOf(state);
+  const teamCrest = (state.teams.find((t) => t.id === fixture.teamId) || {}).crest || CREST;
   const roster = state.players.filter((p) => p.teamId === fixture.teamId);
   const init = state.lineups[fixtureId] || {};
   const [slots, setSlots] = useState(() => { const base = {}; GAA_POSITIONS.forEach((p) => (base[p.no] = init[p.no] || null)); return base; });
@@ -1526,20 +1588,37 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
     hdr += `<text x="${OP + PI}" y="${hY + 52}" font-family="Arial" font-size="23" font-weight="800" letter-spacing="2"><tspan fill="#ffffff">${esc((team.name || "").toUpperCase())}</tspan><tspan fill="${accent}">  ·  ${esc(roundLabel)}</tspan></text>`;
     hdr += `<text x="${W - OP - PI}" y="${hY + 52}" text-anchor="end" font-family="Arial" font-size="21" font-weight="700" letter-spacing="1" fill="#9a9aa2">${esc(dateLabel)}</text>`;
     hdr += `<line x1="${OP + PI}" y1="${hY + 76}" x2="${W - OP - PI}" y2="${hY + 76}" stroke="#26262c" stroke-width="1.5"/>`;
-    // crest centred above the matchup
-    hdr += `<image href="${CREST}" x="${cx - 41}" y="${hY + 88}" width="82" height="82" preserveAspectRatio="xMidYMid meet"/>`;
-    // balanced matchup with chips aligned above each team name
-    const home = HOME_NAME.toUpperCase(), away = (fixture.opponent || "").toUpperCase();
-    const nameFont = Math.max(28, Math.min(50, Math.floor((IW - 2 * PI - 130) / (0.6 * Math.max(home.length + away.length, 10)))));
-    const cw = 0.6 * nameFont, homeW = home.length * cw, awayW = away.length * cw, vsGap = 118;
-    const sx = cx - (homeW + vsGap + awayW) / 2;
-    const homeCx = sx + homeW / 2, vsCx = sx + homeW + vsGap / 2, awayCx = sx + homeW + vsGap + awayW / 2;
-    const nameY = hY + 278, chipY = hY + 182;
-    hdr += chipCenter(homeCx, chipY, isHome ? "HOME" : "AWAY", isHome ? accent : "#2b2b31");
-    hdr += chipCenter(awayCx, chipY, isHome ? "AWAY" : "HOME", isHome ? "#2b2b31" : accent);
-    hdr += `<text x="${homeCx}" y="${nameY}" text-anchor="middle" font-family="Arial" font-size="${nameFont}" font-weight="800" fill="#ffffff">${esc(home)}</text>`;
-    hdr += `<text x="${vsCx}" y="${nameY - 5}" text-anchor="middle" font-family="Arial" font-size="30" font-weight="800" fill="${accent}">VS</text>`;
-    hdr += `<text x="${awayCx}" y="${nameY}" text-anchor="middle" font-family="Arial" font-size="${nameFont}" font-weight="800" fill="#ffffff">${esc(away)}</text>`;
+    // ---- matchup: each side shows its crest + jersey, then name ----
+    const primary = theme.primary || "#18181b";
+    const home = HOME_NAME.toUpperCase(), away = (fixture.opponent || "OPPONENT").toUpperCase();
+    const homeCrest = team.crest || CREST, homeJersey = team.jersey || null;
+    const awayCrest = fixture.opponentCrest || null, awayJersey = fixture.opponentJersey || null;
+    const imgBox = (src, x, y, w, h) => `<image href="${src}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid meet"/>`;
+    const crestFallback = (label, mx, ty, s) => {
+      const ini = (label || "?").split(/\s+/).map((w) => w[0]).filter(Boolean).join("").slice(0, 3).toUpperCase();
+      return `<circle cx="${mx}" cy="${ty + s / 2}" r="${s / 2 - 1}" fill="#17171b" stroke="#2b2b31" stroke-width="2"/><text x="${mx}" y="${ty + s / 2 + 11}" text-anchor="middle" font-family="Arial" font-size="30" font-weight="800" fill="#8b8b93">${esc(ini)}</text>`;
+    };
+    const jerseyMark = (mx, ty, w, h, body, trim) => {
+      const x = mx - w / 2, sl = w * 0.24, nk = w * 0.26;
+      const p = `M ${x + sl} ${ty} L ${x + w / 2 - nk / 2} ${ty} Q ${x + w / 2} ${ty + h * 0.12} ${x + w / 2 + nk / 2} ${ty} L ${x + w - sl} ${ty} L ${x + w} ${ty + h * 0.28} L ${x + w - sl} ${ty + h * 0.40} L ${x + w - sl} ${ty + h} L ${x + sl} ${ty + h} L ${x + sl} ${ty + h * 0.40} L ${x} ${ty + h * 0.28} Z`;
+      return `<path d="${p}" fill="${body}" stroke="${trim}" stroke-width="3" stroke-linejoin="round"/>`;
+    };
+    const crestS = 92, jW = 74, jH = 92, pairW = crestS + 14 + jW, gap = 76;
+    const homeCX = (OP + PI + cx - gap / 2) / 2, awayCX = (cx + gap / 2 + (W - OP - PI)) / 2;
+    const imgY = hY + 100;
+    const teamBlock = (cX, crestSrc, name, jerseySrc, jBody, jTrim, chip, chipOn, crestFirst) => {
+      const left = cX - pairW / 2;
+      const crestX = crestFirst ? left : left + jW + 14, jerseyX = crestFirst ? left + crestS + 14 : left;
+      let out = crestSrc ? imgBox(crestSrc, crestX, imgY, crestS, crestS) : crestFallback(name, crestX + crestS / 2, imgY, crestS);
+      out += jerseySrc ? imgBox(jerseySrc, jerseyX, imgY, jW, jH) : jerseyMark(jerseyX + jW / 2, imgY, jW, jH, jBody, jTrim);
+      const nf = Math.max(20, Math.min(34, Math.floor((pairW + 24) / (0.58 * Math.max(name.length, 6)))));
+      out += `<text x="${cX}" y="${imgY + jH + 42}" text-anchor="middle" font-family="Arial" font-size="${nf}" font-weight="800" fill="#ffffff">${esc(name)}</text>`;
+      out += chipCenter(cX, imgY + jH + 58, chip, chipOn ? accent : "#2b2b31");
+      return out;
+    };
+    hdr += teamBlock(homeCX, homeCrest, home, homeJersey, primary, accent, isHome ? "HOME" : "AWAY", isHome, true);
+    hdr += teamBlock(awayCX, awayCrest, away, awayJersey, "#26262c", "#3a3a42", isHome ? "AWAY" : "HOME", !isHome, false);
+    hdr += `<text x="${cx}" y="${imgY + 56}" text-anchor="middle" font-family="Arial" font-size="34" font-weight="800" fill="${accent}">VS</text>`;
     hdr += `<line x1="${OP + PI}" y1="${hY + 306}" x2="${W - OP - PI}" y2="${hY + 306}" stroke="${accent}" stroke-width="2" opacity="0.5"/>`;
     // info row: 4 centred columns with subtle separators
     const infos = [["CHANGING ROOMS", d.changingRooms || "—"], ["PITCH", d.pitch || "—"], ["WARM UP", d.warmUp || "—"], ["THROW-IN", d.throwIn || fmtTime(fixture.date)]];
@@ -1577,7 +1656,7 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
     // ---- footer ----
     const H = y + 96;
     let ftr = `<line x1="${OP + PI}" y1="${y + 8}" x2="${W - OP - PI}" y2="${y + 8}" stroke="#26262c" stroke-width="1.5"/>`;
-    ftr += `<image href="${CREST}" x="${cx - 26}" y="${y + 24}" width="52" height="52" preserveAspectRatio="xMidYMid meet"/>`;
+    ftr += `<image href="${team.crest || CREST}" x="${cx - 26}" y="${y + 24}" width="52" height="52" preserveAspectRatio="xMidYMid meet"/>`;
     ftr += `<text x="${cx}" y="${H - 6}" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" letter-spacing="2" fill="#8b8b93">${esc((CLUB.irish || "").toUpperCase())}  ·  PANELPRO</text>`;
 
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#0a0a0c"/><rect x="6" y="6" width="${W - 12}" height="${H - 12}" rx="28" fill="none" stroke="${accent}" stroke-width="2" opacity="0.35"/>${hdr}${form}${subs}${ftr}</svg>`;
@@ -1662,7 +1741,7 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
         <div className="flex-1 overflow-y-auto p-3">
           <div className="rounded-2xl overflow-hidden border border-zinc-200 bg-white shadow-sm">
             <div className="text-white px-4 py-2.5 flex items-center gap-2.5" style={{ background: theme.primary }}>
-              <img src={CREST} alt="" className="w-8 h-8 object-contain shrink-0" />
+              <img src={teamCrest} alt="" className="w-8 h-8 object-contain shrink-0" />
               <div className="min-w-0 flex-1">
                 <p className="font-black text-[14px] leading-tight truncate">{HOME_NAME} <span className="text-zinc-400 font-bold">v</span> {fixture.opponent}</p>
                 <p className="text-[11px] text-zinc-300 truncate">{fixture.competition} · {fmtDate(fixture.date)} · {fmtTime(fixture.date)}</p>
@@ -2847,6 +2926,8 @@ function PlayerProfile({ state, dispatch, nav, playerId }) {
 
 function SettingsScreen({ state, dispatch, nav }) {
   const s = state.settings || DEFAULT_SETTINGS;
+  const activeTeam = teamData(state).team;
+  const setTeamImg = (key, val) => dispatch({ type: "UPDATE_TEAM", id: activeTeam.id, patch: { [key]: val } });
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
@@ -2892,6 +2973,17 @@ function SettingsScreen({ state, dispatch, nav }) {
             </div>
           </div>
           <p className="text-[12px] text-zinc-400 mt-1.5">Used as the starting point when you create a new fixture or session.</p>
+        </div>
+
+        <div>
+          <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-2">Crest &amp; jersey · {activeTeam.name}</p>
+          <div className="bg-white border border-zinc-200 rounded-2xl p-4">
+            <div className="grid grid-cols-2 gap-4">
+              <ImagePicker value={activeTeam.crest || null} onChange={(v) => setTeamImg("crest", v)} label="Club crest" hint="PNG with transparency looks best" />
+              <ImagePicker value={activeTeam.jersey || null} onChange={(v) => setTeamImg("jersey", v)} label="Home jersey" />
+            </div>
+          </div>
+          <p className="text-[12px] text-zinc-400 mt-1.5">These appear on the teamsheet poster and around the app. Upload the opponent's crest &amp; jersey on each fixture.</p>
         </div>
 
         <div>
