@@ -301,13 +301,15 @@ const fmtClock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")
 const initials = (name = "") => name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
 const surname = (name = "") => name.trim().split(/\s+/).slice(-1)[0] || "";
 const forename = (name = "") => { const t = name.trim().split(/\s+/); return t.length > 1 ? t.slice(0, -1).join(" ") : (t[0] || ""); };
+// Left / centre / right columns share the same x across every line so the
+// full-backs sit directly behind the half-backs, half-forwards, etc.
 const PITCH_COORDS = {
   1: { x: 0.5, y: 0.92 },
-  2: { x: 0.78, y: 0.80 }, 3: { x: 0.5, y: 0.80 }, 4: { x: 0.22, y: 0.80 },
+  2: { x: 0.80, y: 0.80 }, 3: { x: 0.5, y: 0.80 }, 4: { x: 0.20, y: 0.80 },
   5: { x: 0.80, y: 0.64 }, 6: { x: 0.5, y: 0.64 }, 7: { x: 0.20, y: 0.64 },
   8: { x: 0.38, y: 0.50 }, 9: { x: 0.62, y: 0.50 },
   10: { x: 0.80, y: 0.34 }, 11: { x: 0.5, y: 0.34 }, 12: { x: 0.20, y: 0.34 },
-  13: { x: 0.78, y: 0.18 }, 14: { x: 0.5, y: 0.18 }, 15: { x: 0.22, y: 0.18 },
+  13: { x: 0.80, y: 0.18 }, 14: { x: 0.5, y: 0.18 }, 15: { x: 0.20, y: 0.18 },
 };
 const startOfDay = (x) => { const y = new Date(x); y.setHours(0, 0, 0, 0); return y; };
 function countdown(dateIso) {
@@ -1694,10 +1696,13 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
     [8, 9].forEach((no, i) => { form += card(x2[i], y, cardW, cardH, no, pAt(no)); }); y += cardH + rowGap;
     [[10, 11, 12], [13, 14, 15]].forEach((row) => { row.forEach((no, i) => { form += card(x3[i], y, cardW, cardH, no, pAt(no)); }); y += cardH + rowGap; });
 
+    // Grass-green sheet, so the text off the dark cards is inked dark to read.
+    const grass = "#bcd79f", grassStripe = "#b1cf90", grassInk = "#153a1e", grassMuted = "#456b3f", grassLine = "#9cbd80";
+
     // ---- subs ----
     y += 30;
-    let subs = `<text x="${OP + 4}" y="${y}" font-family="Arial" font-size="26" font-weight="800" letter-spacing="3" fill="#ffffff">SUBSTITUTES</text><text x="${OP + 4 + 320}" y="${y}" font-family="Arial" font-size="20" font-weight="700" fill="#8b8b93"> / ${numberedSubs.length}</text>`;
-    subs += `<line x1="${OP + 4}" y1="${y + 18}" x2="${W - OP - 4}" y2="${y + 18}" stroke="#26262c" stroke-width="1.5"/>`;
+    let subs = `<text x="${OP + 4}" y="${y}" font-family="Arial" font-size="26" font-weight="800" letter-spacing="3" fill="${grassInk}">SUBSTITUTES</text><text x="${OP + 4 + 320}" y="${y}" font-family="Arial" font-size="20" font-weight="700" fill="${grassMuted}"> / ${numberedSubs.length}</text>`;
+    subs += `<line x1="${OP + 4}" y1="${y + 18}" x2="${W - OP - 4}" y2="${y + 18}" stroke="${grassLine}" stroke-width="1.5"/>`;
     y += 58;
     const subColW = IW / 3;
     numberedSubs.forEach(({ no, player: p }, i) => {
@@ -1706,17 +1711,22 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
       const isGK = p.group === "GK", nm = p.name.toUpperCase();
       const nf = fitFont(nm, 25, subColW - 52 - 14 - (isGK ? 58 : 0));
       subs += `<text x="${sx + 4}" y="${sy}" font-family="Arial" font-size="26" font-weight="800" fill="${accent}">${no}</text>`;
-      subs += `<text x="${sx + 52}" y="${sy}" font-family="Arial" font-size="${nf}" font-weight="700" fill="#e4e4e7">${esc(nm)}</text>`;
+      subs += `<text x="${sx + 52}" y="${sy}" font-family="Arial" font-size="${nf}" font-weight="700" fill="${grassInk}">${esc(nm)}</text>`;
       if (isGK) subs += chipAt(sx + subColW - 70, sy - 24, "GK", accent);
     });
     y += Math.ceil(numberedSubs.length / 3) * 60 + 20;
 
     // ---- footer ---- (club name + PanelPro centred between the divider and the bottom edge)
     const fLineY = y + 10, H = y + 68, fBottom = H - 6;
-    let ftr = `<line x1="${OP + PI}" y1="${fLineY}" x2="${W - OP - PI}" y2="${fLineY}" stroke="#26262c" stroke-width="1.5"/>`;
-    ftr += `<text x="${cx}" y="${(fLineY + fBottom) / 2 + 6}" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" letter-spacing="2" fill="#8b8b93">${esc((CLUB.irish || "").toUpperCase())}  ·  PANELPRO</text>`;
+    let ftr = `<line x1="${OP + PI}" y1="${fLineY}" x2="${W - OP - PI}" y2="${fLineY}" stroke="${grassLine}" stroke-width="1.5"/>`;
+    ftr += `<text x="${cx}" y="${(fLineY + fBottom) / 2 + 6}" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" letter-spacing="2" fill="${grassMuted}">${esc((CLUB.irish || "").toUpperCase())}  ·  PANELPRO</text>`;
 
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#0a0a0c"/><rect x="6" y="6" width="${W - 12}" height="${H - 12}" rx="28" fill="none" stroke="${accent}" stroke-width="2" opacity="0.35"/>${hdr}${form}${subs}${ftr}</svg>`;
+    // Grass background with subtle horizontal mowing stripes.
+    let pitch = `<rect width="${W}" height="${H}" fill="${grass}"/>`;
+    const bandH = 116;
+    for (let by = 0; by < H; by += bandH) if (Math.floor(by / bandH) % 2 === 1) pitch += `<rect x="0" y="${by}" width="${W}" height="${bandH}" fill="${grassStripe}"/>`;
+    pitch += `<rect x="6" y="6" width="${W - 12}" height="${H - 12}" rx="28" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.65"/>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${pitch}${hdr}${form}${subs}${ftr}</svg>`;
     return { svg, W, H, filename: `lineout-${(fixture.opponent || "team").replace(/\s+/g, "-")}.png` };
   };
 
@@ -1797,13 +1807,13 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
       ) : (
         <div className="flex-1 overflow-y-auto p-3">
           <div className="rounded-2xl overflow-hidden border border-zinc-200 bg-white shadow-sm">
-            <div className="text-white px-4 py-2.5 flex items-center gap-2.5" style={{ background: theme.primary }}>
+            <div className="bg-white border-b border-zinc-100 px-4 py-2.5 flex items-center gap-2.5">
               <img src={teamCrest} alt="" className="w-8 h-8 object-contain shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="font-black text-[14px] leading-tight truncate">{HOME_NAME} <span className="text-zinc-400 font-bold">v</span> {fixture.opponent}</p>
-                <p className="text-[11px] text-zinc-300 truncate">{fixture.competition} · {fmtDate(fixture.date)} · {fmtTime(fixture.date)}</p>
+                <p className="font-black text-[14px] leading-tight truncate" style={{ color: theme.accent }}>{HOME_NAME} <span className="text-zinc-400 font-bold">v</span> {fixture.opponent}</p>
+                <p className="text-[11px] text-zinc-500 truncate">{fixture.competition} · {fmtDate(fixture.date)} · {fmtTime(fixture.date)}</p>
               </div>
-              <span className="shrink-0 text-[11px] font-bold bg-white/15 rounded-full px-2 py-0.5 tabular-nums">{filled}/15</span>
+              <span className="shrink-0 text-[11px] font-bold rounded-full px-2 py-0.5 tabular-nums" style={{ color: theme.accent, background: tint(theme.accent, 0.12) }}>{filled}/15</span>
             </div>
             <div className="relative w-full" style={{ aspectRatio: "250 / 330", background: "linear-gradient(#16a34a,#15803d)" }}>
               <svg viewBox="0 0 250 330" preserveAspectRatio="xMidYMid meet" className="absolute inset-0 w-full h-full" fill="none" stroke="#ffffff" strokeOpacity="0.8" strokeWidth="2">
