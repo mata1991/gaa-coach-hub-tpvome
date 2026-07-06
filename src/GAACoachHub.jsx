@@ -1265,6 +1265,14 @@ function FixtureForm({ initial, settings, onClose, onSave }) {
   const [competition, setCompetition] = useState(initial?.competition || "Championship");
   const [dt, setDt] = useState(initial ? toLocalInput(initial.date) : toLocalInput(nextDateAt(7, settings?.throwInTime)));
   const [notes, setNotes] = useState(initial?.notes || "");
+  const [details, setDetails] = useState(() => { const d = initial?.details || {}; return { changingRooms: d.changingRooms || "", pitch: d.pitch || "", warmUp: d.warmUp || "", throwIn: d.throwIn || "", ref: d.ref || "" }; });
+  const setD = (k, v) => setDetails((s) => ({ ...s, [k]: v }));
+  const timeField = (k, label, ph) => (
+    <div>
+      <label className="block text-[12px] font-semibold text-zinc-500 mb-1">{label}</label>
+      <input value={details[k]} onChange={(e) => setD(k, e.target.value)} placeholder={ph} className="w-full bg-zinc-100 rounded-xl px-3.5 py-3 text-[15px] outline-none focus:ring-2 ring-black" />
+    </div>
+  );
   return (
     <Sheet onClose={onClose} title={isEdit ? "Edit fixture" : "Create fixture"}>
       <Field label="Opponent"><input autoFocus={!isEdit} value={opponent} onChange={(e) => setOpponent(e.target.value)} placeholder="e.g. Killeavy" className="w-full bg-zinc-100 rounded-xl px-3.5 py-3 text-[15px] outline-none focus:ring-2 ring-black" /></Field>
@@ -1277,8 +1285,18 @@ function FixtureForm({ initial, settings, onClose, onSave }) {
         </div>
       </Field>
       <Field label="Date & time"><input type="datetime-local" value={dt} onChange={(e) => setDt(e.target.value)} className="w-full bg-zinc-100 rounded-xl px-3.5 py-3 text-[15px] outline-none focus:ring-2 ring-black" /></Field>
-      <Field label="Notes / game plan (optional)"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="e.g. Press their puckout · mark their no.11" className="w-full bg-zinc-100 rounded-xl px-3.5 py-3 text-[14px] outline-none focus:ring-2 ring-black resize-none" /></Field>
-      <button disabled={!opponent.trim()} onClick={() => onSave({ opponent: opponent.trim(), venue, competition, notes: notes.trim(), date: dt ? fromLocalInput(dt) : nextDateAt(7, settings?.throwInTime) })} className="w-full bg-black disabled:bg-zinc-300 text-white font-bold py-3.5 rounded-2xl mt-2 active:scale-[0.99]">{isEdit ? "Save changes" : "Create fixture"}</button>
+      <Field label="Match-day details">
+        <p className="text-[12px] text-zinc-400 -mt-1 mb-2">Show on the shareable teamsheet poster.</p>
+        <div className="grid grid-cols-2 gap-2">
+          {timeField("changingRooms", "Changing rooms", "e.g. 6:50")}
+          {timeField("pitch", "Pitch", "e.g. 7:05")}
+          {timeField("warmUp", "Warm up", "e.g. 7:15")}
+          {timeField("throwIn", "Throw-in", "e.g. 7:30")}
+        </div>
+        <div className="mt-2">{timeField("ref", "Referee", "e.g. Barry Winters")}</div>
+      </Field>
+      <Field label="Notes"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="e.g. Press their puckout · mark their no.11" className="w-full bg-zinc-100 rounded-xl px-3.5 py-3 text-[14px] outline-none focus:ring-2 ring-black resize-none" /></Field>
+      <button disabled={!opponent.trim()} onClick={() => onSave({ opponent: opponent.trim(), venue, competition, notes: notes.trim(), date: dt ? fromLocalInput(dt) : nextDateAt(7, settings?.throwInTime), details })} className="w-full bg-black disabled:bg-zinc-300 text-white font-bold py-3.5 rounded-2xl mt-2 active:scale-[0.99]">{isEdit ? "Save changes" : "Create fixture"}</button>
     </Sheet>
   );
 }
