@@ -187,13 +187,9 @@ function reducer(state, action) {
       return { ...state, players: [...state.players, ...added] };
     }
     case "UPDATE_PLAYER": {
-      const target = state.players.find((p) => p.id === action.id);
-      const cap = action.patch.captaincy;
-      return { ...state, players: state.players.map((p) => {
-        if (p.id === action.id) return { ...p, ...action.patch };
-        if ((cap === "C" || cap === "VC") && target && p.teamId === target.teamId && p.captaincy === cap) return { ...p, captaincy: null };
-        return p;
-      }) };
+      // Captaincy is per-player: setting one player's role never clears anyone
+      // else's, so a team can carry several captains / vice-captains.
+      return { ...state, players: state.players.map((p) => (p.id === action.id ? { ...p, ...action.patch } : p)) };
     }
     case "DELETE_PLAYER": {
       const lineups = {};
@@ -333,7 +329,7 @@ const COLOR_PRESETS = [
   { name: "Purple & Gold", primary: "#6b21a8", accent: "#f59e0b" },
   { name: "Navy & Sky", primary: "#0c4a6e", accent: "#0ea5e9" },
 ];
-const DEFAULT_SETTINGS = { throwInTime: "19:30", homeVenue: "Middletown GAA Grounds", theme: { primary: "#18181b", accent: "#dc2626" }, lastBackup: null, largeText: false };
+const DEFAULT_SETTINGS = { throwInTime: "19:30", homeVenue: "Middletown GAA Grounds", theme: { primary: "#18181b", accent: "#dc2626", alternative: "#ffffff" }, lastBackup: null, largeText: false };
 // light haptic tap (no-op where unsupported, e.g. iOS Safari)
 const buzz = (ms = 12) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (_) {} };
 
@@ -1380,6 +1376,9 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
   const [picking, setPicking] = useState(null);
   const [view, setView] = useState("list");
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [poster, setPoster] = useState(null);
+  const posterUrl = useMemo(() => (poster ? URL.createObjectURL(new Blob([poster.svg], { type: "image/svg+xml;charset=utf-8" })) : null), [poster]);
+  useEffect(() => () => { if (posterUrl) URL.revokeObjectURL(posterUrl); }, [posterUrl]);
   const details = fixture.details || {};
 
   const assigned = new Set(Object.values(slots).filter(Boolean));
@@ -1465,8 +1464,8 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
     nav.toast("Teamsheet ready");
   };
 
-  const shareTeamsheetImage = async () => {
-    if (filled === 0) { nav.toast("Pick some players first"); return; }
+  const buildTeamsheetSvg = () => {
+    if (filled === 0) { nav.toast("Pick some players first"); return null; }
     const team = state.teams.find((t) => t.id === fixture.teamId) || {};
     const accent = theme.accent || "#dc2626";
     const gold = "#e0b83f";
@@ -1564,8 +1563,14 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
     ftr += `<text x="${cx}" y="${H - 6}" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" letter-spacing="2" fill="#8b8b93">${esc((CLUB.irish || "").toUpperCase())}  ·  PANELPRO</text>`;
 
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#0a0a0c"/><rect x="6" y="6" width="${W - 12}" height="${H - 12}" rx="28" fill="none" stroke="${accent}" stroke-width="2" opacity="0.35"/>${hdr}${form}${subs}${ftr}</svg>`;
-    const ok = await shareImage(svg, `lineout-${(fixture.opponent || "team").replace(/\s+/g, "-")}.png`, W, H);
-    if (ok) nav.toast("Teamsheet image ready"); else nav.toast("Couldn't create image");
+    return { svg, W, H, filename: `lineout-${(fixture.opponent || "team").replace(/\s+/g, "-")}.png` };
+  };
+
+  const openPosterPreview = () => { const built = buildTeamsheetSvg(); if (built) setPoster(built); };
+  const sharePoster = async () => {
+    if (!poster) return;
+    const ok = await shareImage(poster.svg, poster.filename, poster.W, poster.H);
+    if (ok) { nav.toast("Teamsheet sent"); setPoster(null); } else nav.toast("Couldn't create image");
   };
 
   return (
@@ -1709,10 +1714,26 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
       )}
       <div className="p-4 border-t border-zinc-200 bg-white flex gap-2" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
         <button onClick={() => setDetailsOpen(true)} className="shrink-0 bg-zinc-100 text-zinc-800 font-bold py-3.5 px-3.5 rounded-2xl active:scale-[0.99] flex items-center gap-1.5 text-[13px]"><Clock className="w-4 h-4" /> Details</button>
-        <button onClick={shareTeamsheetImage} className="shrink-0 bg-zinc-100 text-zinc-800 font-bold py-3.5 px-3.5 rounded-2xl active:scale-[0.99] flex items-center gap-1.5 text-[13px]"><Share2 className="w-4 h-4" /> Poster</button>
+        <button onClick={openPosterPreview} className="shrink-0 bg-zinc-100 text-zinc-800 font-bold py-3.5 px-3.5 rounded-2xl active:scale-[0.99] flex items-center gap-1.5 text-[13px]"><Share2 className="w-4 h-4" /> Poster</button>
         <button onClick={() => { dispatch({ type: "SET_LINEUP", fixtureId, lineup: slots }); nav.toast("Line-out saved"); nav.pop(); }} className="flex-1 text-white font-bold py-3.5 rounded-2xl active:scale-[0.99]" style={{ background: theme.primary }}>Save</button>
       </div>
       {detailsOpen && <MatchDetailsSheet initial={details} defaultThrowIn={fmtTime(fixture.date)} onClose={() => setDetailsOpen(false)} onSave={(f) => { dispatch({ type: "UPDATE_FIXTURE", id: fixtureId, patch: { details: f } }); setDetailsOpen(false); nav.toast("Match details saved"); }} />}
+      {poster && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col" style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}>
+          <div className="flex items-center justify-between px-4 py-3 shrink-0">
+            <button onClick={() => setPoster(null)} className="text-white/80 font-semibold text-[15px] flex items-center gap-1 active:opacity-70"><ChevronLeft className="w-5 h-5" /> Back</button>
+            <span className="text-white/60 text-[13px] font-medium">Preview</span>
+            <span className="w-14" />
+          </div>
+          <div className="flex-1 overflow-auto px-3 flex items-start justify-center">
+            <img src={posterUrl} alt="Teamsheet poster preview" className="w-full max-w-[520px] rounded-xl shadow-2xl" style={{ height: "auto" }} />
+          </div>
+          <div className="px-4 pt-3 pb-1 shrink-0 space-y-2">
+            <p className="text-center text-white/50 text-[12px]">Check everyone's in — tap a position behind to fix anything, then send.</p>
+            <button onClick={sharePoster} className="w-full text-white font-bold py-3.5 rounded-2xl active:scale-[0.99] flex items-center justify-center gap-2 text-[15px]" style={{ background: theme.primary }}><Share2 className="w-5 h-5" /> Share to WhatsApp</button>
+          </div>
+        </div>
+      )}
       {picking !== null && (
         <Sheet onClose={() => setPicking(null)} title={`Pick ${GAA_POSITIONS.find((p) => p.no === picking).name}`}>
           <div className="space-y-1.5 max-h-[58vh] overflow-y-auto -mx-1 px-1">
@@ -2857,23 +2878,43 @@ function SettingsScreen({ state, dispatch, nav }) {
 
         <div>
           <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-2">Club colours</p>
-          <div className="bg-white border border-zinc-200 rounded-2xl p-3">
-            <div className="grid grid-cols-4 gap-2">
-              {COLOR_PRESETS.map((c) => {
-                const cur = themeOf(state);
-                const active = cur.primary === c.primary && cur.accent === c.accent;
-                return (
-                  <button key={c.name} onClick={() => dispatch({ type: "SET_SETTINGS", patch: { theme: { primary: c.primary, accent: c.accent } } })} className={`rounded-xl p-1 border-2 ${active ? "border-zinc-900" : "border-transparent"}`}>
-                    <div className="h-9 rounded-lg overflow-hidden flex" style={{ background: c.primary }}>
-                      <div className="w-1/3 h-full" style={{ background: c.accent }} />
-                    </div>
-                    <p className="text-[9px] text-zinc-500 mt-1 leading-tight truncate">{c.name}</p>
-                  </button>
-                );
-              })}
-            </div>
+          {(() => {
+            const cur = themeOf(state);
+            const primary = cur.primary || "#18181b", accent = cur.accent || "#dc2626", alternative = cur.alternative || "#ffffff";
+            const setColour = (key, val) => dispatch({ type: "SET_SETTINGS", patch: { theme: { ...cur, [key]: val } } });
+            const swatches = [["primary", "Primary", primary], ["accent", "Secondary", accent], ["alternative", "Alternative", alternative]];
+            return (
+              <div className="bg-white border border-zinc-200 rounded-2xl divide-y divide-zinc-100">
+                {swatches.map(([key, label, val]) => (
+                  <label key={key} className="flex items-center justify-between px-4 py-3 cursor-pointer">
+                    <span className="text-[14px] font-semibold text-zinc-700">{label}</span>
+                    <span className="flex items-center gap-2.5">
+                      <span className="text-[12px] font-mono uppercase text-zinc-400">{val}</span>
+                      <span className="relative w-9 h-9 rounded-xl border border-zinc-200 shadow-inner overflow-hidden" style={{ background: val }}>
+                        <input type="color" value={/^#[0-9a-f]{6}$/i.test(val) ? val : "#000000"} onChange={(e) => setColour(key, e.target.value)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" aria-label={`${label} colour`} />
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            );
+          })()}
+          <p className="text-[12px] font-bold text-zinc-400 uppercase tracking-wide mt-3 mb-1.5">Quick presets</p>
+          <div className="grid grid-cols-4 gap-2">
+            {COLOR_PRESETS.map((c) => {
+              const cur = themeOf(state);
+              const active = cur.primary === c.primary && cur.accent === c.accent;
+              return (
+                <button key={c.name} onClick={() => dispatch({ type: "SET_SETTINGS", patch: { theme: { ...cur, primary: c.primary, accent: c.accent } } })} className={`rounded-xl p-1 border-2 ${active ? "border-zinc-900" : "border-transparent"}`}>
+                  <div className="h-9 rounded-lg overflow-hidden flex" style={{ background: c.primary }}>
+                    <div className="w-1/3 h-full" style={{ background: c.accent }} />
+                  </div>
+                  <p className="text-[9px] text-zinc-500 mt-1 leading-tight truncate">{c.name}</p>
+                </button>
+              );
+            })}
           </div>
-          <p className="text-[12px] text-zinc-400 mt-1.5">Used on the dashboard, the tab bar, the teamsheet and key buttons.</p>
+          <p className="text-[12px] text-zinc-400 mt-1.5">Primary and secondary drive the dashboard, tab bar, teamsheet and key buttons. Tap a swatch to pick any colour.</p>
         </div>
 
         <div>
