@@ -298,6 +298,22 @@ function reducer(state, action) {
         events: { ...state.events, [action.fixtureId]: action.events },
         fixtures: state.fixtures.map((f) => f.id === action.fixtureId ? { ...f, status: "completed", result: action.result, ht: action.ht || null, fullClock: action.fullClock || 0 } : f),
       };
+    // Re-open a completed match for editing: restore a live session from the saved
+    // result + feed and flip the fixture back to in-progress.
+    case "REOPEN_MATCH": {
+      const f = state.fixtures.find((x) => x.id === action.id);
+      if (!f) return state;
+      const lu = state.lineups[action.id] || {};
+      const starters = GAA_POSITIONS.map((pos) => lu[pos.no]).filter(Boolean);
+      const live = { score: f.result || { home: { g: 0, p: 0 }, away: { g: 0, p: 0 } }, clock: f.fullClock || 0, half: f.ht ? "H2" : "H1", events: state.events[action.id] || [], onPitch: starters, ht: f.ht || null };
+      return { ...state, liveMatches: { ...state.liveMatches, [action.id]: live }, fixtures: state.fixtures.map((x) => x.id === action.id ? { ...x, status: "scheduled" } : x) };
+    }
+    // Wipe a match back to a clean scheduled fixture (clears score, feed, POTM).
+    case "RESET_MATCH": {
+      const events = { ...state.events }; delete events[action.id];
+      const liveMatches = { ...state.liveMatches }; delete liveMatches[action.id];
+      return { ...state, events, liveMatches, fixtures: state.fixtures.map((f) => f.id === action.id ? { ...f, status: "scheduled", result: undefined, ht: undefined, fullClock: undefined, potm: undefined } : f) };
+    }
     default: return state;
   }
 }
@@ -2625,6 +2641,28 @@ function BigStat({ value, label }) {
 
 /* ============================ match report ============================ */
 
+// A compact per-player stat table used inside a match-report category.
+function StatTable({ title, rows, cols }) {
+  if (!rows.length) return null;
+  return (
+    <div className="mb-4">
+      <p className="text-[12px] font-bold text-zinc-400 uppercase tracking-wide mb-1.5">{title}</p>
+      <div className="bg-white border border-zinc-200 rounded-2xl overflow-hidden">
+        <div className="flex items-center px-3 py-2 bg-zinc-50 text-[10px] font-bold text-zinc-400 uppercase">
+          <span className="flex-1">Player</span>
+          {cols.map((c) => <span key={c.h} className="w-11 text-center">{c.h}</span>)}
+        </div>
+        {rows.map((a) => (
+          <div key={a.key} className="flex items-center px-3 py-2.5 border-t border-zinc-100 text-[13px]">
+            <span className="flex-1 font-semibold text-zinc-900 truncate">{a.label}</span>
+            {cols.map((c) => <span key={c.h} className="w-11 text-center tabular-nums font-bold text-zinc-800">{c.f(a)}</span>)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MatchReport({ state, dispatch, nav, fixtureId }) {
   const fixture = state.fixtures.find((f) => f.id === fixtureId);
   const events = state.events[fixtureId] || [];
@@ -2633,6 +2671,8 @@ function MatchReport({ state, dispatch, nav, fixtureId }) {
   const [showText, setShowText] = useState(false);
   const [notes, setNotes] = useState(fixture.notes || "");
   const [potmPick, setPotmPick] = useState(false);
+  const [openCat, setOpenCat] = useState(null);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const hf = totalPts(fixture.result.home.g, fixture.result.home.p), af = totalPts(fixture.result.away.g, fixture.result.away.p);
   const won = hf > af, draw = hf === af;
@@ -2702,6 +2742,50 @@ function MatchReport({ state, dispatch, nav, fixtureId }) {
     return { id: p.id, name: p.name, mins: Math.max(0, Math.round((off - on) / 60)), starter: starterIds.has(p.id), subbedOff: offAt[p.id] !== undefined };
   }).filter(Boolean).sort((a, b) => b.mins - a.mins);
 
+  // ---- per-player stat tallies for the drill-in categories ----
+  const nameOf = (id) => { const p = state.players.find((x) => x.id === id); return p ? p.name : null; };
+  const tally = (side) => {
+    const m = {};
+    events.filter((e) => e.side === side && e.type !== "Substitution").forEach((e) => {
+      if (side === "HOME" && !e.playerId && !e.player) return;
+      if (side === "AWAY" && e.playerNo == null) return;
+      const key = side === "HOME" ? (e.playerId || e.player) : `#${e.playerNo}`;
+      const label = side === "HOME" ? (nameOf(e.playerId) || e.player || "Unknown") : `#${e.playerNo}`;
+      const a = m[key] || (m[key] = { key, label, c: {} });
+      a.c[e.type] = (a.c[e.type] || 0) + 1;
+      if (e.detail) a.c[`${e.type}·${e.detail}`] = (a.c[`${e.type}·${e.detail}`] || 0) + 1;
+    });
+    return Object.values(m);
+  };
+  const homeRows = tally("HOME"), awayRows = tally("AWAY");
+  const g = (a, k) => a.c[k] || 0;
+  const freesOf = (a) => g(a, "Point·Free") + g(a, "Goal·Free") + g(a, "Free Converted");
+  const scoresOf = (a) => g(a, "Goal") + g(a, "Point") + g(a, "Free Converted");
+  const missesOf = (a) => g(a, "Wide") + g(a, "Saved") + g(a, "Dropped Short") + g(a, "65 Missed") + g(a, "Free Missed");
+  const shotsOf = (a) => scoresOf(a) + missesOf(a);
+  const convOf = (a) => { const s = shotsOf(a); return s ? Math.round((scoresOf(a) / s) * 100) + "%" : "—"; };
+  const foulsOf = (a) => g(a, "Foul Conceded") + g(a, "Yellow Card") + g(a, "Black Card") + g(a, "Red Card");
+  const sumRows = (rows, f) => rows.reduce((n, a) => n + (Number(f(a)) || 0), 0);
+  const CATS = [
+    { key: "scorers", label: "Scorers", icon: Medal, show: (a) => scoresOf(a) > 0, cols: [{ h: "Score", f: (a) => fmtScore(g(a, "Goal"), g(a, "Point") + g(a, "Free Converted")) }, { h: "Frees", f: freesOf }], head: fmtScore(sumRows(homeRows, (a) => g(a, "Goal")), sumRows(homeRows, (a) => g(a, "Point") + g(a, "Free Converted"))) },
+    { key: "shooting", label: "Shooting", icon: Flag, show: (a) => shotsOf(a) > 0, cols: [{ h: "Sc", f: scoresOf }, { h: "Miss", f: missesOf }, { h: "%", f: convOf }], head: conv !== null ? conv + "%" : "—" },
+    { key: "frees", label: "Frees", icon: Flag, show: (a) => g(a, "Free Won") || g(a, "Free Conceded"), cols: [{ h: "Won", f: (a) => g(a, "Free Won") }, { h: "Conc", f: (a) => g(a, "Free Conceded") }], head: `${sumRows(homeRows, (a) => g(a, "Free Won"))}–${sumRows(homeRows, (a) => g(a, "Free Conceded"))}` },
+    { key: "possession", label: "Possession", icon: ArrowLeftRight, show: (a) => ["Possession Won", "Possession Lost", "Possession·Positive", "Possession·Neutral", "Possession·Negative"].some((k) => g(a, k)), cols: [{ h: "Won", f: (a) => g(a, "Possession Won") }, { h: "Lost", f: (a) => g(a, "Possession Lost") }, { h: "+", f: (a) => g(a, "Possession·Positive") }, { h: "~", f: (a) => g(a, "Possession·Neutral") }, { h: "–", f: (a) => g(a, "Possession·Negative") }], head: `${sumRows(homeRows, (a) => g(a, "Possession Won"))} won` },
+    { key: "puckouts", label: "Puck-outs", icon: Circle, show: (a) => g(a, "Puck Out Won·Own") || g(a, "Puck Out Won·Opponent"), cols: [{ h: "Own", f: (a) => g(a, "Puck Out Won·Own") }, { h: "Opp", f: (a) => g(a, "Puck Out Won·Opponent") }], head: `${sumRows(homeRows, (a) => g(a, "Puck Out Won·Own") + g(a, "Puck Out Won·Opponent"))} won` },
+    { key: "discipline", label: "Discipline", icon: AlertTriangle, show: (a) => foulsOf(a) > 0, cols: [{ h: "Foul", f: foulsOf }, { h: "Y", f: (a) => g(a, "Yellow Card") }, { h: "B", f: (a) => g(a, "Black Card") }, { h: "R", f: (a) => g(a, "Red Card") }], head: `${sumRows(homeRows, foulsOf)} fouls` },
+  ];
+  const catCount = (c) => homeRows.filter(c.show).length + awayRows.filter(c.show).length;
+  const cards = [
+    ...CATS.filter((c) => catCount(c) > 0),
+    ...(gameTime.length ? [{ key: "gametime", label: "Game time", icon: Clock, head: `${gameTime.length} played`, extra: true }] : []),
+    ...(subs.length ? [{ key: "subs", label: "Substitutions", icon: ArrowLeftRight, head: `${subs.length}`, extra: true }] : []),
+    ...(ht ? [{ key: "byhalf", label: "By half", icon: Clock, head: "1st / 2nd", extra: true }] : []),
+  ];
+  const openCard = cards.find((c) => c.key === openCat) || CATS.find((c) => c.key === openCat);
+
+  const reopen = () => { dispatch({ type: "REOPEN_MATCH", id: fixture.id }); nav.push("live", { fixtureId: fixture.id }); };
+  const resetMatch = () => { dispatch({ type: "RESET_MATCH", id: fixture.id }); setConfirmReset(false); nav.toast("Match reset — track it again from Fixtures"); nav.reset("fixtures"); };
+
   return (
     <div className="flex flex-col h-full">
       <StatusBar />
@@ -2717,65 +2801,11 @@ function MatchReport({ state, dispatch, nav, fixtureId }) {
           <p className="text-center text-[12px] text-zinc-500 mt-2 tabular-nums">{hf} – {af} on total points</p>
         </div>
 
-        <div className="p-4">
-          <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-2">Scorers</p>
-          {scorers.length === 0 ? <Empty text="No scorers were attributed in this match" icon={Medal} /> : (
-            <div className="bg-white border border-zinc-200 rounded-2xl divide-y divide-zinc-100">
-              {scorers.map((s) => (
-                <div key={s.id || s.name} className="flex items-center gap-3 px-4 py-3">
-                  <span className="font-black text-[15px] tabular-nums text-zinc-900 w-12">{fmtScore(s.goals, s.points)}</span>
-                  <span className="font-semibold text-[15px] text-zinc-900 flex-1">{s.name}</span>
-                  {s.frees > 0 && <span className="text-[11px] text-zinc-400">{s.frees} from frees</span>}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {(homeWides > 0 || subs.length > 0) && (
-            <div className="grid grid-cols-2 gap-3 mt-3">
-              <div className="bg-white border border-zinc-200 rounded-2xl p-4"><p className="text-2xl font-black tabular-nums text-zinc-900">{homeWides}</p><p className="text-[12px] text-zinc-500 mt-0.5">Wides</p></div>
-              <div className="bg-white border border-zinc-200 rounded-2xl p-4"><p className="text-2xl font-black tabular-nums text-zinc-900">{subs.length}</p><p className="text-[12px] text-zinc-500 mt-0.5">Substitutions</p></div>
-            </div>
-          )}
-
-          {subs.length > 0 && (
-            <div className="mt-4">
-              <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-2">Substitutions</p>
-              <div className="bg-white border border-zinc-200 rounded-2xl divide-y divide-zinc-100">
-                {subs.slice().reverse().map((e, i) => (
-                  <div key={i} className="flex items-center gap-2 px-4 py-2.5 text-[14px]">
-                    <span className="text-[11px] font-bold text-zinc-400 tabular-nums w-9">{fmtClock(e.clock)}</span>
-                    <span className="text-zinc-900 font-semibold flex-1">{e.on} <span className="text-zinc-400 font-normal">for</span> {e.off}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {(scoresN > 0 || homeWides > 0) && (
-            <div className="mt-5">
-              <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-2">Scoring breakdown</p>
-              <div className="grid grid-cols-4 gap-2">
-                {[["Goals", goalsN], ["Points", pointsN], ["Frees", freesN], ["Wides", homeWides]].map(([l, v]) => (
-                  <div key={l} className="bg-white border border-zinc-200 rounded-xl py-3 text-center">
-                    <p className="text-[20px] font-black tabular-nums text-zinc-900 leading-none">{v}</p>
-                    <p className="text-[11px] text-zinc-500 mt-1">{l}</p>
-                  </div>
-                ))}
-              </div>
-              {conv !== null && (
-                <div className="mt-2 bg-white border border-zinc-200 rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-1.5"><span className="text-[12px] text-zinc-500">Shot conversion</span><span className="text-[13px] font-bold tabular-nums">{conv}%</span></div>
-                  <div className="h-2.5 rounded-full bg-zinc-100 overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${conv}%` }} /></div>
-                  <p className="text-[11px] text-zinc-400 mt-1.5">{scoresN} scored · {homeMisses} off target · {shotsN} shots</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {gameTime.length > 0 && (
-            <div className="mt-5">
-              <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-2">Game time</p>
+        {openCat ? (
+          <div className="p-4">
+            <button onClick={() => setOpenCat(null)} className="flex items-center gap-1 text-[14px] font-semibold text-zinc-600 mb-3 active:opacity-70"><ChevronLeft className="w-5 h-5" /> All stats</button>
+            <p className="text-[17px] font-black text-zinc-900 mb-3">{openCard?.label}</p>
+            {openCat === "gametime" ? (
               <div className="bg-white border border-zinc-200 rounded-2xl divide-y divide-zinc-100">
                 {gameTime.map((r) => (
                   <button key={r.id} onClick={() => nav.push("playerProfile", { playerId: r.id })} className="w-full flex items-center gap-3 px-4 py-2.5 active:bg-zinc-50 text-left">
@@ -2786,76 +2816,96 @@ function MatchReport({ state, dispatch, nav, fixtureId }) {
                   </button>
                 ))}
               </div>
-              <p className="text-[11px] text-zinc-400 mt-1.5">Minutes on the pitch, from the line-out and substitutions.</p>
-            </div>
-          )}
-
-          {ht && (
-            <div className="mt-5">
-              <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-2">By half</p>
+            ) : openCat === "subs" ? (
+              <div className="bg-white border border-zinc-200 rounded-2xl divide-y divide-zinc-100">
+                {subs.slice().reverse().map((e, i) => (
+                  <div key={i} className="flex items-center gap-2 px-4 py-2.5 text-[14px]">
+                    <span className="text-[11px] font-bold text-zinc-400 tabular-nums w-9">{fmtClock(e.clock)}</span>
+                    <span className="text-zinc-900 font-semibold flex-1">{e.on} <span className="text-zinc-400 font-normal">for</span> {e.off}</span>
+                  </div>
+                ))}
+              </div>
+            ) : openCat === "byhalf" && ht ? (
               <div className="bg-white border border-zinc-200 rounded-2xl overflow-hidden">
-                <div className="flex items-center px-4 py-2 bg-zinc-50">
-                  <span className="flex-1" />
-                  <span className="w-16 text-center text-[11px] text-zinc-400 truncate">{HOME_NAME}</span>
-                  <span className="w-16 text-center text-[11px] text-zinc-400 truncate">{fixture.opponent}</span>
-                </div>
-                <div className="flex items-center px-4 py-2.5 border-t border-zinc-100">
-                  <span className="flex-1 text-[13px] text-zinc-500">1st half</span>
-                  <span className="w-16 text-center font-bold tabular-nums text-[14px]">{fmtScore(ht.home.g, ht.home.p)}</span>
-                  <span className="w-16 text-center font-bold tabular-nums text-[14px]">{fmtScore(ht.away.g, ht.away.p)}</span>
-                </div>
-                <div className="flex items-center px-4 py-2.5 border-t border-zinc-100">
-                  <span className="flex-1 text-[13px] text-zinc-500">2nd half</span>
-                  <span className="w-16 text-center font-bold tabular-nums text-[14px]">{fmtScore(h2.home.g, h2.home.p)}</span>
-                  <span className="w-16 text-center font-bold tabular-nums text-[14px]">{fmtScore(h2.away.g, h2.away.p)}</span>
-                </div>
+                <div className="flex items-center px-4 py-2 bg-zinc-50"><span className="flex-1" /><span className="w-16 text-center text-[11px] text-zinc-400 truncate">{HOME_NAME}</span><span className="w-16 text-center text-[11px] text-zinc-400 truncate">{fixture.opponent}</span></div>
+                <div className="flex items-center px-4 py-2.5 border-t border-zinc-100"><span className="flex-1 text-[13px] text-zinc-500">1st half</span><span className="w-16 text-center font-bold tabular-nums text-[14px]">{fmtScore(ht.home.g, ht.home.p)}</span><span className="w-16 text-center font-bold tabular-nums text-[14px]">{fmtScore(ht.away.g, ht.away.p)}</span></div>
+                <div className="flex items-center px-4 py-2.5 border-t border-zinc-100"><span className="flex-1 text-[13px] text-zinc-500">2nd half</span><span className="w-16 text-center font-bold tabular-nums text-[14px]">{fmtScore(h2.home.g, h2.home.p)}</span><span className="w-16 text-center font-bold tabular-nums text-[14px]">{fmtScore(h2.away.g, h2.away.p)}</span></div>
               </div>
-            </div>
-          )}
-
-          <div className="mt-5">
-            <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-2">Player of the Match</p>
-            <button onClick={() => setPotmPick(true)} className="w-full bg-white border border-zinc-200 rounded-2xl p-4 flex items-center gap-3 active:bg-zinc-50">
-              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center"><Medal className="w-5 h-5 text-amber-600" /></div>
-              <div className="flex-1 text-left">
-                {potmPlayer ? <p className="font-bold text-[15px] text-zinc-900">{potmPlayer.name}</p> : <p className="text-[14px] text-zinc-400">Tap to select</p>}
-                <p className="text-[12px] text-zinc-500">{potmPlayer ? "Player of the Match" : "Recognise your standout"}</p>
-              </div>
-              <ChevronRight className="w-5 h-5 text-zinc-300" />
-            </button>
+            ) : openCard ? (
+              <>
+                <StatTable title={HOME_NAME} rows={homeRows.filter(openCard.show)} cols={openCard.cols} />
+                <StatTable title={fixture.opponent} rows={awayRows.filter(openCard.show)} cols={openCard.cols} />
+                {!homeRows.filter(openCard.show).length && !awayRows.filter(openCard.show).length && <Empty text={`No ${openCard.label.toLowerCase()} recorded`} icon={openCard.icon} />}
+              </>
+            ) : null}
           </div>
-
-          <div className="mt-5">
-            <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-2">Match notes</p>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Game plan, how it went, what to work on…" className="w-full bg-white border border-zinc-200 rounded-2xl p-3 text-[14px] text-zinc-700 outline-none focus:ring-2 ring-black resize-none" />
-            {notes !== (fixture.notes || "") && <button onClick={() => { dispatch({ type: "UPDATE_FIXTURE", id: fixture.id, patch: { notes: notes.trim() } }); nav.toast("Notes saved"); }} className="w-full mt-2 bg-zinc-900 text-white font-semibold py-2.5 rounded-xl text-[13px] active:scale-[0.99]">Save notes</button>}
-          </div>
-
-          <div className="flex gap-2 mt-5">
-            <button onClick={share} className="flex-1 bg-black text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.99]">
-              <Share2 className="w-4 h-4" /> {copied ? "Copied ✓" : "Share text"}
-            </button>
-            <button onClick={shareReportImage} className="flex-1 bg-zinc-100 text-zinc-800 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.99]">
-              <Share2 className="w-4 h-4" /> Share image
-            </button>
-          </div>
-
-          {potmPick && (
-            <Sheet title="Player of the Match" onClose={() => setPotmPick(false)}>
-              {potmPlayer && <button onClick={() => { dispatch({ type: "UPDATE_FIXTURE", id: fixture.id, patch: { potm: null } }); setPotmPick(false); nav.toast("Cleared"); }} className="w-full text-[13px] font-semibold text-red-600 py-2">Clear selection</button>}
-              <div className="space-y-1 max-h-80 overflow-y-auto">
-                {potmCandidates.map((p) => (
-                  <button key={p.id} onClick={() => { dispatch({ type: "UPDATE_FIXTURE", id: fixture.id, patch: { potm: p.id } }); setPotmPick(false); nav.toast("Player of the Match set"); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left ${fixture.potm === p.id ? "bg-amber-50" : "active:bg-zinc-50"}`}>
-                    <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center font-bold text-[12px] text-zinc-600">{initials(p.name)}</div>
-                    <span className="flex-1 font-semibold text-[14px] text-zinc-900">{p.name}</span>
-                    {fixture.potm === p.id && <Medal className="w-4 h-4 text-amber-500" />}
+        ) : (
+          <div className="p-4 space-y-4">
+            {cards.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3">
+                {cards.map((c) => (
+                  <button key={c.key} onClick={() => setOpenCat(c.key)} className="bg-white border border-zinc-200 rounded-2xl p-4 text-left active:bg-zinc-50">
+                    <div className="flex items-center gap-2 mb-2"><c.icon className="w-4 h-4 text-zinc-400" /><ChevronRight className="w-4 h-4 text-zinc-300 ml-auto" /></div>
+                    <p className="text-[15px] font-bold text-zinc-900 leading-tight">{c.label}</p>
+                    <p className="text-[12px] text-zinc-500 mt-0.5 tabular-nums">{c.head}</p>
                   </button>
                 ))}
               </div>
-            </Sheet>
-          )}
-        </div>
+            ) : (
+              <Empty text="No stats were logged for this game" icon={Medal} />
+            )}
+
+            <div>
+              <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-2">Player of the Match</p>
+              <button onClick={() => setPotmPick(true)} className="w-full bg-white border border-zinc-200 rounded-2xl p-4 flex items-center gap-3 active:bg-zinc-50">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center"><Medal className="w-5 h-5 text-amber-600" /></div>
+                <div className="flex-1 text-left">
+                  {potmPlayer ? <p className="font-bold text-[15px] text-zinc-900">{potmPlayer.name}</p> : <p className="text-[14px] text-zinc-400">Tap to select</p>}
+                  <p className="text-[12px] text-zinc-500">{potmPlayer ? "Player of the Match" : "Recognise your standout"}</p>
+                </div>
+                <ChevronRight className="w-5 h-5 text-zinc-300" />
+              </button>
+            </div>
+
+            <div>
+              <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-2">Match notes</p>
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Game plan, how it went, what to work on…" className="w-full bg-white border border-zinc-200 rounded-2xl p-3 text-[14px] text-zinc-700 outline-none focus:ring-2 ring-black resize-none" />
+              {notes !== (fixture.notes || "") && <button onClick={() => { dispatch({ type: "UPDATE_FIXTURE", id: fixture.id, patch: { notes: notes.trim() } }); nav.toast("Notes saved"); }} className="w-full mt-2 bg-zinc-900 text-white font-semibold py-2.5 rounded-xl text-[13px] active:scale-[0.99]">Save notes</button>}
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={share} className="flex-1 bg-black text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.99]">
+                <Share2 className="w-4 h-4" /> {copied ? "Copied ✓" : "Share text"}
+              </button>
+              <button onClick={shareReportImage} className="flex-1 bg-zinc-100 text-zinc-800 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.99]">
+                <Share2 className="w-4 h-4" /> Share image
+              </button>
+            </div>
+
+            <div className="pt-2 border-t border-zinc-100 space-y-2">
+              <button onClick={reopen} className="w-full bg-zinc-100 text-zinc-800 font-bold py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.99] text-[14px]"><Pencil className="w-4 h-4" /> Edit stats (re-open match)</button>
+              <button onClick={() => setConfirmReset(true)} className="w-full text-red-600 font-semibold py-2 rounded-2xl text-[13px] flex items-center justify-center gap-1.5 active:opacity-70"><RotateCcw className="w-3.5 h-3.5" /> Reset match to default</button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {potmPick && (
+        <Sheet title="Player of the Match" onClose={() => setPotmPick(false)}>
+          {potmPlayer && <button onClick={() => { dispatch({ type: "UPDATE_FIXTURE", id: fixture.id, patch: { potm: null } }); setPotmPick(false); nav.toast("Cleared"); }} className="w-full text-[13px] font-semibold text-red-600 py-2">Clear selection</button>}
+          <div className="space-y-1 max-h-80 overflow-y-auto">
+            {potmCandidates.map((p) => (
+              <button key={p.id} onClick={() => { dispatch({ type: "UPDATE_FIXTURE", id: fixture.id, patch: { potm: p.id } }); setPotmPick(false); nav.toast("Player of the Match set"); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left ${fixture.potm === p.id ? "bg-amber-50" : "active:bg-zinc-50"}`}>
+                <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center font-bold text-[12px] text-zinc-600">{initials(p.name)}</div>
+                <span className="flex-1 font-semibold text-[14px] text-zinc-900">{p.name}</span>
+                {fixture.potm === p.id && <Medal className="w-4 h-4 text-amber-500" />}
+              </button>
+            ))}
+          </div>
+        </Sheet>
+      )}
+
+      {confirmReset && <Confirm title="Reset match?" confirmLabel="Reset" message="This clears the score, all logged stats and the result, and moves the game back to upcoming so you can track it again. This can't be undone." onConfirm={resetMatch} onClose={() => setConfirmReset(false)} />}
 
       {showText && (
         <Sheet title="Copy report" onClose={() => setShowText(false)}>
