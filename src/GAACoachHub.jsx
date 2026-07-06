@@ -1602,6 +1602,8 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
     const accent = theme.accent || "#dc2626";
     const gold = "#e0b83f";
     const esc = xmlEsc;
+    // Shrink a name just enough to fit its box so long names never spill over.
+    const fitFont = (t, base, maxW, min = 14) => Math.max(min, Math.min(base, Math.floor(maxW / (0.62 * Math.max(t.length, 1)))));
     const W = 1080, OP = 28, IW = W - 2 * OP, PI = 40;
     const d = fixture.details || {};
     const isHome = (fixture.venue || "").trim() === (state.settings?.homeVenue || "").trim();
@@ -1691,7 +1693,7 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
     [[10, 11, 12], [13, 14, 15]].forEach((row) => { row.forEach((no, i) => { form += card(x3[i], y, cardW, cardH, no, pAt(no)); }); y += cardH + rowGap; });
 
     // ---- subs ----
-    y += 18;
+    y += 30;
     let subs = `<text x="${OP + 4}" y="${y}" font-family="Arial" font-size="26" font-weight="800" letter-spacing="3" fill="#ffffff">SUBSTITUTES</text><text x="${OP + 4 + 320}" y="${y}" font-family="Arial" font-size="20" font-weight="700" fill="#8b8b93"> / ${numberedSubs.length}</text>`;
     subs += `<line x1="${OP + 4}" y1="${y + 18}" x2="${W - OP - 4}" y2="${y + 18}" stroke="#26262c" stroke-width="1.5"/>`;
     y += 58;
@@ -1699,17 +1701,18 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
     numberedSubs.forEach(({ no, player: p }, i) => {
       const col = i % 3, rowN = Math.floor(i / 3);
       const sx = OP + col * subColW, sy = y + rowN * 60;
+      const isGK = p.group === "GK", nm = p.name.toUpperCase();
+      const nf = fitFont(nm, 25, subColW - 52 - 14 - (isGK ? 58 : 0));
       subs += `<text x="${sx + 4}" y="${sy}" font-family="Arial" font-size="26" font-weight="800" fill="${accent}">${no}</text>`;
-      subs += `<text x="${sx + 52}" y="${sy}" font-family="Arial" font-size="25" font-weight="700" fill="#e4e4e7">${esc(p.name.toUpperCase())}</text>`;
-      if (p.group === "GK") subs += chipAt(sx + subColW - 74, sy - 24, "GK", accent);
+      subs += `<text x="${sx + 52}" y="${sy}" font-family="Arial" font-size="${nf}" font-weight="700" fill="#e4e4e7">${esc(nm)}</text>`;
+      if (isGK) subs += chipAt(sx + subColW - 70, sy - 24, "GK", accent);
     });
     y += Math.ceil(numberedSubs.length / 3) * 60 + 20;
 
     // ---- footer ----
-    const H = y + 96;
+    const H = y + 60;
     let ftr = `<line x1="${OP + PI}" y1="${y + 8}" x2="${W - OP - PI}" y2="${y + 8}" stroke="#26262c" stroke-width="1.5"/>`;
-    ftr += `<image href="${team.crest || CREST}" x="${cx - 26}" y="${y + 24}" width="52" height="52" preserveAspectRatio="xMidYMid meet"/>`;
-    ftr += `<text x="${cx}" y="${H - 6}" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" letter-spacing="2" fill="#8b8b93">${esc((CLUB.irish || "").toUpperCase())}  ·  PANELPRO</text>`;
+    ftr += `<text x="${cx}" y="${y + 46}" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" letter-spacing="2" fill="#8b8b93">${esc((CLUB.irish || "").toUpperCase())}  ·  PANELPRO</text>`;
 
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#0a0a0c"/><rect x="6" y="6" width="${W - 12}" height="${H - 12}" rx="28" fill="none" stroke="${accent}" stroke-width="2" opacity="0.35"/>${hdr}${form}${subs}${ftr}</svg>`;
     return { svg, W, H, filename: `lineout-${(fixture.opponent || "team").replace(/\s+/g, "-")}.png` };
@@ -2335,6 +2338,8 @@ function Attendance({ state, dispatch, nav, sessionId }) {
     const accent = theme.accent || "#dc2626";
     const crest = team.crest || CREST;
     const groups = statuses.map((s) => ({ ...s, players: ordered.filter((p) => att[p.id] === s.value) }));
+    // Shrink a name just enough to fit its column so nothing spills over.
+    const fitFont = (t, base, maxW, min = 16) => Math.max(min, Math.min(base, Math.floor(maxW / (0.54 * Math.max(t.length, 1)))));
     let body = "", y = M;
     // header
     const hH = 196;
@@ -2361,14 +2366,14 @@ function Attendance({ state, dispatch, nav, sessionId }) {
         g.players.forEach((p, i) => {
           const col = i % 2, rowN = Math.floor(i / 2);
           const px = M + 34 + col * colW, py = y + barH + 22 + rowN * rowH;
-          body += `<text x="${px}" y="${py}" font-family="Arial" font-size="26" font-weight="600" fill="#e8e8ea">${esc(p.name)}</text>`;
+          const nf = fitFont(p.name, 26, colW - 30);
+          body += `<text x="${px}" y="${py}" font-family="Arial" font-size="${nf}" font-weight="600" fill="#e8e8ea">${esc(p.name)}</text>`;
         });
       }
       y += secH + 18;
     });
-    const H = y + 60;
-    body += `<image href="${crest}" x="${W / 2 - 20}" y="${H - 52}" width="40" height="40" preserveAspectRatio="xMidYMid meet"/>`;
-    body += `<text x="${W / 2}" y="${H - 6}" text-anchor="middle" font-family="Arial" font-size="17" font-weight="700" letter-spacing="2" fill="#8b8b93">${esc((CLUB.irish || "").toUpperCase())}  ·  PANELPRO</text>`;
+    const H = y + 42;
+    body += `<text x="${W / 2}" y="${H - 14}" text-anchor="middle" font-family="Arial" font-size="16" font-weight="700" letter-spacing="2" fill="#6b6b73">${esc((CLUB.irish || "").toUpperCase())}  ·  PANELPRO</text>`;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#0a0a0c"/><rect x="6" y="6" width="${W - 12}" height="${H - 12}" rx="26" fill="none" stroke="${accent}" stroke-width="2" opacity="0.35"/>${body}</svg>`;
     return { svg, W, H, filename: `attendance-${(session.focus || "training").replace(/\s+/g, "-")}.png` };
   };
