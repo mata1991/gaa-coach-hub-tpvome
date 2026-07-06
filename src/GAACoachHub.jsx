@@ -1638,10 +1638,12 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
 
     // ---- header ----
     const hY = OP, hH = 462, cx = W / 2;
-    let hdr = `<rect x="${OP}" y="${hY}" width="${IW}" height="${hH}" rx="24" fill="#101013" stroke="#26262c" stroke-width="1.5"/>`;
-    hdr += `<text x="${OP + PI}" y="${hY + 52}" font-family="Arial" font-size="23" font-weight="800" letter-spacing="2"><tspan fill="#ffffff">${esc((team.name || "").toUpperCase())}</tspan><tspan fill="${accent}">  ·  ${esc(roundLabel)}</tspan></text>`;
-    hdr += `<text x="${W - OP - PI}" y="${hY + 52}" text-anchor="end" font-family="Arial" font-size="21" font-weight="700" letter-spacing="1" fill="#9a9aa2">${esc(dateLabel)}</text>`;
-    hdr += `<line x1="${OP + PI}" y1="${hY + 76}" x2="${W - OP - PI}" y2="${hY + 76}" stroke="#26262c" stroke-width="1.5"/>`;
+    // White header so the (white-backed) crests and jerseys sit in cleanly.
+    const hInk = "#17171b", hMuted = "#6b7280", hLine = "#e4e4e7";
+    let hdr = `<rect x="${OP}" y="${hY}" width="${IW}" height="${hH}" rx="24" fill="#ffffff" stroke="#e4e4e7" stroke-width="1.5"/>`;
+    hdr += `<text x="${OP + PI}" y="${hY + 52}" font-family="Arial" font-size="23" font-weight="800" letter-spacing="2"><tspan fill="${hInk}">${esc((team.name || "").toUpperCase())}</tspan><tspan fill="${accent}">  ·  ${esc(roundLabel)}</tspan></text>`;
+    hdr += `<text x="${W - OP - PI}" y="${hY + 52}" text-anchor="end" font-family="Arial" font-size="21" font-weight="700" letter-spacing="1" fill="${hMuted}">${esc(dateLabel)}</text>`;
+    hdr += `<line x1="${OP + PI}" y1="${hY + 76}" x2="${W - OP - PI}" y2="${hY + 76}" stroke="${hLine}" stroke-width="1.5"/>`;
     // ---- matchup: each side shows its crest + jersey, then name ----
     const primary = theme.primary || "#18181b";
     const home = HOME_NAME.toUpperCase(), away = (fixture.opponent || "OPPONENT").toUpperCase();
@@ -1650,7 +1652,7 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
     const imgBox = (src, x, y, w, h) => `<image href="${src}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid meet"/>`;
     const crestFallback = (label, mx, ty, s) => {
       const ini = (label || "?").split(/\s+/).map((w) => w[0]).filter(Boolean).join("").slice(0, 3).toUpperCase();
-      return `<circle cx="${mx}" cy="${ty + s / 2}" r="${s / 2 - 1}" fill="#17171b" stroke="#2b2b31" stroke-width="2"/><text x="${mx}" y="${ty + s / 2 + 11}" text-anchor="middle" font-family="Arial" font-size="30" font-weight="800" fill="#8b8b93">${esc(ini)}</text>`;
+      return `<circle cx="${mx}" cy="${ty + s / 2}" r="${s / 2 - 1}" fill="#f4f4f5" stroke="#d4d4d8" stroke-width="2"/><text x="${mx}" y="${ty + s / 2 + 11}" text-anchor="middle" font-family="Arial" font-size="30" font-weight="800" fill="#9ca3af">${esc(ini)}</text>`;
     };
     const jerseyMark = (mx, ty, w, h, body, trim) => {
       const x = mx - w / 2, sl = w * 0.24, nk = w * 0.26;
@@ -1666,24 +1668,24 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
       let out = crestSrc ? imgBox(crestSrc, crestX, imgY, crestS, crestS) : crestFallback(name, crestX + crestS / 2, imgY, crestS);
       out += jerseySrc ? imgBox(jerseySrc, jerseyX, imgY, jW, jH) : jerseyMark(jerseyX + jW / 2, imgY, jW, jH, jBody, jTrim);
       const nf = Math.max(20, Math.min(34, Math.floor((pairW + 24) / (0.58 * Math.max(name.length, 6)))));
-      out += `<text x="${cX}" y="${imgY + jH + 42}" text-anchor="middle" font-family="Arial" font-size="${nf}" font-weight="800" fill="#ffffff">${esc(name)}</text>`;
-      out += chipCenter(cX, imgY + jH + 58, chip, chipOn ? accent : "#2b2b31");
+      out += `<text x="${cX}" y="${imgY + jH + 42}" text-anchor="middle" font-family="Arial" font-size="${nf}" font-weight="800" fill="${hInk}">${esc(name)}</text>`;
+      out += chipCenter(cX, imgY + jH + 58, chip, chipOn ? accent : "#3f3f46");
       return out;
     };
     hdr += teamBlock(homeCX, homeCrest, home, homeJersey, primary, accent, isHome ? "HOME" : "AWAY", isHome, true);
-    hdr += teamBlock(awayCX, awayCrest, away, awayJersey, "#26262c", "#3a3a42", isHome ? "AWAY" : "HOME", !isHome, false);
+    hdr += teamBlock(awayCX, awayCrest, away, awayJersey, "#d4d4d8", "#a1a1aa", isHome ? "AWAY" : "HOME", !isHome, false);
     hdr += `<text x="${cx}" y="${imgY + 56}" text-anchor="middle" font-family="Arial" font-size="34" font-weight="800" fill="${accent}">VS</text>`;
-    hdr += `<line x1="${OP + PI}" y1="${hY + 306}" x2="${W - OP - PI}" y2="${hY + 306}" stroke="${accent}" stroke-width="2" opacity="0.5"/>`;
+    hdr += `<line x1="${OP + PI}" y1="${hY + 306}" x2="${W - OP - PI}" y2="${hY + 306}" stroke="${accent}" stroke-width="2" opacity="0.6"/>`;
     // info row: 4 centred columns with subtle separators
     const infos = [["CHANGING ROOMS", d.changingRooms || "—"], ["PITCH", d.pitch || "—"], ["WARM UP", d.warmUp || "—"], ["THROW-IN", d.throwIn || fmtTime(fixture.date)]];
     const colW = (IW - 2 * PI) / 4;
-    for (let i = 1; i < 4; i++) { const xl = OP + PI + colW * i; hdr += `<line x1="${xl}" y1="${hY + 330}" x2="${xl}" y2="${hY + 392}" stroke="#26262c" stroke-width="1.5"/>`; }
+    for (let i = 1; i < 4; i++) { const xl = OP + PI + colW * i; hdr += `<line x1="${xl}" y1="${hY + 330}" x2="${xl}" y2="${hY + 392}" stroke="${hLine}" stroke-width="1.5"/>`; }
     infos.forEach(([lab, val], i) => {
       const c = OP + PI + colW * (i + 0.5);
-      hdr += `<text x="${c}" y="${hY + 350}" text-anchor="middle" font-family="Arial" font-size="16" font-weight="700" letter-spacing="1.5" fill="#8b8b93">${esc(lab)}</text>`;
-      hdr += `<text x="${c}" y="${hY + 384}" text-anchor="middle" font-family="Arial" font-size="30" font-weight="800" fill="#ffffff">${esc(val)}</text>`;
+      hdr += `<text x="${c}" y="${hY + 350}" text-anchor="middle" font-family="Arial" font-size="16" font-weight="700" letter-spacing="1.5" fill="${hMuted}">${esc(lab)}</text>`;
+      hdr += `<text x="${c}" y="${hY + 384}" text-anchor="middle" font-family="Arial" font-size="30" font-weight="800" fill="${hInk}">${esc(val)}</text>`;
     });
-    hdr += `<text x="${cx}" y="${hY + 430}" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" letter-spacing="1" fill="#9a9aa2">${esc((fixture.venue || "").toUpperCase())}${d.ref ? ` · REF: ${esc(d.ref.toUpperCase())}` : ""}</text>`;
+    hdr += `<text x="${cx}" y="${hY + 430}" text-anchor="middle" font-family="Arial" font-size="19" font-weight="700" letter-spacing="1" fill="${hMuted}">${esc((fixture.venue || "").toUpperCase())}${d.ref ? ` · REF: ${esc(d.ref.toUpperCase())}` : ""}</text>`;
 
     // ---- formation ----
     let y = hY + hH + 30, form = "";
@@ -1709,10 +1711,10 @@ function Lineup({ state, dispatch, nav, fixtureId }) {
     });
     y += Math.ceil(numberedSubs.length / 3) * 60 + 20;
 
-    // ---- footer ----
-    const H = y + 60;
-    let ftr = `<line x1="${OP + PI}" y1="${y + 8}" x2="${W - OP - PI}" y2="${y + 8}" stroke="#26262c" stroke-width="1.5"/>`;
-    ftr += `<text x="${cx}" y="${y + 46}" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" letter-spacing="2" fill="#8b8b93">${esc((CLUB.irish || "").toUpperCase())}  ·  PANELPRO</text>`;
+    // ---- footer ---- (club name + PanelPro centred between the divider and the bottom edge)
+    const fLineY = y + 10, H = y + 68, fBottom = H - 6;
+    let ftr = `<line x1="${OP + PI}" y1="${fLineY}" x2="${W - OP - PI}" y2="${fLineY}" stroke="#26262c" stroke-width="1.5"/>`;
+    ftr += `<text x="${cx}" y="${(fLineY + fBottom) / 2 + 6}" text-anchor="middle" font-family="Arial" font-size="18" font-weight="700" letter-spacing="2" fill="#8b8b93">${esc((CLUB.irish || "").toUpperCase())}  ·  PANELPRO</text>`;
 
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#0a0a0c"/><rect x="6" y="6" width="${W - 12}" height="${H - 12}" rx="28" fill="none" stroke="${accent}" stroke-width="2" opacity="0.35"/>${hdr}${form}${subs}${ftr}</svg>`;
     return { svg, W, H, filename: `lineout-${(fixture.opponent || "team").replace(/\s+/g, "-")}.png` };
@@ -2894,6 +2896,13 @@ function PlayerProfile({ state, dispatch, nav, playerId }) {
       else if (e.type === "Wide") wides++;
     });
   });
+  // Clean sheets (goalkeepers): completed games they started in goal where the opposition failed to score.
+  const isGK = player.group === "GK";
+  let cleanSheets = 0;
+  if (isGK) completed.forEach((f) => {
+    const lu = state.lineups[f.id];
+    if (lu && lu["1"] === player.id && f.result && totalPts(f.result.away.g, f.result.away.p) === 0) cleanSheets++;
+  });
   const teamSessions = state.sessions.filter((s) => s.teamId === player.teamId);
   const recorded = teamSessions.filter((s) => state.attendance[s.id] && Object.keys(state.attendance[s.id]).length);
   const trained = recorded.filter((s) => state.attendance[s.id][player.id] === "TRAINED").length;
@@ -2934,7 +2943,9 @@ function PlayerProfile({ state, dispatch, nav, playerId }) {
           <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-3">This season</p>
           <div className="grid grid-cols-2 gap-3">
             <BigStat value={fmtScore(goals, points)} label={`Scored${frees ? ` · ${frees}f` : ""}`} />
-            <BigStat value={totalPts(goals, points)} label="Total points" />
+            {isGK
+              ? <BigStat value={cleanSheets} label={`Clean sheet${cleanSheets === 1 ? "" : "s"} kept`} />
+              : <BigStat value={totalPts(goals, points)} label="Total points" />}
             <BigStat value={apps} label={`Appearance${apps === 1 ? "" : "s"}`} />
             <BigStat value={attRate === null ? "—" : attRate + "%"} label={`Training${recorded.length ? ` · ${trained}/${recorded.length}` : ""}`} />
           </div>
