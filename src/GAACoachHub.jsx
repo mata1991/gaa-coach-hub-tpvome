@@ -72,24 +72,35 @@ function numberSubs(subsList, order = []) {
   return result;
 }
 
-// score: how the event changes the score; scoring:true marks attributable scores
-const SCORING_EVENTS = [
-  { name: "Point", score: { points: 1 }, scoring: true },
-  { name: "Goal", score: { goals: 1 }, scoring: true },
-  { name: "Free Converted", score: { points: 1 }, scoring: true, free: true },
-  { name: "Wide" },
-  { name: "Free Missed", free: true },
-  { name: "Saved" },
-  { name: "Dropped Short" },
-  { name: "65 Won" },
-  { name: "Turnover Won" },
-  { name: "Turnover Lost" },
-  { name: "Yellow Card" },
-  { name: "Red Card" },
+// Where a score came from — the sub-choice shown after tapping Goal / Point.
+const SCORE_SOURCES = [{ label: "Play", detail: "Play" }, { label: "Free", detail: "Free" }, { label: "65", detail: "65" }, { label: "Sideline", detail: "Sideline" }];
+// Match events. `options` shows a second step (sub-section); `player` routes the
+// event to the scorer picker; `score` changes the scoreboard; `miss` counts as a
+// shot that didn't score (for conversion %).
+const MATCH_EVENTS = [
+  { name: "Point", score: { points: 1 }, scoring: true, player: true, options: SCORE_SOURCES },
+  { name: "Goal", score: { goals: 1 }, scoring: true, player: true, options: SCORE_SOURCES },
+  { name: "Wide", miss: true, player: true },
+  { name: "Saved", miss: true, player: true },
+  { name: "Dropped Short", miss: true, player: true },
+  { name: "65 Won", player: true },
+  { name: "65 Missed", miss: true, player: true },
+  { name: "Free Won", player: true },
+  { name: "Free Conceded", player: true },
+  { name: "Possession Won", player: true },
+  { name: "Possession Lost", player: true },
+  { name: "Possession", options: [{ label: "Positive", detail: "Positive" }, { label: "Neutral", detail: "Neutral" }, { label: "Negative", detail: "Negative" }] },
+  { name: "Puck Out Won", options: [{ label: "Own Puck Out", detail: "Own" }, { label: "Opponent Puck Out", detail: "Opponent" }] },
+  { name: "Foul Conceded", player: true, options: [{ label: "No card", type: "Foul Conceded" }, { label: "Yellow Card", type: "Yellow Card" }, { label: "Black Card", type: "Black Card" }, { label: "Red Card", type: "Red Card" }] },
 ];
+// Resolve a chosen event + sub-option into the stored shape.
+const resolveEvent = (ev, opt) => ({ name: ev.name, type: (opt && opt.type) || ev.name, detail: (opt && opt.detail) || null, score: ev.score || null });
+// A readable label for the match feed, e.g. "Point · Free" or "Possession · Positive".
+const eventLabel = (e) => e.type + (e.detail ? ` · ${e.detail}` : "");
 
 // event types that count as a shot at the posts but didn't score (for conversion %)
-const SHOT_MISS_TYPES = ["Wide", "Free Missed", "Saved", "Dropped Short"];
+// "Free Missed" kept for older saved matches.
+const SHOT_MISS_TYPES = ["Wide", "Saved", "Dropped Short", "65 Missed", "Free Missed"];
 
 const TRAINING_STATUSES = [
   { value: "TRAINED", label: "Trained", color: "#16a34a", icon: Check },
@@ -449,8 +460,9 @@ function summarizeScorers(events = [], nameOf) {
     const m = map[key] || (map[key] = { id: e.playerId || null, name: nm, goals: 0, points: 0, frees: 0, wides: 0 });
     if (e.type === "Goal") m.goals++;
     else if (e.type === "Point") m.points++;
-    else if (e.type === "Free Converted") { m.points++; m.frees++; }
+    else if (e.type === "Free Converted") { m.points++; m.frees++; } // legacy
     else if (e.type === "Wide") m.wides++;
+    if (e.score && e.detail === "Free") m.frees++;
   });
   return Object.values(map)
     .filter((m) => m.goals || m.points || m.wides)
@@ -1947,9 +1959,10 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
   const [half, setHalf] = useState(() => saved?.half || "H1");
   const [events, setEvents] = useState(() => saved?.events || []);
   const [ht, setHt] = useState(() => saved?.ht || null);
-  const [picker, setPicker] = useState(null);      // { side, presetEvent? }
-  const [step, setStep] = useState("event");        // event | player
-  const [chosen, setChosen] = useState(null);
+  const [picker, setPicker] = useState(null);      // { side }
+  const [step, setStep] = useState("event");        // event | sub | player
+  const [chosen, setChosen] = useState(null);       // the picked MATCH_EVENTS entry
+  const [chosenOpt, setChosenOpt] = useState(null); // the picked sub-option, if any
   const [subbing, setSubbing] = useState(false);
   const [subOff, setSubOff] = useState(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -2028,18 +2041,27 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
     });
   };
 
-  const logEvent = (side, ev, pl) => {
-    buzz(ev.score ? [20, 40, 20] : 12); // a stronger triple-buzz for a score
-    setEvents((e) => [{ id: Date.now() + Math.random(), side, type: ev.name, half, clock, player: pl?.name || null, playerId: pl?.id || null, playerNo: pl?.jerseyNo || null, score: ev.score || null }, ...e]);
-    apply(side, ev);
-    setPicker(null); setStep("event"); setChosen(null);
+  const closePicker = () => { setPicker(null); setStep("event"); setChosen(null); setChosenOpt(null); };
+
+  // `r` is a resolved event ({ type, detail, score }).
+  const logEvent = (side, r, pl) => {
+    buzz(r.score ? [20, 40, 20] : 12); // a stronger triple-buzz for a score
+    setEvents((e) => [{ id: Date.now() + Math.random(), side, type: r.type, detail: r.detail || null, half, clock, player: pl?.name || null, playerId: pl?.id || null, playerNo: pl?.jerseyNo || null, score: r.score || null }, ...e]);
+    apply(side, r);
+    closePicker();
   };
 
-  // home scores route through player picker; away logs instantly
-  const quickScore = (side, ev) => {
-    if (side === "HOME" && onPitchPlayers.length) { setPicker({ side }); setChosen(ev); setStep("player"); }
-    else logEvent(side, ev, null);
+  // After an event (and any sub-option) is chosen: attribute to a player when it's
+  // a home player event, otherwise log straight away.
+  const proceed = (side, ev, opt) => {
+    if (ev.player && side === "HOME" && onPitchPlayers.length) { setPicker({ side }); setChosen(ev); setChosenOpt(opt); setStep("player"); }
+    else logEvent(side, resolveEvent(ev, opt), null);
   };
+  const chooseEvent = (ev) => { if (ev.options) { setChosen(ev); setStep("sub"); } else proceed(picker.side, ev, null); };
+  const chooseOption = (opt) => proceed(picker.side, chosen, opt);
+
+  // Goal / Point buttons open straight into the "how did it come" sub-section.
+  const quickScore = (side, ev) => { setPicker({ side }); setChosen(ev); setChosenOpt(null); setStep("sub"); };
 
   const undo = () => {
     if (!events.length) return;
@@ -2079,10 +2101,10 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
 
   const homeTotal = totalPts(score.home.g, score.home.p);
   const awayTotal = totalPts(score.away.g, score.away.p);
-  const POINT = SCORING_EVENTS[0], GOAL = SCORING_EVENTS[1];
+  const POINT = MATCH_EVENTS[0], GOAL = MATCH_EVENTS[1];
 
   // live shooting efficiency (scores vs shots) and scorers, derived from the feed
-  const SHOT_MISS = new Set(["Wide", "Free Missed", "Saved", "Dropped Short"]);
+  const SHOT_MISS = new Set(SHOT_MISS_TYPES);
   const shootStats = (sd) => {
     const evs = events.filter((e) => e.side === sd);
     const scored = evs.filter((e) => e.score).length;
@@ -2133,7 +2155,7 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
             <p className="text-[11px] text-zinc-500 font-bold text-center uppercase tracking-wide">{side === "HOME" ? HOME_NAME : fixture.opponent}</p>
             <button onClick={() => quickScore(side, GOAL)} className="w-full bg-red-600 text-white font-black py-3 rounded-xl text-[15px] active:scale-95">GOAL</button>
             <button onClick={() => quickScore(side, POINT)} className="w-full bg-zinc-800 text-white font-bold py-2.5 rounded-xl text-[14px] active:scale-95">POINT</button>
-            <button onClick={() => { setPicker({ side }); setStep("event"); }} className="w-full bg-zinc-900 border border-zinc-700 text-zinc-400 font-semibold py-2 rounded-xl text-[12px] active:scale-95">+ Other event</button>
+            <button onClick={() => { setPicker({ side }); setStep("event"); setChosen(null); setChosenOpt(null); }} className="w-full bg-zinc-900 border border-zinc-700 text-zinc-400 font-semibold py-2 rounded-xl text-[12px] active:scale-95">+ Other event</button>
           </div>
         ))}
       </div>
@@ -2173,7 +2195,7 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
                   <span className="text-[13px] font-semibold text-white flex-1">Sub: {e.on} <span className="text-zinc-500">for</span> {e.off}</span>
                 ) : (
                   <>
-                    <span className="text-[14px] font-semibold text-white flex-1">{e.type}</span>
+                    <span className="text-[14px] font-semibold text-white flex-1">{eventLabel(e)}</span>
                     {e.player && <span className="text-[12px] text-zinc-400 truncate max-w-[90px]">{e.player}</span>}
                   </>
                 )}
@@ -2192,16 +2214,22 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
       {confirmReset && <Confirm title="Restart match?" confirmLabel="Restart" message="This clears the clock, score and all logged events back to 0-0. Use it if you opened this by accident or want to start fresh. It can't be undone." onConfirm={resetMatch} onClose={() => setConfirmReset(false)} />}
 
       {picker && (
-        <DarkSheet onClose={() => { setPicker(null); setStep("event"); setChosen(null); }} title={step === "event" ? "Choose event" : `${chosen?.name} — choose player`}>
+        <DarkSheet onClose={closePicker} title={step === "event" ? "Choose event" : step === "sub" ? chosen?.name : `${chosen?.name}${chosenOpt?.detail ? ` · ${chosenOpt.detail}` : ""} — choose player`}>
           {step === "event" ? (
             <div className="grid grid-cols-2 gap-2">
-              {SCORING_EVENTS.map((ev) => (
-                <button key={ev.name} onClick={() => { if (picker.side === "HOME" && onPitchPlayers.length) { setChosen(ev); setStep("player"); } else logEvent(picker.side, ev); }} className="bg-zinc-800 text-white font-semibold py-3 rounded-xl text-[14px] active:bg-zinc-700">{ev.name}</button>
+              {MATCH_EVENTS.map((ev) => (
+                <button key={ev.name} onClick={() => chooseEvent(ev)} className="bg-zinc-800 text-white font-semibold py-3 rounded-xl text-[14px] active:bg-zinc-700">{ev.name}{ev.options ? " ›" : ""}</button>
+              ))}
+            </div>
+          ) : step === "sub" ? (
+            <div className="grid grid-cols-2 gap-2">
+              {chosen.options.map((opt) => (
+                <button key={opt.label} onClick={() => chooseOption(opt)} className="bg-zinc-800 text-white font-semibold py-3 rounded-xl text-[14px] active:bg-zinc-700">{opt.label}</button>
               ))}
             </div>
           ) : (
             <div>
-              <button onClick={() => logEvent(picker.side, chosen, null)} className="w-full bg-zinc-700 text-white font-semibold py-2.5 rounded-xl mb-3 text-[14px]">Skip — no player</button>
+              <button onClick={() => logEvent(picker.side, resolveEvent(chosen, chosenOpt), null)} className="w-full bg-zinc-700 text-white font-semibold py-2.5 rounded-xl mb-3 text-[14px]">Skip — no player</button>
               <div className="space-y-2">
                 {FORMATION_ROWS.map((row, ri) => (
                   <div key={ri} className="flex justify-center gap-2">
@@ -2209,7 +2237,7 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
                       const pid = pitchByPos[no];
                       const p = pid ? roster.find((x) => x.id === pid) : null;
                       return (
-                        <button key={no} disabled={!p} onClick={() => p && logEvent(picker.side, chosen, p)} className="flex-1 max-w-[104px] bg-zinc-800 rounded-xl py-2 flex flex-col items-center justify-center gap-1 disabled:opacity-25 active:bg-zinc-700">
+                        <button key={no} disabled={!p} onClick={() => p && logEvent(picker.side, resolveEvent(chosen, chosenOpt), p)} className="flex-1 max-w-[104px] bg-zinc-800 rounded-xl py-2 flex flex-col items-center justify-center gap-1 disabled:opacity-25 active:bg-zinc-700">
                           <span className="w-9 h-9 rounded-full bg-zinc-700 flex items-center justify-center font-black text-[12px] text-white">{p ? initials(p.name) : no}</span>
                           <span className="text-[10px] text-white font-semibold truncate max-w-[92px] leading-tight text-center">{p ? surname(p.name) : "—"}</span>
                         </button>
@@ -2631,8 +2659,10 @@ function MatchReport({ state, dispatch, nav, fixtureId }) {
   const subs = events.filter((e) => e.type === "Substitution");
   const goalsN = events.filter((e) => e.side === "HOME" && e.type === "Goal").length;
   const pointsN = events.filter((e) => e.side === "HOME" && e.type === "Point").length;
-  const freesN = events.filter((e) => e.side === "HOME" && e.type === "Free Converted").length;
-  const scoresN = goalsN + pointsN + freesN;
+  const legacyFrees = events.filter((e) => e.side === "HOME" && e.type === "Free Converted").length;
+  // frees are now a Goal/Point with detail "Free"; count legacy "Free Converted" too.
+  const freesN = events.filter((e) => e.side === "HOME" && (e.type === "Goal" || e.type === "Point") && e.detail === "Free").length + legacyFrees;
+  const scoresN = goalsN + pointsN + legacyFrees;
   const homeMisses = events.filter((e) => e.side === "HOME" && SHOT_MISS_TYPES.includes(e.type)).length;
   const shotsN = scoresN + homeMisses;
   const conv = shotsN > 0 ? Math.round((scoresN / shotsN) * 100) : null;
@@ -2836,8 +2866,9 @@ function PlayerStats({ state, nav }) {
         if (!p || !stats[p.id]) return; const sx = stats[p.id];
         if (e.type === "Goal") sx.goals++;
         else if (e.type === "Point") sx.points++;
-        else if (e.type === "Free Converted") { sx.points++; sx.frees++; }
+        else if (e.type === "Free Converted") { sx.points++; sx.frees++; } // legacy
         else if (e.type === "Wide") sx.wides++;
+        if (e.score && e.detail === "Free") sx.frees++;
       });
     });
     return Object.values(stats).filter((s) => s.goals || s.points || s.wides)
@@ -2902,8 +2933,9 @@ function PlayerProfile({ state, dispatch, nav, playerId }) {
     (state.events[f.id] || []).filter((e) => e.side === "HOME" && (e.playerId ? e.playerId === player.id : e.player === player.name)).forEach((e) => {
       if (e.type === "Goal") goals++;
       else if (e.type === "Point") points++;
-      else if (e.type === "Free Converted") { points++; frees++; }
+      else if (e.type === "Free Converted") { points++; frees++; } // legacy
       else if (e.type === "Wide") wides++;
+      if (e.score && e.detail === "Free") frees++;
     });
   });
   // Clean sheets (goalkeepers): completed games they started in goal where the opposition failed to score.
