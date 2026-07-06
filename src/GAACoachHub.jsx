@@ -152,6 +152,31 @@ function reducer(state, action) {
     }
     case "SET_ACTIVE_TEAM": return { ...state, activeTeamId: action.id };
 
+    case "DELETE_TEAM": {
+      const tid = action.id;
+      const teams = state.teams.filter((t) => t.id !== tid);
+      if (!teams.length) return state; // never remove the last team
+      const removedFixtureIds = new Set(state.fixtures.filter((f) => f.teamId === tid).map((f) => f.id));
+      const removedSessionIds = new Set(state.sessions.filter((s) => s.teamId === tid).map((s) => s.id));
+      const removedPlayerIds = new Set(state.players.filter((p) => p.teamId === tid).map((p) => p.id));
+      const prune = (obj, ids) => { const o = { ...(obj || {}) }; ids.forEach((id) => delete o[id]); return o; };
+      return {
+        ...state,
+        teams,
+        players: state.players.filter((p) => p.teamId !== tid),
+        fixtures: state.fixtures.filter((f) => f.teamId !== tid),
+        sessions: state.sessions.filter((s) => s.teamId !== tid),
+        lineups: prune(state.lineups, removedFixtureIds),
+        availability: prune(state.availability, new Set([...removedFixtureIds, ...removedSessionIds])),
+        attendance: prune(state.attendance, removedSessionIds),
+        events: prune(state.events, removedFixtureIds),
+        liveMatches: prune(state.liveMatches, removedFixtureIds),
+        subOrders: prune(state.subOrders, removedFixtureIds),
+        extraWork: prune(state.extraWork, removedPlayerIds),
+        activeTeamId: state.activeTeamId === tid ? teams[0].id : state.activeTeamId,
+      };
+    }
+
     case "ADD_PLAYER": {
       const id = "p" + Date.now();
       return { ...state, players: [...state.players, { id, teamId: state.activeTeamId, injured: false, injuryNote: "", notes: "", ...action.player }] };
@@ -478,7 +503,7 @@ export default function App() {
     view,
     push: (screen, params = {}) => setStack((s) => [...s, { screen, ...params }]),
     pop: () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s)),
-    reset: (screen) => setStack([{ screen }]),
+    reset: (screen, params = {}) => setStack([{ screen, ...params }]),
     toast: (message, action) => setToast({ message, action, id: Date.now() }),
   };
 
@@ -518,8 +543,8 @@ function Router({ state, dispatch, nav }) {
   const { view } = nav;
   switch (view.screen) {
     case "dashboard": return <Dashboard state={state} dispatch={dispatch} nav={nav} />;
-    case "players": return <Players state={state} dispatch={dispatch} nav={nav} />;
-    case "fixtures": return <Fixtures state={state} dispatch={dispatch} nav={nav} />;
+    case "players": return <Players state={state} dispatch={dispatch} nav={nav} initialFilter={view.filter} />;
+    case "fixtures": return <Fixtures state={state} dispatch={dispatch} nav={nav} initialTab={view.tab} />;
     case "lineup": return <Lineup state={state} dispatch={dispatch} nav={nav} fixtureId={view.fixtureId} />;
     case "live": return <LiveMatch state={state} dispatch={dispatch} nav={nav} fixtureId={view.fixtureId} />;
     case "training": return <Training state={state} dispatch={dispatch} nav={nav} />;
@@ -858,12 +883,11 @@ function Dashboard({ state, dispatch, nav }) {
             )}
           </div>
           <div className="grid grid-cols-4 gap-2 mt-5">
-            <HeroStat value={players.length} label="Players" />
-            <HeroStat value={injured} label="Injured" danger={injured > 0} />
-            <HeroStat value={upcomingSessions.length} label="Sessions" />
-            <HeroStat value={completed} label="Played" />
+            <HeroStat value={players.length} label="Players" onClick={() => nav.reset("players")} />
+            <HeroStat value={injured} label="Injured" danger={injured > 0} onClick={() => nav.reset("players", { filter: "injured" })} />
+            <HeroStat value={upcomingSessions.length} label="Sessions" onClick={() => nav.reset("training")} />
+            <HeroStat value={completed} label="Played" onClick={() => nav.reset("fixtures", { tab: "past" })} />
           </div>
-          <div className="mt-4 h-2 rounded-full overflow-hidden" style={{ background: `repeating-linear-gradient(90deg, #ffffff 0 7px, ${accent} 7px 14px)` }} />
         </div>
 
         {needBackup && (
@@ -937,12 +961,12 @@ function Dashboard({ state, dispatch, nav }) {
   );
 }
 
-function HeroStat({ value, label, danger }) {
+function HeroStat({ value, label, danger, onClick }) {
   return (
-    <div className="bg-white/5 rounded-xl py-2.5 flex flex-col items-center">
+    <button onClick={onClick} className="bg-white/5 rounded-xl py-2.5 flex flex-col items-center active:bg-white/10 transition-colors">
       <span className={`text-xl font-black tabular-nums ${danger ? "text-red-400" : "text-white"}`}>{value}</span>
       <span className="text-[10px] text-zinc-400 mt-0.5">{label}</span>
-    </div>
+    </button>
   );
 }
 
@@ -1028,15 +1052,16 @@ function suspendedPlayers(state, teamId) {
   return set;
 }
 
-function Players({ state, dispatch, nav }) {
+function Players({ state, dispatch, nav, initialFilter }) {
   const { team, players } = teamData(state);
   const suspended = suspendedPlayers(state, team.id);
   const [adding, setAdding] = useState(false);
   const [bulk, setBulk] = useState(false);
   const [query, setQuery] = useState("");
-  const [injuredOnly, setInjuredOnly] = useState(false);
+  const [injuredOnly, setInjuredOnly] = useState(initialFilter === "injured");
+  useEffect(() => { setInjuredOnly(initialFilter === "injured"); }, [initialFilter]);
   const q = query.trim().toLowerCase();
-  const filtered = players.filter((p) => (!q || p.name.toLowerCase().includes(q)) && (!injuredOnly || p.injured));
+  const filtered = players.filter((p) => (!q || p.name.toLowerCase().includes(q)) && (!injuredOnly || p.injured || p.limited));
   const showHint = players.length > 0 && !state.hints?.tapEdit;
   return (
     <div className="flex flex-col h-full">
@@ -1045,7 +1070,7 @@ function Players({ state, dispatch, nav }) {
       {players.length > 0 && (
         <div className="px-4 py-2.5 bg-white border-b border-zinc-100 flex items-center gap-2">
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search players" className="flex-1 bg-zinc-100 rounded-full px-4 py-2 text-[14px] outline-none focus:ring-2 ring-black" />
-          <button onClick={() => setInjuredOnly((v) => !v)} className={`shrink-0 text-[12px] font-semibold px-3 py-2 rounded-full border ${injuredOnly ? "bg-red-600 text-white border-red-600" : "bg-white text-zinc-600 border-zinc-200"}`}>Injured</button>
+          <button onClick={() => setInjuredOnly((v) => !v)} className={`shrink-0 text-[12px] font-semibold px-3 py-2 rounded-full border ${injuredOnly ? "bg-red-600 text-white border-red-600" : "bg-white text-zinc-600 border-zinc-200"}`}>Injured / Ltd</button>
         </div>
       )}
       <div className="flex-1 overflow-y-auto pb-6">
@@ -1159,11 +1184,12 @@ function PlayerForm({ initial, nextNo, onClose, onSave, onDelete, onBulk }) {
 
 /* ============================ fixtures ============================ */
 
-function Fixtures({ state, dispatch, nav }) {
+function Fixtures({ state, dispatch, nav, initialTab }) {
   const { fixtures } = teamData(state);
   const [adding, setAdding] = useState(false);
   const [editingFix, setEditingFix] = useState(null);
-  const [tab, setTab] = useState("upcoming");
+  const [tab, setTab] = useState(initialTab === "past" ? "past" : "upcoming");
+  useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
 
   const removeFixture = (f) => {
     const snapshot = { fixture: f, lineup: state.lineups[f.id], events: state.events[f.id], availability: state.availability[f.id] };
@@ -2683,6 +2709,7 @@ function SettingsScreen({ state, dispatch, nav }) {
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [confirmReset, setConfirmReset] = useState(false);
+  const [delTeam, setDelTeam] = useState(null);
   const pretty = JSON.stringify(state, null, 2);
 
   const download = async () => {
@@ -2775,6 +2802,24 @@ function SettingsScreen({ state, dispatch, nav }) {
         </div>
 
         <div>
+          <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-2">Teams</p>
+          <div className="bg-white border border-zinc-200 rounded-2xl divide-y divide-zinc-100">
+            {state.teams.map((t) => (
+              <div key={t.id} className="flex items-center gap-3 px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-[15px] text-zinc-900 truncate">{t.name}{t.id === state.activeTeamId && <span className="text-[11px] font-bold text-emerald-600 ml-1.5">· active</span>}</p>
+                  <p className="text-[12px] text-zinc-400">{state.players.filter((p) => p.teamId === t.id).length} players · {state.fixtures.filter((f) => f.teamId === t.id).length} fixtures</p>
+                </div>
+                {state.teams.length > 1 && (
+                  <button onClick={() => setDelTeam(t)} aria-label={`Delete ${t.name}`} className="shrink-0 p-2 rounded-full text-red-600 active:bg-red-50"><Trash2 className="w-5 h-5" /></button>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="text-[12px] text-zinc-400 mt-1.5">Deleting a team permanently removes its players, fixtures, line-outs, sessions and stats. At least one team must remain.</p>
+        </div>
+
+        <div>
           <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-2">Danger zone</p>
           <button onClick={() => setConfirmReset(true)} className="w-full bg-white border border-red-200 rounded-2xl p-4 text-left text-red-600 font-semibold text-[15px] active:bg-red-50">Reset all data</button>
         </div>
@@ -2803,6 +2848,7 @@ function SettingsScreen({ state, dispatch, nav }) {
         </Sheet>
       )}
       {confirmReset && <Confirm title="Reset everything?" confirmLabel="Reset" message="This restores the original demo data. Anything you've added or imported will be lost." onConfirm={() => { dispatch({ type: "RESET" }); setConfirmReset(false); nav.reset("dashboard"); nav.toast("Data reset"); }} onClose={() => setConfirmReset(false)} />}
+      {delTeam && <Confirm title={`Delete ${delTeam.name}?`} confirmLabel="Delete team" message={`This permanently removes ${delTeam.name} and all of its players, fixtures, line-outs, sessions and stats. This can't be undone.`} onConfirm={() => { const nm = delTeam.name; dispatch({ type: "DELETE_TEAM", id: delTeam.id }); setDelTeam(null); nav.toast(`${nm} deleted`); }} onClose={() => setDelTeam(null)} />}
     </div>
   );
 }
