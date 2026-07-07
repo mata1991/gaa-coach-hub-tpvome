@@ -33,6 +33,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Catches undefined-variable bugs (the "blank screen" class) before they
+      # ever reach the live app. If this fails, the deploy is blocked.
+      - name: Lint
+        run: npm run lint
+
       - name: Build
         run: npm run build
 

@@ -3345,7 +3345,7 @@ function PlayerProfile({ state, dispatch, nav, playerId }) {
                       <Icon className="w-4 h-4 shrink-0" style={{ color: meta ? meta.color : "#71717a" }} />
                       <span className="flex-1 text-[14px] font-semibold text-zinc-800">{e.type}</span>
                       <span className="text-[12px] text-zinc-400">{fmtDate(e.date)}</span>
-                      <button onClick={() => dispatch({ type: "DELETE_EXTRA_WORK", playerId: player.id, entryId: e.id })} aria-label="Delete entry" className="text-zinc-300 active:text-red-500 p-0.5"><X className="w-4 h-4" /></button>
+                      <button onClick={() => { dispatch({ type: "DELETE_EXTRA_WORK", playerId: player.id, entryId: e.id }); nav.toast("Entry removed", { label: "Undo", onAction: () => dispatch({ type: "ADD_EXTRA_WORK", playerId: player.id, entry: e }) }); }} aria-label="Delete entry" className="text-zinc-300 active:text-red-500 p-0.5"><X className="w-4 h-4" /></button>
                     </div>
                   );
                 })}
@@ -3367,7 +3367,7 @@ function PlayerProfile({ state, dispatch, nav, playerId }) {
 
       {editing && <PlayerForm initial={player} onClose={() => setEditing(false)}
         onSave={(d) => { dispatch({ type: "UPDATE_PLAYER", id: player.id, patch: d }); setEditing(false); nav.toast("Player updated"); }}
-        onDelete={() => { dispatch({ type: "DELETE_PLAYER", id: player.id }); setEditing(false); nav.pop(); nav.toast("Player removed"); }} />}
+        onDelete={() => { const snapshot = state; dispatch({ type: "DELETE_PLAYER", id: player.id }); setEditing(false); nav.pop(); nav.toast("Player removed", { label: "Undo", onAction: () => dispatch({ type: "HYDRATE", state: snapshot }) }); }} />}
 
       {loggingXW && (
         <Sheet title="Log extra work" onClose={() => setLoggingXW(false)}>
