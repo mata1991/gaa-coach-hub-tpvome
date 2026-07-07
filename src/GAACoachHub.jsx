@@ -605,6 +605,7 @@ function Router({ state, dispatch, nav }) {
     case "reports": return <Reports state={state} nav={nav} />;
     case "matchReport": return <MatchReport state={state} dispatch={dispatch} nav={nav} fixtureId={view.fixtureId} />;
     case "playerStats": return <PlayerStats state={state} nav={nav} />;
+    case "seasonBreakdown": return <SeasonBreakdown state={state} nav={nav} kind={view.kind} />;
     case "playerProfile": return <PlayerProfile state={state} dispatch={dispatch} nav={nav} playerId={view.playerId} />;
     case "settings": return <SettingsScreen state={state} dispatch={dispatch} nav={nav} />;
     case "calendar": return <Calendar state={state} nav={nav} />;
@@ -2577,34 +2578,25 @@ function Reports({ state, nav }) {
           </>
         )}
 
-        {attRows.length > 0 && (
+        {(attRows.length > 0 || availRows.length > 0) && (
           <>
-            <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mt-6 mb-3">Training attendance</p>
-            <div className="bg-white border border-zinc-200 rounded-2xl divide-y divide-zinc-100">
-              {attRows.map((r) => (
-                <button key={r.id} onClick={() => nav.push("playerProfile", { playerId: r.id })} className="w-full flex items-center gap-3 px-4 py-2.5 active:bg-zinc-50 text-left">
-                  <span className="flex-1 font-semibold text-[14px] text-zinc-900 truncate">{r.name}</span>
-                  <div className="w-20 h-2 rounded-full bg-zinc-100 overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: `${r.pct}%` }} /></div>
-                  <span className="w-12 text-right text-[12px] text-zinc-500 tabular-nums">{r.trained}/{r.total}</span>
+            <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mt-6 mb-3">Player records</p>
+            <div className="space-y-2.5">
+              {attRows.length > 0 && (
+                <button onClick={() => nav.push("seasonBreakdown", { kind: "attendance" })} className="w-full bg-white border border-zinc-200 rounded-2xl p-4 flex items-center gap-3 active:bg-zinc-50">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center"><Dumbbell className="w-5 h-5 text-emerald-600" /></div>
+                  <div className="flex-1 text-left"><p className="font-bold text-[15px] text-zinc-900">Training attendance</p><p className="text-[12px] text-zinc-500">Who's turning up — full squad breakdown</p></div>
+                  <ChevronRight className="w-5 h-5 text-zinc-300" />
                 </button>
-              ))}
-            </div>
-          </>
-        )}
-
-        {availRows.length > 0 && (
-          <>
-            <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mt-6 mb-3">Match availability</p>
-            <div className="bg-white border border-zinc-200 rounded-2xl divide-y divide-zinc-100">
-              {availRows.slice(0, 10).map((r) => (
-                <button key={r.id} onClick={() => nav.push("playerProfile", { playerId: r.id })} className="w-full flex items-center gap-3 px-4 py-2.5 active:bg-zinc-50 text-left">
-                  <span className="flex-1 font-semibold text-[14px] text-zinc-900 truncate">{r.name}</span>
-                  <div className="w-20 h-2 rounded-full bg-zinc-100 overflow-hidden"><div className="h-full bg-sky-500" style={{ width: `${r.pct}%` }} /></div>
-                  <span className="w-12 text-right text-[12px] text-zinc-500 tabular-nums">{r.a}/{r.total}</span>
+              )}
+              {availRows.length > 0 && (
+                <button onClick={() => nav.push("seasonBreakdown", { kind: "availability" })} className="w-full bg-white border border-zinc-200 rounded-2xl p-4 flex items-center gap-3 active:bg-zinc-50">
+                  <div className="w-10 h-10 rounded-xl bg-sky-50 flex items-center justify-center"><UserCheck className="w-5 h-5 text-sky-600" /></div>
+                  <div className="flex-1 text-left"><p className="font-bold text-[15px] text-zinc-900">Match availability</p><p className="text-[12px] text-zinc-500">Who's available for games — full breakdown</p></div>
+                  <ChevronRight className="w-5 h-5 text-zinc-300" />
                 </button>
-              ))}
+              )}
             </div>
-            <p className="text-[12px] text-zinc-400 mt-1.5">Times marked available across {availFixtures.length} fixture{availFixtures.length === 1 ? "" : "s"} · top 10.</p>
           </>
         )}
 
@@ -2637,6 +2629,44 @@ function Reports({ state, nav }) {
 
 function BigStat({ value, label }) {
   return <div className="bg-black text-white rounded-2xl p-4"><p className="text-3xl font-black tabular-nums">{value}</p><p className="text-[12px] text-zinc-400 mt-1">{label}</p></div>;
+}
+
+// Full-squad training-attendance or match-availability breakdown, reached from a
+// card on the Reports tab (so the tab itself stays a short summary).
+function SeasonBreakdown({ state, nav, kind }) {
+  const { team, players, fixtures } = teamData(state);
+  const attendance = kind === "attendance";
+  const sessions = state.sessions.filter((s) => s.teamId === team.id);
+  const recorded = sessions.filter((s) => state.attendance[s.id] && Object.keys(state.attendance[s.id]).length);
+  const availFixtures = fixtures.filter((f) => state.availability[f.id] && Object.keys(state.availability[f.id]).length);
+  const rows = attendance
+    ? (recorded.length ? players.map((p) => { const t = recorded.filter((s) => state.attendance[s.id][p.id] === "TRAINED").length; return { id: p.id, name: p.name, done: t, total: recorded.length, pct: Math.round((t / recorded.length) * 100) }; }) : [])
+    : (availFixtures.length ? players.map((p) => { const a = availFixtures.filter((f) => state.availability[f.id][p.id] === "AVAILABLE").length; return { id: p.id, name: p.name, done: a, total: availFixtures.length, pct: Math.round((a / availFixtures.length) * 100) }; }) : []);
+  rows.sort((a, b) => b.pct - a.pct || a.name.localeCompare(b.name));
+  const barColor = attendance ? "bg-emerald-500" : "bg-sky-500";
+  const title = attendance ? "Training attendance" : "Match availability";
+  const sub = attendance ? `${recorded.length} session${recorded.length === 1 ? "" : "s"} recorded` : `${availFixtures.length} fixture${availFixtures.length === 1 ? "" : "s"}`;
+  return (
+    <div className="flex flex-col h-full">
+      <StatusBar />
+      <Header title={title} onBack={nav.pop} />
+      <p className="px-4 py-2 text-[12px] text-zinc-500 bg-white border-b border-zinc-100">{team.name} · {sub}</p>
+      <div className="flex-1 overflow-y-auto p-4">
+        {rows.length === 0 ? <Empty text={attendance ? "No training recorded yet" : "No availability set yet"} icon={attendance ? Dumbbell : UserCheck} /> : (
+          <div className="bg-white border border-zinc-200 rounded-2xl divide-y divide-zinc-100">
+            {rows.map((r) => (
+              <button key={r.id} onClick={() => nav.push("playerProfile", { playerId: r.id })} className="w-full flex items-center gap-3 px-4 py-2.5 active:bg-zinc-50 text-left">
+                <span className="flex-1 font-semibold text-[14px] text-zinc-900 truncate">{r.name}</span>
+                <div className="w-20 h-2 rounded-full bg-zinc-100 overflow-hidden"><div className={`h-full ${barColor}`} style={{ width: `${r.pct}%` }} /></div>
+                <span className="w-12 text-right text-[12px] text-zinc-500 tabular-nums">{r.done}/{r.total}</span>
+                <ChevronRight className="w-4 h-4 text-zinc-300 shrink-0" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /* ============================ match report ============================ */
@@ -2925,7 +2955,7 @@ function PlayerStats({ state, nav }) {
 
   const ranked = useMemo(() => {
     const stats = {};
-    players.forEach((p) => (stats[p.id] = { name: p.name, jerseyNo: p.jerseyNo, goals: 0, points: 0, frees: 0, wides: 0, apps: 0 }));
+    players.forEach((p) => (stats[p.id] = { id: p.id, name: p.name, jerseyNo: p.jerseyNo, goals: 0, points: 0, frees: 0, wides: 0, apps: 0 }));
     completed.forEach((f) => {
       const lu = state.lineups[f.id];
       if (lu) GAA_POSITIONS.forEach((pos) => { const id = lu[pos.no]; if (id && stats[id]) stats[id].apps++; });
@@ -2939,8 +2969,8 @@ function PlayerStats({ state, nav }) {
         if (e.score && e.detail === "Free") sx.frees++;
       });
     });
-    return Object.values(stats).filter((s) => s.goals || s.points || s.wides)
-      .sort((a, b) => totalPts(b.goals, b.points) - totalPts(a.goals, a.points));
+    // Every player is listed (tap for their full record); scorers rise to the top.
+    return Object.values(stats).sort((a, b) => totalPts(b.goals, b.points) - totalPts(a.goals, a.points) || b.apps - a.apps || a.name.localeCompare(b.name));
   }, [state]);
 
   return (
@@ -2949,27 +2979,27 @@ function PlayerStats({ state, nav }) {
       <Header title="Player Stats" onBack={nav.pop} />
       <p className="px-4 py-2 text-[12px] text-zinc-500 bg-white border-b border-zinc-100">{team.name} · {completed.length} completed {completed.length === 1 ? "game" : "games"}</p>
       <div className="flex-1 overflow-y-auto p-4">
-        {ranked.length === 0 ? <Empty text="No scoring data yet — finish a tracked match" icon={Medal} /> : (
+        {ranked.length === 0 ? <Empty text="No players in this squad yet" icon={Medal} /> : (
           <div className="bg-white border border-zinc-200 rounded-2xl overflow-hidden">
             <div className="flex items-center gap-3 px-4 py-2 bg-zinc-50 text-[11px] font-bold text-zinc-400 uppercase tracking-wide">
-              <span className="w-6">#</span><span className="flex-1">Player</span><span className="w-14 text-right">Score</span><span className="w-8 text-right">Tot</span>
+              <span className="w-6">#</span><span className="flex-1">Player</span><span className="w-14 text-right">Score</span><span className="w-5" />
             </div>
             <div className="divide-y divide-zinc-100">
               {ranked.map((s, i) => (
-                <div key={s.id || s.name} className="flex items-center gap-3 px-4 py-3">
+                <button key={s.id} onClick={() => nav.push("playerProfile", { playerId: s.id })} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-zinc-50">
                   <span className="w-6 text-[13px] font-bold text-zinc-400 tabular-nums">{i + 1}</span>
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-[15px] text-zinc-900 truncate">{s.name}</p>
                     <p className="text-[11px] text-zinc-400">{s.apps} app{s.apps === 1 ? "" : "s"}{s.frees ? ` · ${s.frees}f` : ""}{s.wides ? ` · ${s.wides} wide` : ""}</p>
                   </div>
                   <span className="w-14 text-right font-black text-[15px] tabular-nums text-zinc-900">{fmtScore(s.goals, s.points)}</span>
-                  <span className="w-8 text-right text-[13px] font-bold tabular-nums text-zinc-400">{totalPts(s.goals, s.points)}</span>
-                </div>
+                  <ChevronRight className="w-5 h-5 text-zinc-300 shrink-0" />
+                </button>
               ))}
             </div>
           </div>
         )}
-        <p className="text-[11px] text-zinc-400 text-center mt-3">Scores shown as goals-points. Total counts a goal as 3.</p>
+        <p className="text-[11px] text-zinc-400 text-center mt-3">Tap a player for their full record. Scores are goals-points.</p>
       </div>
     </div>
   );
