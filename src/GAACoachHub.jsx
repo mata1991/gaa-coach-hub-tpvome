@@ -272,6 +272,11 @@ function reducer(state, action) {
     }
     case "SET_SETTINGS":
       return { ...state, settings: { ...(state.settings || DEFAULT_SETTINGS), ...action.patch } };
+    case "SET_OPPONENT_NOTE": {
+      const notes = { ...(state.opponentNotes || {}) };
+      if (action.note) notes[action.key] = action.note; else delete notes[action.key];
+      return { ...state, opponentNotes: notes };
+    }
     case "ADD_EXTRA_WORK":
       return { ...state, extraWork: { ...(state.extraWork || {}), [action.playerId]: [action.entry, ...((state.extraWork || {})[action.playerId] || [])] } };
     case "DELETE_EXTRA_WORK":
@@ -343,6 +348,38 @@ const fmtDate = (iso) => new Date(iso).toLocaleDateString("en-IE", { weekday: "s
 const fmtTime = (iso) => new Date(iso).toLocaleTimeString("en-IE", { hour: "2-digit", minute: "2-digit" });
 const fmtClock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 const initials = (name = "") => name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+// Opponent notes are shared across every fixture vs the same opponent, so key
+// them by a normalised opponent name.
+const opponentKey = (name = "") => name.trim().toLowerCase();
+// Injury return date, formatted with an "overdue" flag (past its expected date).
+const dueBack = (p) => {
+  if (!p || !p.injured || !p.returnDate) return null;
+  const d = new Date(p.returnDate + "T00:00:00");
+  if (isNaN(d.getTime())) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return { text: d.toLocaleDateString("en-IE", { day: "numeric", month: "short" }), overdue: d < today };
+};
+// Minutes on the pitch per player for one completed match, derived from the
+// starting line-out, substitution events and the final clock. Returns rows
+// sorted most-minutes-first: { id, name, mins, starter, subbedOff }.
+function matchMinutes(fixture, lineupMap, events, teamPlayers) {
+  const subs = (events || []).filter((e) => e.type === "Substitution");
+  const starterIds = new Set(Object.values(lineupMap || {}).filter(Boolean));
+  const fullClock = (fixture && fixture.fullClock) || (events || []).reduce((m, e) => Math.max(m, e.clock || 0), 0);
+  const nameToId = {}; teamPlayers.forEach((p) => { if (!(p.name in nameToId)) nameToId[p.name] = p.id; });
+  const onAt = {}, offAt = {};
+  starterIds.forEach((id) => { onAt[id] = 0; });
+  subs.slice().sort((a, b) => a.clock - b.clock).forEach((e) => {
+    const offId = nameToId[e.off], onId = nameToId[e.on];
+    if (offId != null && offAt[offId] === undefined) offAt[offId] = e.clock;
+    if (onId != null && onAt[onId] === undefined) onAt[onId] = e.clock;
+  });
+  return teamPlayers.map((p) => {
+    const on = onAt[p.id]; if (on === undefined) return null;
+    const off = offAt[p.id] !== undefined ? offAt[p.id] : fullClock;
+    return { id: p.id, name: p.name, mins: Math.max(0, Math.round((off - on) / 60)), starter: starterIds.has(p.id), subbedOff: offAt[p.id] !== undefined };
+  }).filter(Boolean).sort((a, b) => b.mins - a.mins);
+}
 const surname = (name = "") => name.trim().split(/\s+/).slice(-1)[0] || "";
 const forename = (name = "") => { const t = name.trim().split(/\s+/); return t.length > 1 ? t.slice(0, -1).join(" ") : (t[0] || ""); };
 // Left / centre / right columns share the same x across every line so the
@@ -545,6 +582,7 @@ export default function App() {
             parsed.hints = parsed.hints || {};
             parsed.liveMatches = parsed.liveMatches || {};
             parsed.extraWork = parsed.extraWork || {};
+            parsed.opponentNotes = parsed.opponentNotes || {};
             parsed.teams = withSeedClub(parsed.teams);
             // in-place migration — upgrade old data, never discard it
             if (parsed.events) {
@@ -1344,7 +1382,7 @@ function Players({ state, dispatch, nav, initialFilter }) {
                           {!p.injured && p.limited && <span className="shrink-0 text-[9px] font-black text-white bg-amber-500 rounded px-1 py-0.5 leading-none">LTD</span>}
                         </div>
                         {p.injured
-                          ? <p className="text-[12px] text-red-500 truncate">{roleLabel(p.role)} · injured</p>
+                          ? <p className="text-[12px] text-red-500 truncate">{roleLabel(p.role)} · injured{dueBack(p) ? (dueBack(p).overdue ? " · due back — check fitness" : ` · back ${dueBack(p).text}`) : ""}</p>
                           : p.limited
                           ? <p className="text-[12px] text-amber-600 truncate">{roleLabel(p.role)} · limited</p>
                           : <p className="text-[12px] text-zinc-400 truncate">{roleLabel(p.role)}</p>}
@@ -1376,6 +1414,7 @@ function PlayerForm({ initial, nextNo, onClose, onSave, onDelete, onBulk }) {
   const [role, setRole] = useState(initial?.role || (initial?.group ? defaultRole(initial.group) : ""));
   const [injured, setInjured] = useState(initial?.injured || false);
   const [limited, setLimited] = useState(initial?.limited || false);
+  const [returnDate, setReturnDate] = useState(initial?.returnDate || "");
   const [captaincy, setCaptaincy] = useState(initial?.captaincy || null);
   const [freeTaker, setFreeTaker] = useState(initial?.freeTaker || false);
   const [notes, setNotes] = useState(initial?.notes || initial?.injuryNote || "");
@@ -1408,6 +1447,13 @@ function PlayerForm({ initial, nextNo, onClose, onSave, onDelete, onBulk }) {
           <button onClick={() => { setInjured(true); setLimited(false); }} className={`py-2.5 rounded-xl text-[13px] font-semibold border ${injured ? "bg-red-600 text-white border-red-600" : "bg-white text-zinc-700 border-zinc-200"}`}>Injured</button>
         </div>
         {limited && !injured && <p className="text-[11px] text-amber-600 mt-1.5">Available but carrying a knock / limited minutes — still picked in line-outs.</p>}
+        {injured && (
+          <div className="mt-2">
+            <p className="text-[11px] text-zinc-400 mb-1">Expected back (optional)</p>
+            <input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full bg-zinc-100 rounded-xl px-3.5 py-3 text-[15px] outline-none focus:ring-2 ring-black" />
+            {returnDate && <button onClick={() => setReturnDate("")} className="text-[11px] font-semibold text-zinc-500 mt-1">Clear date</button>}
+          </div>
+        )}
       </Field>
       <Field label="Leadership">
         <div className="grid grid-cols-3 gap-2">
@@ -1422,7 +1468,7 @@ function PlayerForm({ initial, nextNo, onClose, onSave, onDelete, onBulk }) {
       <Field label="Notes">
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="e.g. Away on holidays 12–19 Jul · Back from injury ~5 Aug · Strong free-taker" className="w-full bg-zinc-100 rounded-xl px-3.5 py-3 text-[14px] leading-snug outline-none focus:ring-2 ring-black resize-none" />
       </Field>
-      <button disabled={!name.trim() || !role} onClick={() => onSave({ name: name.trim(), role, group: groupOfRole(role), injured, limited, captaincy, freeTaker, notes: notes.trim() })} className="w-full bg-black disabled:bg-zinc-300 text-white font-bold py-3.5 rounded-2xl mt-1 active:scale-[0.99]">{isEdit ? "Save changes" : "Add player"}</button>
+      <button disabled={!name.trim() || !role} onClick={() => onSave({ name: name.trim(), role, group: groupOfRole(role), injured, limited, captaincy, freeTaker, notes: notes.trim(), returnDate: injured ? (returnDate || null) : null })} className="w-full bg-black disabled:bg-zinc-300 text-white font-bold py-3.5 rounded-2xl mt-1 active:scale-[0.99]">{isEdit ? "Save changes" : "Add player"}</button>
       {isEdit && onDelete && <button onClick={() => setConfirmDel(true)} className="w-full text-center text-[13px] text-red-600 font-semibold py-1">Remove from squad</button>}
       {confirmDel && <Confirm title="Remove player?" confirmLabel="Remove" message={`Remove ${initial.name} from the squad? They'll also be cleared from any saved line-outs.`} onConfirm={onDelete} onClose={() => setConfirmDel(false)} />}
     </Sheet>
@@ -1564,6 +1610,23 @@ function FixtureForm({ initial, settings, onClose, onSave }) {
 
 /* ============================ availability ============================ */
 
+// Scouting notes on an opponent, shared across every fixture vs that opponent.
+function OpponentNotes({ state, dispatch, nav, opponent }) {
+  const key = opponentKey(opponent);
+  const saved = (state.opponentNotes || {})[key] || "";
+  const [text, setText] = useState(saved);
+  useEffect(() => { setText((state.opponentNotes || {})[opponentKey(opponent)] || ""); }, [opponent]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dirty = text.trim() !== saved;
+  return (
+    <div>
+      <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-2">Opponent notes</p>
+      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder={`Scouting notes on ${opponent} — dangerous players, set-up, weaknesses…`} className="w-full bg-white border border-zinc-200 rounded-2xl px-3.5 py-3 text-[14px] leading-snug outline-none focus:ring-2 ring-black resize-none" />
+      {dirty && <button onClick={() => { dispatch({ type: "SET_OPPONENT_NOTE", key, note: text.trim() }); nav.toast("Opponent notes saved"); }} className="w-full mt-2 bg-zinc-900 text-white font-semibold py-2.5 rounded-xl text-[13px] active:scale-[0.99]">Save opponent notes</button>}
+      <p className="text-[12px] text-zinc-400 mt-1.5">Carried across every game vs {opponent}.</p>
+    </div>
+  );
+}
+
 function Availability({ state, dispatch, nav, fixtureId }) {
   const fixture = state.fixtures.find((f) => f.id === fixtureId);
   const players = state.players.filter((p) => p.teamId === fixture.teamId);
@@ -1616,6 +1679,7 @@ function Availability({ state, dispatch, nav, fixtureId }) {
       <div className="flex-1 overflow-y-auto">
         <RosterStatusList players={shown} statuses={AVAILABILITY_STATUSES} value={map} onChange={change} />
         {filter && shown.length === 0 && <p className="text-center text-[13px] text-zinc-400 py-8">No players marked {filterLabel}.</p>}
+        <div className="p-4 border-t border-zinc-100 mt-2"><OpponentNotes state={state} dispatch={dispatch} nav={nav} opponent={fixture.opponent} /></div>
       </div>
       <div className="px-4 py-3 bg-white border-t border-zinc-100" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
         <button onClick={() => nav.push("lineup", { fixtureId })} className="w-full bg-black text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.99]">
@@ -2729,10 +2793,17 @@ function Reports({ state, nav }) {
           </>
         )}
 
-        {(attRows.length > 0 || availRows.length > 0) && (
+        {(attRows.length > 0 || availRows.length > 0 || completed.length > 0) && (
           <>
             <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mt-6 mb-3">Player records</p>
             <div className="space-y-2.5">
+              {completed.length > 0 && (
+                <button onClick={() => nav.push("seasonBreakdown", { kind: "minutes" })} className="w-full bg-white border border-zinc-200 rounded-2xl p-4 flex items-center gap-3 active:bg-zinc-50">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center"><Clock className="w-5 h-5 text-indigo-600" /></div>
+                  <div className="flex-1 text-left"><p className="font-bold text-[15px] text-zinc-900">Minutes &amp; rotation</p><p className="text-[12px] text-zinc-500">Game time per player across the season</p></div>
+                  <ChevronRight className="w-5 h-5 text-zinc-300" />
+                </button>
+              )}
               {attRows.length > 0 && (
                 <button onClick={() => nav.push("seasonBreakdown", { kind: "attendance" })} className="w-full bg-white border border-zinc-200 rounded-2xl p-4 flex items-center gap-3 active:bg-zinc-50">
                   <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center"><Dumbbell className="w-5 h-5 text-emerald-600" /></div>
@@ -2841,16 +2912,61 @@ function SeasonStat({ state, nav, cat }) {
 function SeasonBreakdown({ state, nav, kind }) {
   const { team, players, fixtures } = teamData(state);
   const attendance = kind === "attendance";
+  const minutesMode = kind === "minutes";
   const sessions = state.sessions.filter((s) => s.teamId === team.id);
   const recorded = sessions.filter((s) => state.attendance[s.id] && Object.keys(state.attendance[s.id]).length);
   const availFixtures = fixtures.filter((f) => state.availability[f.id] && Object.keys(state.availability[f.id]).length);
+
+  // Minutes / rotation: total game time and appearances per player across the season.
+  const completed = fixtures.filter((f) => f.status === "completed");
+  let minRows = [];
+  if (minutesMode) {
+    const agg = {};
+    completed.forEach((f) => {
+      matchMinutes(f, state.lineups[f.id], state.events[f.id] || [], players).forEach((g) => {
+        const a = agg[g.id] || (agg[g.id] = { id: g.id, name: g.name, mins: 0, games: 0, starts: 0 });
+        a.mins += g.mins; a.games += 1; if (g.starter) a.starts += 1;
+      });
+    });
+    minRows = Object.values(agg).sort((a, b) => b.mins - a.mins || a.name.localeCompare(b.name));
+  }
+  const maxMins = minRows.reduce((m, r) => Math.max(m, r.mins), 0) || 1;
+
   const rows = attendance
     ? (recorded.length ? players.map((p) => { const t = recorded.filter((s) => state.attendance[s.id][p.id] === "TRAINED").length; return { id: p.id, name: p.name, done: t, total: recorded.length, pct: Math.round((t / recorded.length) * 100) }; }) : [])
     : (availFixtures.length ? players.map((p) => { const a = availFixtures.filter((f) => state.availability[f.id][p.id] === "AVAILABLE").length; return { id: p.id, name: p.name, done: a, total: availFixtures.length, pct: Math.round((a / availFixtures.length) * 100) }; }) : []);
   rows.sort((a, b) => b.pct - a.pct || a.name.localeCompare(b.name));
   const barColor = attendance ? "bg-emerald-500" : "bg-sky-500";
-  const title = attendance ? "Training attendance" : "Match availability";
-  const sub = attendance ? `${recorded.length} session${recorded.length === 1 ? "" : "s"} recorded` : `${availFixtures.length} fixture${availFixtures.length === 1 ? "" : "s"}`;
+  const title = minutesMode ? "Minutes & rotation" : attendance ? "Training attendance" : "Match availability";
+  const sub = minutesMode ? `${completed.length} game${completed.length === 1 ? "" : "s"} played` : attendance ? `${recorded.length} session${recorded.length === 1 ? "" : "s"} recorded` : `${availFixtures.length} fixture${availFixtures.length === 1 ? "" : "s"}`;
+
+  if (minutesMode) {
+    return (
+      <div className="flex flex-col h-full">
+        <StatusBar />
+        <Header title={title} onBack={nav.pop} />
+        <p className="px-4 py-2 text-[12px] text-zinc-500 bg-white border-b border-zinc-100">{team.name} · {sub}</p>
+        <div className="flex-1 overflow-y-auto p-4">
+          {minRows.length === 0 ? <Empty text="No game minutes yet — they build up as you complete matches with a saved line-out" icon={Clock} /> : (
+            <div className="bg-white border border-zinc-200 rounded-2xl divide-y divide-zinc-100">
+              {minRows.map((r) => (
+                <button key={r.id} onClick={() => nav.push("playerProfile", { playerId: r.id })} className="w-full flex items-center gap-3 px-4 py-2.5 active:bg-zinc-50 text-left">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-[14px] text-zinc-900 truncate">{r.name}</p>
+                    <p className="text-[11px] text-zinc-400">{r.games} game{r.games === 1 ? "" : "s"} · {r.starts} start{r.starts === 1 ? "" : "s"}{r.games ? ` · ${Math.round(r.mins / r.games)} min avg` : ""}</p>
+                  </div>
+                  <div className="w-16 h-2 rounded-full bg-zinc-100 overflow-hidden shrink-0"><div className="h-full bg-indigo-500" style={{ width: `${Math.round((r.mins / maxMins) * 100)}%` }} /></div>
+                  <span className="w-14 text-right text-[13px] font-bold text-zinc-800 tabular-nums shrink-0">{r.mins}<span className="text-[10px] font-normal text-zinc-400"> min</span></span>
+                  <ChevronRight className="w-4 h-4 text-zinc-300 shrink-0" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full">
       <StatusBar />
@@ -2991,21 +3107,7 @@ function MatchReport({ state, dispatch, nav, fixtureId }) {
   const conv = shotsN > 0 ? Math.round((scoresN / shotsN) * 100) : null;
 
   // game time per player (minutes on the pitch), from the line-out, subs and final clock
-  const starterIds = new Set(Object.values(lineupMap || {}).filter(Boolean));
-  const fullClock = fixture.fullClock || events.reduce((m, e) => Math.max(m, e.clock || 0), 0);
-  const nameToId = {}; teamPlayers.forEach((p) => { if (!(p.name in nameToId)) nameToId[p.name] = p.id; });
-  const onAt = {}, offAt = {};
-  starterIds.forEach((id) => { onAt[id] = 0; });
-  subs.slice().sort((a, b) => a.clock - b.clock).forEach((e) => {
-    const offId = nameToId[e.off], onId = nameToId[e.on];
-    if (offId != null && offAt[offId] === undefined) offAt[offId] = e.clock;
-    if (onId != null && onAt[onId] === undefined) onAt[onId] = e.clock;
-  });
-  const gameTime = teamPlayers.map((p) => {
-    const on = onAt[p.id]; if (on === undefined) return null;
-    const off = offAt[p.id] !== undefined ? offAt[p.id] : fullClock;
-    return { id: p.id, name: p.name, mins: Math.max(0, Math.round((off - on) / 60)), starter: starterIds.has(p.id), subbedOff: offAt[p.id] !== undefined };
-  }).filter(Boolean).sort((a, b) => b.mins - a.mins);
+  const gameTime = matchMinutes(fixture, lineupMap, events, teamPlayers);
 
   // ---- per-player stat tallies for the drill-in categories ----
   const nameOf = (id) => { const p = state.players.find((x) => x.id === id); return p ? p.name : null; };
@@ -3159,6 +3261,8 @@ function MatchReport({ state, dispatch, nav, fixtureId }) {
               {notes !== (fixture.notes || "") && <button onClick={() => { dispatch({ type: "UPDATE_FIXTURE", id: fixture.id, patch: { notes: notes.trim() } }); nav.toast("Notes saved"); }} className="w-full mt-2 bg-zinc-900 text-white font-semibold py-2.5 rounded-xl text-[13px] active:scale-[0.99]">Save notes</button>}
             </div>
 
+            <OpponentNotes state={state} dispatch={dispatch} nav={nav} opponent={fixture.opponent} />
+
             <div className="flex gap-2">
               <button onClick={share} className="flex-1 bg-black text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.99]">
                 <Share2 className="w-4 h-4" /> {copied ? "Copied ✓" : "Share text"}
@@ -3300,6 +3404,12 @@ function PlayerProfile({ state, dispatch, nav, playerId }) {
     const lu = state.lineups[f.id];
     if (lu && lu["1"] === player.id && f.result && totalPts(f.result.away.g, f.result.away.p) === 0) cleanSheets++;
   });
+  // Season game time (minutes on the pitch) across completed matches.
+  let seasonMins = 0, minGames = 0;
+  completed.forEach((f) => {
+    const row = matchMinutes(f, state.lineups[f.id], state.events[f.id] || [], teamPlayers).find((g) => g.id === player.id);
+    if (row) { seasonMins += row.mins; minGames += 1; }
+  });
   const teamSessions = state.sessions.filter((s) => s.teamId === player.teamId);
   const recorded = teamSessions.filter((s) => state.attendance[s.id] && Object.keys(state.attendance[s.id]).length);
   const trained = recorded.filter((s) => state.attendance[s.id][player.id] === "TRAINED").length;
@@ -3329,8 +3439,11 @@ function PlayerProfile({ state, dispatch, nav, playerId }) {
 
         <div className="px-4 -mt-4">
           <div className="bg-white border border-zinc-200 rounded-2xl p-3 flex items-center justify-between shadow-sm">
-            <span className="text-[13px] font-semibold text-zinc-500">Status</span>
-            <button onClick={() => dispatch({ type: "TOGGLE_INJURY", id: player.id })} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold ${player.injured ? "bg-red-600 text-white" : player.limited ? "bg-amber-500 text-white" : "bg-emerald-600 text-white"}`}>
+            <div className="min-w-0">
+              <span className="text-[13px] font-semibold text-zinc-500">Status</span>
+              {dueBack(player) && <p className={`text-[12px] ${dueBack(player).overdue ? "text-amber-600 font-semibold" : "text-zinc-400"}`}>{dueBack(player).overdue ? "Due back — check fitness & mark fit" : `Expected back ${dueBack(player).text}`}</p>}
+            </div>
+            <button onClick={() => dispatch({ type: "TOGGLE_INJURY", id: player.id })} className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-semibold ${player.injured ? "bg-red-600 text-white" : player.limited ? "bg-amber-500 text-white" : "bg-emerald-600 text-white"}`}>
               <Stethoscope className="w-4 h-4" />{player.injured ? "Injured" : player.limited ? "Limited" : "Fit"}
             </button>
           </div>
@@ -3345,6 +3458,8 @@ function PlayerProfile({ state, dispatch, nav, playerId }) {
               : <BigStat value={totalPts(goals, points)} label="Total points" />}
             <BigStat value={apps} label={`Appearance${apps === 1 ? "" : "s"}`} />
             <BigStat value={attRate === null ? "—" : attRate + "%"} label={`Training${recorded.length ? ` · ${trained}/${recorded.length}` : ""}`} />
+            {minGames > 0 && <BigStat value={seasonMins} label="Minutes played" />}
+            {minGames > 0 && <BigStat value={Math.round(seasonMins / minGames)} label="Min / game" />}
           </div>
           {wides > 0 && <p className="text-[12px] text-zinc-400 mt-2 text-center">{wides} wide{wides === 1 ? "" : "s"} this season</p>}
         </div>
