@@ -145,8 +145,12 @@ const store = {
     try { if (typeof localStorage !== "undefined") return localStorage.getItem(k); } catch (_) {}
     return null;
   },
+  // Returns true on success. A false result almost always means the phone's
+  // storage is full (too many photos) — the app surfaces a warning so a save
+  // never fails silently.
   async set(k, v) {
-    try { if (typeof localStorage !== "undefined") localStorage.setItem(k, v); } catch (_) {}
+    try { if (typeof localStorage !== "undefined") { localStorage.setItem(k, v); return true; } } catch (_) { return false; }
+    return false;
   },
 };
 
@@ -296,7 +300,7 @@ function reducer(state, action) {
       return {
         ...state,
         events: { ...state.events, [action.fixtureId]: action.events },
-        fixtures: state.fixtures.map((f) => f.id === action.fixtureId ? { ...f, status: "completed", result: action.result, ht: action.ht || null, fullClock: action.fullClock || 0 } : f),
+        fixtures: state.fixtures.map((f) => f.id === action.fixtureId ? { ...f, status: "completed", result: action.result, ht: action.ht || null, fullClock: action.fullClock || 0, completedAt: Date.now() } : f),
       };
     // Re-open a completed match for editing: restore a live session from the saved
     // result + feed and flip the fixture back to in-progress.
@@ -366,9 +370,10 @@ const buzz = (ms = 12) => { try { if (navigator.vibrate) navigator.vibrate(ms); 
 
 const xmlEsc = (s = "") => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-// Read an uploaded image and shrink it to a small square-ish PNG data URL so it
-// fits comfortably in localStorage while still looking crisp on the poster.
-function fileToImageDataUrl(file, max = 400) {
+// Read an uploaded image and shrink it to a small PNG data URL so it fits in the
+// phone's limited storage while still looking crisp on the poster (rendered ~92px
+// at 2x). Kept small on purpose — many crest/jersey images can add up fast.
+function fileToImageDataUrl(file, max = 256) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -493,6 +498,7 @@ export default function App() {
   const [stack, setStack] = useState([{ screen: "dashboard" }]);
   const [toast, setToast] = useState(null);
   const [needRefresh, setNeedRefresh] = useState(false);
+  const [storageOk, setStorageOk] = useState(true);
   const updateSWRef = useRef(null);
 
   // PWA: when a new version is deployed, prompt to refresh instead of silently updating
@@ -544,9 +550,10 @@ export default function App() {
     return () => { active = false; };
   }, []);
 
-  // persist on change (after hydration)
+  // persist on change (after hydration). If the write fails (storage full) flag it
+  // so the user is warned instead of losing data silently.
   useEffect(() => {
-    if (hydrated) store.set(STORE_KEY, JSON.stringify(state));
+    if (hydrated) store.set(STORE_KEY, JSON.stringify(state)).then((ok) => setStorageOk(ok !== false));
   }, [state, hydrated]);
 
   const view = stack[stack.length - 1];
@@ -570,6 +577,12 @@ export default function App() {
           </div>
         ) : (
           <>
+            {!storageOk && (
+              <div className="bg-red-600 text-white px-4 py-2.5 flex items-start gap-2" style={{ paddingTop: "max(0.625rem, env(safe-area-inset-top))" }}>
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <p className="text-[12px] leading-snug font-medium">Storage is full — recent changes may not be saving. Export a backup now, then remove some crest/jersey images to free space.</p>
+              </div>
+            )}
             <div className="flex-1 min-h-0 flex flex-col">
               <Router state={state} dispatch={dispatch} nav={nav} />
             </div>
@@ -982,7 +995,10 @@ function Dashboard({ state, dispatch, nav }) {
   const form = [...completedFx].sort((a, b) => new Date(a.date) - new Date(b.date)).slice(-5).map(resultOf);
   const lastBackup = state.settings && state.settings.lastBackup;
   const daysSince = lastBackup ? Math.floor((Date.now() - lastBackup) / 86400000) : null;
-  const needBackup = !hideBackup && (players.length > 0 || completedFx.length > 0) && (!lastBackup || daysSince >= 7);
+  // Nudge weekly, and again straight after any match is completed (its result is
+  // the data you'd most hate to lose).
+  const matchSinceBackup = completedFx.some((f) => f.completedAt && f.completedAt > (lastBackup || 0));
+  const needBackup = !hideBackup && (players.length > 0 || completedFx.length > 0) && (!lastBackup || daysSince >= 7 || matchSinceBackup);
   const backupNow = async () => { const ok = await downloadBackupFile(state); if (ok) { dispatch({ type: "SET_SETTINGS", patch: { lastBackup: Date.now() } }); nav.toast("Backup saved"); } };
 
   const handleAction = (to) => {
@@ -1049,7 +1065,7 @@ function Dashboard({ state, dispatch, nav }) {
           <div className="px-4 pt-4">
             <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-2xl px-3 py-2.5">
               <Download className="w-4 h-4 text-amber-700 shrink-0" />
-              <p className="text-[12px] text-amber-800 flex-1 leading-snug">{lastBackup ? `Last backup ${daysSince} day${daysSince === 1 ? "" : "s"} ago.` : "You haven't backed up yet."} Keep your season safe.</p>
+              <p className="text-[12px] text-amber-800 flex-1 leading-snug">{matchSinceBackup && (daysSince === null || daysSince < 7) ? "You've a new match result to protect." : lastBackup ? `Last backup ${daysSince} day${daysSince === 1 ? "" : "s"} ago.` : "You haven't backed up yet."} Keep your season safe.</p>
               <button onClick={backupNow} className="shrink-0 text-[12px] font-bold text-white bg-amber-600 px-3 py-1.5 rounded-full active:scale-95">Back up</button>
               <button onClick={() => setHideBackup(true)} aria-label="Dismiss" className="shrink-0 text-amber-700 p-0.5"><X className="w-4 h-4" /></button>
             </div>
@@ -2100,7 +2116,7 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
     dispatch({ type: "CLEAR_LIVE", fixtureId });
     dispatch({ type: "COMPLETE_MATCH", fixtureId, result: score, events, ht, fullClock: clock });
     nav.reset("fixtures");
-    nav.toast("Match saved to reports");
+    nav.toast("Match saved — back it up from the dashboard to keep it safe");
   };
 
   // wipe the in-progress match back to 0-0 (accidental open / testing / fresh start)
