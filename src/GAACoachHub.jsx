@@ -606,6 +606,7 @@ function Router({ state, dispatch, nav }) {
     case "matchReport": return <MatchReport state={state} dispatch={dispatch} nav={nav} fixtureId={view.fixtureId} />;
     case "playerStats": return <PlayerStats state={state} nav={nav} />;
     case "seasonBreakdown": return <SeasonBreakdown state={state} nav={nav} kind={view.kind} />;
+    case "seasonStat": return <SeasonStat state={state} nav={nav} cat={view.cat} />;
     case "playerProfile": return <PlayerProfile state={state} dispatch={dispatch} nav={nav} playerId={view.playerId} />;
     case "settings": return <SettingsScreen state={state} dispatch={dispatch} nav={nav} />;
     case "calendar": return <Calendar state={state} nav={nav} />;
@@ -2500,6 +2501,12 @@ function Attendance({ state, dispatch, nav, sessionId }) {
 function Reports({ state, nav }) {
   const { players, fixtures, sessions } = teamData(state);
   const completed = fixtures.filter((f) => f.status === "completed");
+  // Which full game-stat categories have any data across the season, + extra work.
+  const seasonAll = completed.flatMap((f) => state.events[f.id] || []);
+  const nameOfP = (id) => { const p = players.find((x) => x.id === id); return p ? p.name : null; };
+  const seasonHome = tallyEvents(seasonAll, "HOME", nameOfP), seasonAway = tallyEvents(seasonAll, "AWAY", nameOfP);
+  const gameCats = SEASON_CATS.filter((c) => seasonHome.filter(c.show).length + seasonAway.filter(c.show).length > 0);
+  const hasExtraWork = players.some((p) => ((state.extraWork || {})[p.id] || []).length);
   const recordedSessions = sessions.filter((s) => state.attendance[s.id] && Object.keys(state.attendance[s.id]).length);
   const attRows = useMemo(() => (recordedSessions.length ? players.map((p) => {
     const t = recordedSessions.filter((s) => state.attendance[s.id][p.id] === "TRAINED").length;
@@ -2562,6 +2569,28 @@ function Reports({ state, nav }) {
           <div className="flex-1 text-left"><p className="font-bold text-[15px] text-zinc-900">Player stats</p><p className="text-[12px] text-zinc-500">Season scorers & contributions</p></div>
           <ChevronRight className="w-5 h-5 text-zinc-300" />
         </button>
+
+        {(gameCats.length > 0 || hasExtraWork) && (
+          <>
+            <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mt-6 mb-3">Game stats</p>
+            <div className="grid grid-cols-2 gap-3">
+              {gameCats.map((c) => (
+                <button key={c.key} onClick={() => nav.push("seasonStat", { cat: c.key })} className="bg-white border border-zinc-200 rounded-2xl p-4 text-left active:bg-zinc-50">
+                  <div className="flex items-center gap-2 mb-2"><c.icon className="w-4 h-4 text-zinc-400" /><ChevronRight className="w-4 h-4 text-zinc-300 ml-auto" /></div>
+                  <p className="text-[15px] font-bold text-zinc-900 leading-tight">{c.label}</p>
+                  <p className="text-[12px] text-zinc-500 mt-0.5">By player · season</p>
+                </button>
+              ))}
+              {hasExtraWork && (
+                <button onClick={() => nav.push("seasonStat", { cat: "extrawork" })} className="bg-white border border-zinc-200 rounded-2xl p-4 text-left active:bg-zinc-50">
+                  <div className="flex items-center gap-2 mb-2"><Dumbbell className="w-4 h-4 text-zinc-400" /><ChevronRight className="w-4 h-4 text-zinc-300 ml-auto" /></div>
+                  <p className="text-[15px] font-bold text-zinc-900 leading-tight">Extra work</p>
+                  <p className="text-[12px] text-zinc-500 mt-0.5">Gym · Run · Stick</p>
+                </button>
+              )}
+            </div>
+          </>
+        )}
 
         {oppRows.length > 0 && (
           <>
@@ -2631,6 +2660,60 @@ function BigStat({ value, label }) {
   return <div className="bg-black text-white rounded-2xl p-4"><p className="text-3xl font-black tabular-nums">{value}</p><p className="text-[12px] text-zinc-400 mt-1">{label}</p></div>;
 }
 
+// Season-wide game stat category (aggregated across every completed match), or
+// the extra-work log — reached from a card on the Reports tab.
+function SeasonStat({ state, nav, cat }) {
+  const { team, players, fixtures } = teamData(state);
+  const completed = fixtures.filter((f) => f.status === "completed");
+  if (cat === "extrawork") {
+    const rows = players.map((p) => {
+      const list = (state.extraWork || {})[p.id] || [];
+      const by = { Gym: 0, Run: 0, "Stick Work": 0 };
+      list.forEach((e) => { if (by[e.type] !== undefined) by[e.type]++; });
+      return { id: p.id, label: p.name, gym: by.Gym, run: by.Run, stick: by["Stick Work"], total: list.length };
+    }).filter((r) => r.total).sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
+    return (
+      <div className="flex flex-col h-full">
+        <StatusBar />
+        <Header title="Extra work" onBack={nav.pop} />
+        <p className="px-4 py-2 text-[12px] text-zinc-500 bg-white border-b border-zinc-100">{team.name} · gym, running & stick work</p>
+        <div className="flex-1 overflow-y-auto p-4">
+          {rows.length === 0 ? <Empty text="No extra work logged yet — log it from a player's profile" icon={Dumbbell} /> : (
+            <div className="bg-white border border-zinc-200 rounded-2xl overflow-hidden">
+              <div className="flex items-center px-4 py-2 bg-zinc-50 text-[10px] font-bold text-zinc-400 uppercase"><span className="flex-1">Player</span><span className="w-12 text-center">Gym</span><span className="w-12 text-center">Run</span><span className="w-12 text-center">Stick</span></div>
+              {rows.map((r) => (
+                <button key={r.id} onClick={() => nav.push("playerProfile", { playerId: r.id })} className="w-full flex items-center px-4 py-2.5 border-t border-zinc-100 text-[13px] active:bg-zinc-50 text-left">
+                  <span className="flex-1 font-semibold text-zinc-900 truncate">{r.label}</span>
+                  <span className="w-12 text-center tabular-nums font-bold text-zinc-800">{r.gym}</span>
+                  <span className="w-12 text-center tabular-nums font-bold text-zinc-800">{r.run}</span>
+                  <span className="w-12 text-center tabular-nums font-bold text-zinc-800">{r.stick}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  const def = SEASON_CATS.find((c) => c.key === cat);
+  const nameOf = (id) => { const p = players.find((x) => x.id === id); return p ? p.name : null; };
+  const all = completed.flatMap((f) => state.events[f.id] || []);
+  const home = def ? tallyEvents(all, "HOME", nameOf).filter(def.show).sort((a, b) => a.label.localeCompare(b.label)) : [];
+  const away = def ? tallyEvents(all, "AWAY", nameOf).filter(def.show).sort((a, b) => (parseInt(a.label.slice(1)) || 0) - (parseInt(b.label.slice(1)) || 0)) : [];
+  return (
+    <div className="flex flex-col h-full">
+      <StatusBar />
+      <Header title={def ? def.label : "Stats"} onBack={nav.pop} />
+      <p className="px-4 py-2 text-[12px] text-zinc-500 bg-white border-b border-zinc-100">Across {completed.length} completed game{completed.length === 1 ? "" : "s"}</p>
+      <div className="flex-1 overflow-y-auto p-4">
+        <StatTable title={HOME_NAME} rows={home} cols={def ? def.cols : []} />
+        <StatTable title="Opponents" rows={away} cols={def ? def.cols : []} />
+        {!home.length && !away.length && <Empty text={`No ${def ? def.label.toLowerCase() : ""} recorded yet`} icon={def ? def.icon : Medal} />}
+      </div>
+    </div>
+  );
+}
+
 // Full-squad training-attendance or match-availability breakdown, reached from a
 // card on the Reports tab (so the tab itself stays a short summary).
 function SeasonBreakdown({ state, nav, kind }) {
@@ -2671,23 +2754,52 @@ function SeasonBreakdown({ state, nav, kind }) {
 
 /* ============================ match report ============================ */
 
-// A compact per-player stat table used inside a match-report category.
+// Tally a feed of events per actor (home player by id/name, opponent by number).
+function tallyEvents(events, side, nameOf) {
+  const m = {};
+  events.filter((e) => e.side === side && e.type !== "Substitution").forEach((e) => {
+    if (side === "HOME" && !e.playerId && !e.player) return;
+    if (side === "AWAY" && e.playerNo == null) return;
+    const key = side === "HOME" ? (e.playerId || e.player) : `#${e.playerNo}`;
+    const label = side === "HOME" ? (nameOf(e.playerId) || e.player || "Unknown") : `#${e.playerNo}`;
+    const a = m[key] || (m[key] = { key, label, c: {} });
+    a.c[e.type] = (a.c[e.type] || 0) + 1;
+    if (e.detail) a.c[`${e.type}·${e.detail}`] = (a.c[`${e.type}·${e.detail}`] || 0) + 1;
+  });
+  return Object.values(m);
+}
+const G = (a, k) => a.c[k] || 0;
+const foulsG = (a) => G(a, "Foul Conceded") + G(a, "Yellow Card") + G(a, "Black Card") + G(a, "Red Card");
+// Full game-stat categories, aggregated per player. Used on the Reports tab.
+const SEASON_CATS = [
+  { key: "shooting", label: "Shooting", icon: Flag, cols: [{ h: "G", f: (a) => G(a, "Goal") }, { h: "P", f: (a) => G(a, "Point") }, { h: "Wd", f: (a) => G(a, "Wide") }, { h: "Sv", f: (a) => G(a, "Saved") }, { h: "DS", f: (a) => G(a, "Dropped Short") }, { h: "65W", f: (a) => G(a, "65 Won") }, { h: "65M", f: (a) => G(a, "65 Missed") }], show: (a) => ["Goal", "Point", "Wide", "Saved", "Dropped Short", "65 Won", "65 Missed"].some((k) => G(a, k)) },
+  { key: "possession", label: "Possession", icon: ArrowLeftRight, cols: [{ h: "+", f: (a) => G(a, "Possession·Positive") }, { h: "~", f: (a) => G(a, "Possession·Neutral") }, { h: "–", f: (a) => G(a, "Possession·Negative") }, { h: "Won", f: (a) => G(a, "Possession Won") }, { h: "Lost", f: (a) => G(a, "Possession Lost") }], show: (a) => ["Possession·Positive", "Possession·Neutral", "Possession·Negative", "Possession Won", "Possession Lost"].some((k) => G(a, k)) },
+  { key: "frees", label: "Frees", icon: Flag, cols: [{ h: "Won", f: (a) => G(a, "Free Won") }, { h: "Conc", f: (a) => G(a, "Free Conceded") }], show: (a) => G(a, "Free Won") || G(a, "Free Conceded") },
+  { key: "puckouts", label: "Puck-outs", icon: Circle, cols: [{ h: "Own", f: (a) => G(a, "Puck Out Won·Own") }, { h: "Opp", f: (a) => G(a, "Puck Out Won·Opponent") }], show: (a) => G(a, "Puck Out Won·Own") || G(a, "Puck Out Won·Opponent") },
+  { key: "discipline", label: "Discipline", icon: AlertTriangle, cols: [{ h: "Foul", f: foulsG }, { h: "Y", f: (a) => G(a, "Yellow Card") }, { h: "B", f: (a) => G(a, "Black Card") }, { h: "R", f: (a) => G(a, "Red Card") }], show: (a) => foulsG(a) > 0 },
+];
+
+// A compact per-player stat table (scrolls sideways when there are many columns).
 function StatTable({ title, rows, cols }) {
   if (!rows.length) return null;
   return (
     <div className="mb-4">
       <p className="text-[12px] font-bold text-zinc-400 uppercase tracking-wide mb-1.5">{title}</p>
       <div className="bg-white border border-zinc-200 rounded-2xl overflow-hidden">
-        <div className="flex items-center px-3 py-2 bg-zinc-50 text-[10px] font-bold text-zinc-400 uppercase">
-          <span className="flex-1">Player</span>
-          {cols.map((c) => <span key={c.h} className="w-11 text-center">{c.h}</span>)}
-        </div>
-        {rows.map((a) => (
-          <div key={a.key} className="flex items-center px-3 py-2.5 border-t border-zinc-100 text-[13px]">
-            <span className="flex-1 font-semibold text-zinc-900 truncate">{a.label}</span>
-            {cols.map((c) => <span key={c.h} className="w-11 text-center tabular-nums font-bold text-zinc-800">{c.f(a)}</span>)}
+        <div className="overflow-x-auto">
+          <div style={{ minWidth: 116 + cols.length * 44 }}>
+            <div className="flex items-center px-3 py-2 bg-zinc-50 text-[10px] font-bold text-zinc-400 uppercase">
+              <span className="w-[104px] shrink-0">Player</span>
+              {cols.map((c) => <span key={c.h} className="w-11 text-center shrink-0">{c.h}</span>)}
+            </div>
+            {rows.map((a) => (
+              <div key={a.key} className="flex items-center px-3 py-2.5 border-t border-zinc-100 text-[13px]">
+                <span className="w-[104px] shrink-0 font-semibold text-zinc-900 truncate">{a.label}</span>
+                {cols.map((c) => <span key={c.h} className="w-11 text-center shrink-0 tabular-nums font-bold text-zinc-800">{c.f(a)}</span>)}
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
       </div>
     </div>
   );
