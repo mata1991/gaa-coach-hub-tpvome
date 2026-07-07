@@ -495,7 +495,7 @@ function summarizeScorers(events = [], nameOf) {
 export default function App() {
   const [state, dispatch] = useReducer(reducer, undefined, makeSeed);
   const [hydrated, setHydrated] = useState(false);
-  const [stack, setStack] = useState([{ screen: "dashboard" }]);
+  const [stack, setStack] = useState([{ screen: "teamSelect" }]);
   const [toast, setToast] = useState(null);
   const [needRefresh, setNeedRefresh] = useState(false);
   const [storageOk, setStorageOk] = useState(true);
@@ -606,6 +606,7 @@ export default function App() {
 function Router({ state, dispatch, nav }) {
   const { view } = nav;
   switch (view.screen) {
+    case "teamSelect": return <TeamSelect state={state} dispatch={dispatch} nav={nav} />;
     case "dashboard": return <Dashboard state={state} dispatch={dispatch} nav={nav} />;
     case "players": return <Players state={state} dispatch={dispatch} nav={nav} initialFilter={view.filter} />;
     case "fixtures": return <Fixtures state={state} dispatch={dispatch} nav={nav} initialTab={view.tab} />;
@@ -1155,6 +1156,43 @@ function TeamSwitcher({ state, dispatch, onClose }) {
           onClose={() => setConfirmReset(false)} />
       )}
     </Sheet>
+  );
+}
+
+// Landing screen shown when the app opens — pick which team to manage, or add one.
+function TeamSelect({ state, dispatch, nav }) {
+  const [adding, setAdding] = useState(false);
+  const counts = (id) => state.players.filter((p) => p.teamId === id).length;
+  const theme = themeOf(state);
+  const pick = (id) => { dispatch({ type: "SET_ACTIVE_TEAM", id }); nav.reset("dashboard"); };
+  return (
+    <div className="flex flex-col h-full">
+      <StatusBar />
+      <div className="text-white px-6 pt-8 pb-8" style={{ background: `linear-gradient(160deg, ${theme.primary}, ${shade(theme.primary, -30)})` }}>
+        <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center overflow-hidden mb-3"><img src={CREST} alt="" className="w-14 h-14 object-contain" /></div>
+        <p className="text-[12px] text-white/60">{CLUB.name} · <span className="italic">{CLUB.irish}</span></p>
+        <h1 className="text-3xl font-black leading-tight">PanelPro</h1>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4">
+        <p className="text-[13px] font-bold text-zinc-500 uppercase tracking-wide mb-3">Choose a team</p>
+        <div className="space-y-2.5">
+          {state.teams.map((t) => (
+            <button key={t.id} onClick={() => pick(t.id)} className="w-full flex items-center gap-3 p-3.5 rounded-2xl border border-zinc-200 bg-white active:bg-zinc-50">
+              <div className="w-12 h-12 rounded-xl bg-white border border-zinc-200 flex items-center justify-center overflow-hidden shrink-0"><img src={t.crest || CREST} alt="" className="w-10 h-10 object-contain" /></div>
+              <div className="flex-1 text-left min-w-0">
+                <p className="font-bold text-[16px] text-zinc-900 truncate">{t.name}</p>
+                <p className="text-[12px] text-zinc-500">{[t.sport, t.grade].filter(Boolean).join(" · ")} · {counts(t.id)} players</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-zinc-300 shrink-0" />
+            </button>
+          ))}
+        </div>
+        <button onClick={() => setAdding(true)} className="w-full mt-3 flex items-center justify-center gap-2 py-3.5 rounded-2xl border border-dashed border-zinc-300 text-zinc-600 font-semibold text-[14px] active:bg-zinc-50">
+          <Plus className="w-4 h-4" /> Add a new team
+        </button>
+      </div>
+      {adding && <AddTeam onClose={() => setAdding(false)} onSave={(team) => { dispatch({ type: "ADD_TEAM", team }); setAdding(false); nav.reset("dashboard"); }} />}
+    </div>
   );
 }
 
@@ -2186,8 +2224,8 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
         {["HOME", "AWAY"].map((side) => (
           <div key={side} className="space-y-2">
             <p className="text-[11px] text-zinc-500 font-bold text-center uppercase tracking-wide">{side === "HOME" ? HOME_NAME : fixture.opponent}</p>
-            <button onClick={() => quickScore(side, GOAL)} className="w-full bg-red-600 text-white font-black py-3 rounded-xl text-[15px] active:scale-95">GOAL</button>
-            <button onClick={() => quickScore(side, POINT)} className="w-full bg-zinc-800 text-white font-bold py-2.5 rounded-xl text-[14px] active:scale-95">POINT</button>
+            <button onClick={() => quickScore(side, GOAL)} className="w-full bg-emerald-600 text-white font-black py-3 rounded-xl text-[15px] active:scale-95">GOAL</button>
+            <button onClick={() => quickScore(side, POINT)} className="w-full bg-white text-zinc-900 font-bold py-2.5 rounded-xl text-[14px] active:scale-95">POINT</button>
             <button onClick={() => { setPicker({ side }); setStep("event"); setChosen(null); setChosenOpt(null); }} className="w-full bg-zinc-900 border border-zinc-700 text-zinc-400 font-semibold py-2 rounded-xl text-[12px] active:scale-95">+ Other event</button>
           </div>
         ))}
@@ -2943,6 +2981,27 @@ function MatchReport({ state, dispatch, nav, fixtureId }) {
 
   const reopen = () => { dispatch({ type: "REOPEN_MATCH", id: fixture.id }); nav.push("live", { fixtureId: fixture.id }); };
   const resetMatch = () => { dispatch({ type: "RESET_MATCH", id: fixture.id }); setConfirmReset(false); nav.toast("Match reset — track it again from Fixtures"); nav.reset("fixtures"); };
+  // Export the full game as a JSON file — everything logged, with names resolved —
+  // so it can be shared or handed to an AI for analysis.
+  const exportGame = async () => {
+    const nm = (id) => { const p = state.players.find((x) => x.id === id); return p ? p.name : null; };
+    const data = {
+      app: "PanelPro", exportType: "game", exportedAt: new Date().toISOString(),
+      team: HOME_NAME, opponent: fixture.opponent, competition: fixture.competition, venue: fixture.venue, date: fixture.date,
+      result: { [HOME_NAME]: fmtScore(fixture.result.home.g, fixture.result.home.p), [fixture.opponent]: fmtScore(fixture.result.away.g, fixture.result.away.p), totalPoints: `${hf}-${af}`, outcome: draw ? "Draw" : won ? "Win" : "Loss" },
+      halfTime: ht ? { [HOME_NAME]: fmtScore(ht.home.g, ht.home.p), [fixture.opponent]: fmtScore(ht.away.g, ht.away.p) } : null,
+      playerOfTheMatch: potmPlayer ? potmPlayer.name : null,
+      lineup: lineupMap ? GAA_POSITIONS.map((pos) => ({ no: pos.no, position: pos.name, player: nm(lineupMap[pos.no]) })) : [],
+      scorers: scorers.map((s) => ({ name: s.name, score: fmtScore(s.goals, s.points), frees: s.frees })),
+      feed: events.map((e) => ({ clock: e.type === "Substitution" ? fmtClock(e.clock) : fmtClock(e.clock), half: e.half, side: e.side === "HOME" ? HOME_NAME : fixture.opponent, event: e.type === "Substitution" ? `Sub: ${e.on} for ${e.off}` : eventLabel(e), player: e.side === "HOME" ? (e.player || null) : (e.playerNo != null ? `#${e.playerNo}` : null) })),
+      notes: fixture.notes || "",
+    };
+    const json = JSON.stringify(data, null, 2);
+    const filename = `panelpro-game-${(fixture.opponent || "game").replace(/\s+/g, "-")}.json`;
+    try { if (navigator.canShare) { const file = new File([json], filename, { type: "application/json" }); if (navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "PanelPro game data" }); nav.toast("Game data exported"); return; } } } catch (e) { if (e && e.name === "AbortError") return; }
+    try { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([json], { type: "application/json" })); a.download = filename; document.body.appendChild(a); a.click(); a.remove(); nav.toast("Game data downloaded"); return; } catch (_) {}
+    try { await navigator.clipboard.writeText(json); nav.toast("Game data copied"); } catch (_) { nav.toast("Couldn't export"); }
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -3041,6 +3100,7 @@ function MatchReport({ state, dispatch, nav, fixtureId }) {
             </div>
 
             <div className="pt-2 border-t border-zinc-100 space-y-2">
+              <button onClick={exportGame} className="w-full bg-zinc-100 text-zinc-800 font-bold py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.99] text-[14px]"><Download className="w-4 h-4" /> Export game data (for Claude)</button>
               <button onClick={reopen} className="w-full bg-zinc-100 text-zinc-800 font-bold py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-[0.99] text-[14px]"><Pencil className="w-4 h-4" /> Edit stats (re-open match)</button>
               <button onClick={() => setConfirmReset(true)} className="w-full text-red-600 font-semibold py-2 rounded-2xl text-[13px] flex items-center justify-center gap-1.5 active:opacity-70"><RotateCcw className="w-3.5 h-3.5" /> Reset match to default</button>
             </div>
