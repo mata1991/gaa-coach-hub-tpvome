@@ -5,6 +5,15 @@ import { VitePWA } from "vite-plugin-pwa";
 // base: "./" keeps asset paths relative so it works on any host or subfolder.
 export default defineConfig({
   base: "./",
+  build: {
+    rollupOptions: {
+      output: {
+        // Keep the (optional) Supabase client in its own named chunk so it can
+        // be excluded from the PWA precache — local-only installs never download it.
+        manualChunks: (id) => (id.includes("@supabase") ? "supabase" : undefined),
+      },
+    },
+  },
   plugins: [
     react(),
     VitePWA({
@@ -27,7 +36,10 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,png,svg,ico,woff2}"]
+        globPatterns: ["**/*.{js,css,html,png,svg,ico,woff2}"],
+        // The Supabase chunk is only needed when cloud sync is switched on; fetch
+        // it on demand rather than precaching it onto every phone.
+        globIgnores: ["**/supabase-*.js"]
       }
     })
   ]

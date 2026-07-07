@@ -38,8 +38,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Optional cloud sync. If these secrets aren't set they're empty, and the
+      # app stays local-only (cloudConfigured() is false). See docs/CLOUD_SETUP.md.
       - name: Build
         run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
