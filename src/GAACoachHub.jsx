@@ -1519,6 +1519,7 @@ function FixtureForm({ initial, settings, onClose, onSave }) {
 function Availability({ state, dispatch, nav, fixtureId }) {
   const fixture = state.fixtures.find((f) => f.id === fixtureId);
   const players = state.players.filter((p) => p.teamId === fixture.teamId);
+  const homeName = clubShortOf(state.teams.find((t) => t.id === fixture.teamId));
   const [map, setMap] = useState(() => {
     const base = {};
     players.forEach((p) => (base[p.id] = state.availability[fixtureId]?.[p.id] || (p.injured ? "OUT" : "AVAILABLE")));
