@@ -569,6 +569,11 @@ export default function App() {
     if (hydrated) store.set(STORE_KEY, JSON.stringify(state)).then((ok) => setStorageOk(ok !== false));
   }, [state, hydrated]);
 
+  // Always points at the freshest state so a backup fired from a toast action
+  // (e.g. straight after completing a match) includes the change that triggered it.
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
   const view = stack[stack.length - 1];
   const nav = {
     view,
@@ -576,6 +581,12 @@ export default function App() {
     pop: () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s)),
     reset: (screen, params = {}) => setStack([{ screen, ...params }]),
     toast: (message, action) => setToast({ message, action, id: Date.now() }),
+    backup: async () => {
+      const ok = await downloadBackupFile(stateRef.current);
+      if (ok) dispatch({ type: "SET_SETTINGS", patch: { lastBackup: Date.now() } });
+      setToast({ message: ok ? "Backup saved" : "Couldn't save file — use Settings → Copy backup", id: Date.now() });
+      return ok;
+    },
   };
 
   return (
@@ -2173,7 +2184,7 @@ function LiveMatch({ state, dispatch, nav, fixtureId }) {
     dispatch({ type: "CLEAR_LIVE", fixtureId });
     dispatch({ type: "COMPLETE_MATCH", fixtureId, result: score, events, ht, fullClock: clock });
     nav.reset("fixtures");
-    nav.toast("Match saved — back it up from the dashboard to keep it safe");
+    nav.toast("Match saved — protect the result", { label: "Back up now", onAction: () => nav.backup() });
   };
 
   // wipe the in-progress match back to 0-0 (accidental open / testing / fresh start)
